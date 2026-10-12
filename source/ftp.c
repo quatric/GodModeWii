@@ -418,8 +418,9 @@ static int fill_list(sess_t *s)
         if (s->op == OP_NLST)
             n = snprintf(dst, 400, "%s\r\n", e->name);
         else if (s->op == OP_MLSD)
-            n = snprintf(dst, 400, "type=%s;size=%llu; %s\r\n", e->is_dir ? "dir" : "file",
-                         (unsigned long long)e->size, e->name);
+            n = snprintf(dst, 400, "type=%s;size=%llu;modify=20000101000000;perm=%s; %s\r\n",
+                         e->is_dir ? "dir" : "file", (unsigned long long)e->size,
+                         e->is_dir ? (s->ro_list ? "el" : "cdeflmp") : (s->ro_list ? "r" : "radfw"), e->name);
         else
             n = snprintf(dst, 400, "%s 1 wii wii %llu Jan 01  2000 %s\r\n",
                          e->is_dir ? (s->ro_list ? "dr-xr-xr-x" : "drwxr-xr-x")
@@ -569,6 +570,7 @@ static void do_list(sess_t *s, int op, const char *arg)
     s->nent = n;
     s->eidx = 0;
     snprintf(s->t_name, sizeof(s->t_name), "%s", v);
+    ftp_log("listing %s: %d entries", v, n);
     begin_data(s, op, real);
 }
 
@@ -722,6 +724,8 @@ static void run_command(sess_t *s, char *line)
     while (*arg == ' ') arg++;
     const char *cmd = line;
     s->last = now_ms();
+    if (strcmp(cmd, "PASS") && strcmp(cmd, "NOOP"))
+        ftp_log("> %s %.40s", cmd, strcmp(cmd, "USER") ? arg : "");
 
     if (!strcmp(cmd, "QUIT")) { reply(s, "221 Goodbye"); s->quit = true; return; }
     if (!strcmp(cmd, "NOOP")) { reply(s, "200 OK"); return; }
@@ -729,7 +733,7 @@ static void run_command(sess_t *s, char *line)
         reply(s, "211-Features:");
         reply(s, " SIZE");
         reply(s, " REST STREAM");
-        reply(s, " MLST type*;size*;");
+        reply(s, " MLST type*;size*;modify*;perm*;");
         reply(s, " UTF8");
         reply(s, "211 End");
         return;
@@ -739,7 +743,13 @@ static void run_command(sess_t *s, char *line)
         return;
     }
     if (!strcmp(cmd, "SYST")) { reply(s, "215 UNIX Type: L8"); return; }
-    if (!strcmp(cmd, "OPTS")) { reply(s, "200 OK"); return; }
+    if (!strcmp(cmd, "OPTS")) {
+        if (!strncasecmp(arg, "MLST", 4))
+            reply(s, "200 MLST OPTS type;size;modify;perm;");
+        else
+            reply(s, "200 OK");
+        return;
+    }
 
     if (!strcmp(cmd, "USER")) {
         s->authed = false;
