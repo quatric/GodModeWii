@@ -2,6 +2,7 @@
 <app version="1">
   <name>GodModeWii</name>
   <coder>quatric</coder>
+  <ahb_access/>
   <version>0.2.0</version>
   <release_date>20261012000000</release_date>
   <short_description>GodMode9-style file manager for Wii / vWii</short_description>
