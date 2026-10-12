@@ -263,19 +263,41 @@ static int usb_scan_once(void)
     return slot;
 }
 
-/* Drives behind a hub spin up and enumerate one after another, so keep
- * scanning until the number of volumes stops changing. */
+/* How many mass-storage devices IOS currently lists (cheap: nothing is opened). */
+static int usb_device_count(void)
+{
+    static usb_device_entry list[32];
+    u8 cnt = 0;
+    if (!usb_inited) {
+        if (USBStorage_Initialize() < 0)
+            return 0;
+        usb_inited = true;
+    }
+    if (USB_GetDeviceList(list, 32, USB_CLASS_MASS_STORAGE, &cnt) < 0)
+        return 0;
+    return cnt;
+}
+
+/* Drives behind a hub spin up and enumerate one after another, so first wait
+ * until the device count stops changing, then open every drive exactly once
+ * (IOS does not like a drive being closed and re-opened straight away). */
 static void mount_usb(int tries)
 {
     int last = -1, stable = 0;
     for (int i = 0; i < tries; i++) {
-        int n = usb_scan_once();
+        int n = usb_device_count();
         stable = (n == last) ? stable + 1 : 0;
         last = n;
         if (n > 0 && stable >= 1)
             break;
         usleep(400000);
     }
+    if (last > 0)
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (usb_scan_once() > 0)
+                break;
+            usleep(500000);
+        }
     for (int i = 0; i < USB_SLOTS; i++) {
         if (!uslot[i].ok)
             continue;
