@@ -27,9 +27,18 @@ the console can see, watch the free space of each one, and (only if you really m
   | USB drives | `usb1:/` ... `usb8:/` | every USB port and every drive behind a hub, every LUN of card readers (up to 8 volumes) |
   | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
   | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
-  | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out |
+  | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out. A `sys/` folder holds `boot.bin`, `bi2.bin`, `apploader.img`, `fst.bin` and `main.dol`; GameCube and unrecognised discs also get a raw `disc.iso` |
   | GameCube memory cards | `mca:/`, `mcb:/` | every save as a `.gci` file (GCMM-compatible): copy them out to back up, paste `.gci` files in to restore, delete saves. Original Wii only |
   | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
+* **Open archives like folders** (read-only, extract only, not available over FTP): press **A** on a
+  U8 archive (`.arc`, `.app`, `.bnr`, `.carc` ... also with an IMET or IMD5 header), an **LZ10 / LZ11** compressed file (`.lz`,
+  `.lz10`, `.lz11`, `.lz77`, or data starting with `LZ77`; a compressed archive opens as the archive inside),
+  a **WAD**, a **`content.bin`** (the DLC / WiiWare SD-card backup), a **`data.bin`** (a Wii save backup) or a **VFF** (`.vff`, WiiConnect24 / Mii
+  mailboxes). Archives nest (`sd:/x.wad|/00000001.app|/meta/banner.bin`), **B** goes back out, copy anything out
+  with **+** / the actions menu. *Open as archive* is also in the actions menu. WAD, `content.bin` and `data.bin` contents are
+  decrypted while copying (contents of a Wii U vWii WAD signed with the vWii common key show as `.app.enc` instead).
+* Copy from a disc keeps going on **read errors**: unreadable sectors are written as zeros and a `<file>.errors.txt` next to the copy lists every
+  byte range that could not be read.
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
 * Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer.
@@ -45,7 +54,7 @@ the console can see, watch the free space of each one, and (only if you really m
 | --- | --- |
 | D-Pad Up / Down | Move (hold to scroll) |
 | D-Pad Left / Right | Page up / down |
-| **A** | Open folder / actions menu on a file / paste on the green `Paste` row |
+| **A** | Open folder or archive / actions menu on any other file / paste on the green `Paste` row |
 | **B** | Go up one folder (back to the drive list at the top) |
 | **1** | Mark / unmark the item and move down |
 | **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
@@ -153,7 +162,13 @@ confirm first, a save that is already on the card is never replaced (delete it f
 The save's identity comes from the `.gci` header, not the file name. Renaming and folders don't exist on cards, and the FTP server keeps them read-only.
 Don't pull the card out while it is writing. Cards are re-read every time you open the drive, or with *Remount drives*.
 
-The disc drive shows files only (no raw image dumping, by design) and only the Wii data partition, not the update partition.
+The disc drive shows the Wii data partition only (not the update partition); there is no raw Wii disc image, but GameCube and unrecognised
+discs can be copied as `disc.iso`. A disc is only as readable as the Wii's drive makes it: copying a damaged disc is slow while the drive retries.
+
+Archives are read-only and **untested on real hardware** and only checked against generated samples on a PC. Limits: LZ files and
+IMD5 payloads are decompressed in memory (24 MiB at most), the vWii common key (index 2, used by Wii U era WADs) isn't included, `content.bin` needs this console's
+keys (OTP, so Homebrew Channel with AHBPROT) and only opens on the console that made it, and VFF is FAT12 / FAT16 with 8.3 names.
+SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read the way Dolphin's WiiSave code does.
 
 ## Credits
 
@@ -174,6 +189,10 @@ GodModeWii stands on a lot of other people's work. Thank you!
   and FIX94, as shipped in FSToolBox-Mod. GodModeWii adds two tiny single-patch entry points (`IosPatch_ISFS`, `IosPatch_DIReadLimit`).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
 * **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch follow GlowWii's approach.
+* **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` layout (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents) and the IMET / U8 handling.
+* **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
+* **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
+* **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
 * **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
 * **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
 * **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.

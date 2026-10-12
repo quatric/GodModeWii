@@ -17,6 +17,7 @@
 
 #include "vfs.h"
 #include "virt.h"
+#include "arcfs.h"
 #include "mcard.h"
 
 vfs_dev g_devs[DEV_COUNT] = {
@@ -63,8 +64,15 @@ bool vfs_is_card(int dev)
     return dev == DEV_MCA || dev == DEV_MCB;
 }
 
+bool vfs_is_archive(const char *path)
+{
+    return arcfs_is_path(path);
+}
+
 bool vfs_is_readonly(const char *path)
 {
+    if (arcfs_is_path(path))
+        return true;
     int d = vfs_dev_of(path);
     return d >= 0 && vfs_is_virtual(d) && !vfs_is_card(d);
 }
@@ -93,6 +101,26 @@ bool vfs_parent(const char *path, char *out, size_t outsz)
     if (d < 0 || vfs_is_root(path))
         return false;
     snprintf(out, outsz, "%s", path);
+    char *bar = strrchr(out, '|');
+    if (bar) {
+        char *rest = bar + 1;
+        while (*rest == '/') rest++;
+        if (!*rest) {                       /* top of an archive: back to the folder holding it */
+            char tmp[VFS_PATH_MAX * 2];
+            *bar = '\0';
+            snprintf(tmp, sizeof(tmp), "%s", out);
+            return vfs_parent(tmp, out, outsz);
+        }
+        char *sl = strrchr(rest, '/');
+        if (sl && sl[1]) { *sl = '\0'; return true; }
+        if (sl) {                           /* trailing slash */
+            *sl = '\0';
+            sl = strrchr(rest, '/');
+            if (sl) { *sl = '\0'; return true; }
+        }
+        bar[1] = '/'; bar[2] = '\0';
+        return true;
+    }
     char *slash = strrchr(out, '/');
     if (!slash)
         return false;
@@ -478,6 +506,7 @@ void vfs_init(void)
 
 void vfs_remount(void)
 {
+    arcfs_flush();
     unmount_fat();
     usb_close_all();
     __io_wiisd.shutdown();
@@ -496,6 +525,7 @@ void vfs_remount(void)
 
 void vfs_shutdown(void)
 {
+    arcfs_flush();
     unmount_fat();
     usb_close_all();
     __io_wiisd.shutdown();
@@ -544,6 +574,13 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
     if (dev < 0 || !g_devs[dev].mounted)
         return false;
 
+    if (arcfs_is_path(path)) {
+        if (!arcfs_list(path, out, count))
+            return false;
+        if (*count > 1)
+            qsort(*out, *count, sizeof(vfs_entry), entry_cmp);
+        return true;
+    }
     if (vfs_is_virtual(dev))
         return virt_list(dev, virt_name(path), out, count);
 
@@ -642,7 +679,7 @@ bool vfs_list_visible(const char *path, vfs_entry **out, int *count)
     if (!vfs_list(path, out, count))
         return false;
     int dev = vfs_dev_of(path);
-    if (dev < 0 || dev >= DEV_NAND)                 /* only FAT drives carry this junk */
+    if (dev < 0 || dev >= DEV_NAND || arcfs_is_path(path))   /* only FAT drives carry this junk */
         return true;
     int k = 0;
     for (int i = 0; i < *count; i++)
@@ -662,6 +699,8 @@ bool vfs_stat(const char *path, bool *is_dir, u64 *size)
         if (size) *size = 0;
         return true;
     }
+    if (arcfs_is_path(path))
+        return arcfs_stat(path, is_dir, size);
     if (vfs_is_virtual(dev)) {
         return virt_stat(dev, virt_name(path), is_dir, size);
     }
@@ -697,8 +736,9 @@ bool vfs_exists(const char *path)
 bool vfs_mkdir(const char *path)
 {
     int dev = vfs_dev_of(path);
-    if (dev < 0 || vfs_is_virtual(dev))
+    if (dev < 0 || vfs_is_virtual(dev) || arcfs_is_path(path))
         return false;
+    arcfs_flush();
     if (dev == DEV_NAND)
         return ISFS_CreateDir(nand_path(path), 0, 3, 3, 3) >= 0;
     return mkdir(path, 0777) == 0;
@@ -707,10 +747,13 @@ bool vfs_mkdir(const char *path)
 bool vfs_remove(const char *path, bool is_dir)
 {
     int dev = vfs_dev_of(path);
+    if (arcfs_is_path(path))
+        return false;
     if (vfs_is_card(dev))
         return !is_dir && mcard_delete(dev, virt_name(path));
     if (dev < 0 || vfs_is_virtual(dev))
         return false;
+    arcfs_flush();
     if (dev == DEV_NAND)
         return ISFS_Delete(nand_path(path)) >= 0;
     return is_dir ? rmdir(path) == 0 : unlink(path) == 0;
@@ -719,8 +762,9 @@ bool vfs_remove(const char *path, bool is_dir)
 bool vfs_rename(const char *from, const char *to)
 {
     int a = vfs_dev_of(from), b = vfs_dev_of(to);
-    if (a < 0 || a != b || vfs_is_virtual(a))
+    if (a < 0 || a != b || vfs_is_virtual(a) || arcfs_is_path(from) || arcfs_is_path(to))
         return false;
+    arcfs_flush();
     if (a == DEV_NAND)
         return ISFS_Rename(nand_path(from), nand_path(to)) >= 0;
     return rename(from, to) == 0;
@@ -744,6 +788,8 @@ bool vfs_open_read(vfs_file *f, const char *path)
     f->fd = -1;
     if (f->dev < 0)
         return false;
+    if (arcfs_is_path(path))
+        return arcfs_open(f, path);
     if (vfs_is_virtual(f->dev))
         return virt_open(f, f->dev, virt_name(path));
     if (f->dev == DEV_NAND) {
@@ -770,10 +816,13 @@ bool vfs_open_write(vfs_file *f, const char *path)
     f->dev = vfs_dev_of(path);
     f->fd = -1;
     g_write_err = NULL;
+    if (arcfs_is_path(path))
+        return false;
     if (vfs_is_card(f->dev))
         return mcard_open_write(f, f->dev);
     if (f->dev < 0 || vfs_is_virtual(f->dev))
         return false;
+    arcfs_flush();
     if (f->dev == DEV_NAND) {
         const char *np = nand_path(path);
         ISFS_Delete(np);        /* replace semantics; failure is fine if absent */
@@ -788,6 +837,8 @@ bool vfs_open_write(vfs_file *f, const char *path)
 
 s32 vfs_read(vfs_file *f, void *buf, u32 len)
 {
+    if (f->arc)
+        return arcfs_read(f, buf, len);
     if (vfs_is_virtual(f->dev))
         return virt_read(f, buf, len);
     if (f->dev == DEV_NAND)
@@ -800,6 +851,8 @@ s32 vfs_read(vfs_file *f, void *buf, u32 len)
 
 s32 vfs_write(vfs_file *f, const void *buf, u32 len)
 {
+    if (f->arc)
+        return -1;
     if (vfs_is_card(f->dev))
         return mcard_write(f, buf, len);
     if (vfs_is_virtual(f->dev))
@@ -812,6 +865,8 @@ s32 vfs_write(vfs_file *f, const void *buf, u32 len)
 
 bool vfs_seek(vfs_file *f, u64 off)
 {
+    if (f->arc)
+        return arcfs_seek(f, off);
     if (vfs_is_virtual(f->dev))
         return virt_seek(f, off);
     if (f->dev == DEV_NAND)
@@ -822,6 +877,10 @@ bool vfs_seek(vfs_file *f, u64 off)
 bool vfs_close_checked(vfs_file *f)
 {
     bool ok = true;
+    if (f->arc) {
+        arcfs_close(f);
+        return true;
+    }
     if (vfs_is_card(f->dev) && f->ctx) {
         ok = mcard_close_write(f);
     } else if (vfs_is_virtual(f->dev)) {

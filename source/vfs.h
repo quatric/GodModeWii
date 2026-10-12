@@ -21,7 +21,7 @@
 
 enum { DEV_SD, DEV_GCA, DEV_GCB, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_USB4, DEV_USB5, DEV_USB6, DEV_USB7, DEV_NAND, DEV_SEEPROM, DEV_DISC, DEV_MCA, DEV_MCB, DEV_KEYS, DEV_COUNT };
 
-#define VFS_PATH_MAX 256
+#define VFS_PATH_MAX 512
 #define VFS_NAME_MAX 256
 #define NAND_NAME_MAX 12
 
@@ -39,7 +39,8 @@ typedef struct {
     int vkind;     /* virtual drives */
     u64 pos;
     u64 base;      /* start of the file inside the virtual drive */
-    void *ctx;     /* memory card writes */
+    void *ctx;     /* memory card writes, archive entry */
+    bool arc;      /* a file inside an archive (read-only) */
 } vfs_file;
 
 typedef struct {
@@ -70,6 +71,7 @@ int  vfs_dev_of(const char *path);      /* -1 if unknown */
 bool vfs_is_virtual(int dev);           /* not FAT / NAND: SEEPROM, disc, memory cards, keys */
 bool vfs_is_card(int dev);              /* GameCube memory card: .gci saves can be added / deleted */
 bool vfs_is_readonly(const char *path);
+bool vfs_is_archive(const char *path);  /* inside an archive: "sd:/a.wad|/x" */
 const char *vfs_dev_root(int dev);      /* "sd:/" */
 bool vfs_is_root(const char *path);     /* "sd:/" */
 bool vfs_parent(const char *path, char *out, size_t outsz);

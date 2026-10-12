@@ -13,6 +13,7 @@
 #include "risk.h"
 #include "virt.h"
 #include "ftp.h"
+#include "arcfs.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -101,7 +102,12 @@ static bool load_dir(const char *path, const char *select_name)
     vfs_entry *list;
     int n;
     if (!vfs_list_visible(path, &list, &n)) {
-        ui_message("ERROR", C_RED, "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
+        if (vfs_is_archive(path)) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "%s.", arcfs_error());
+            ui_message("CAN'T OPEN", C_RED, msg);
+        } else
+            ui_message("ERROR", C_RED, "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
         return false;
     }
     free_dir();
@@ -247,6 +253,14 @@ static void draw_browser(void)
         ui_field(rows - 4, 1, 6, "%s", g_devs[dev].tag);
         ui_color(C_WHITE, false);
         ui_field(rows - 4, 8, cols - 10, "memory card - paste .gci saves here to restore them");
+        ui_reset();
+    } else if (dev >= 0 && vfs_is_archive(cwd)) {
+        ui_reset();
+        ui_field(rows - 4, 0, cols - 1, "");
+        ui_color(C_CYAN, true);
+        ui_field(rows - 4, 1, 6, "ARC");
+        ui_color(C_WHITE, false);
+        ui_field(rows - 4, 8, cols - 10, "inside an archive (read-only) - copy files out to SD/USB");
         ui_reset();
     } else if (dev >= 0 && vfs_is_virtual(dev)) {
         ui_reset();
@@ -699,7 +713,18 @@ static void invert_marks(void)
     }
 }
 
-enum { A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_OPEN, A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+
+static bool open_archive(const vfs_entry *en)
+{
+    char file[VFS_PATH_MAX], top[VFS_PATH_MAX + 4];
+    if (!vfs_join(file, sizeof(file), cwd, en->name))
+        return false;
+    snprintf(top, sizeof(top), "%s|/", file);
+    if (load_dir(top, NULL))
+        return true;
+    return false;
+}
 
 static void actions_menu(void)
 {
@@ -707,7 +732,7 @@ static void actions_menu(void)
     int e = cursor - off;
     bool on_entry = e >= 0 && e < nents;
     int dev = vfs_dev_of(cwd);
-    bool ro = dev >= 0 && vfs_is_virtual(dev) && !vfs_is_card(dev);
+    bool ro = vfs_is_readonly(cwd);
     bool card = dev >= 0 && vfs_is_card(dev);
 
     const char *items[A_COUNT];
@@ -717,6 +742,7 @@ static void actions_menu(void)
     char paste_label[48];
     const char *del_label = "Delete", *ren_label = "Rename";
 
+    items[n] = "Open as archive"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_OPEN;
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
@@ -739,11 +765,12 @@ static void actions_menu(void)
         return;
     if (!en[r]) {
         if (ro)
-            ui_message("READ-ONLY", C_YELLOW, "This is a read-only virtual drive. Copy its files to the SD card or a USB drive instead.");
+            ui_message("READ-ONLY", C_YELLOW, "This is read-only. Copy its files to the SD card or a USB drive instead.");
         return;
     }
     int t; char **tp;
     switch (code[r]) {
+    case A_OPEN:    open_archive(&ents[e]); break;
     case A_PASTE:   do_paste(); break;
     case A_COPY:    do_copy_cut(false); break;
     case A_CUT:     do_copy_cut(true); break;
@@ -911,6 +938,9 @@ int app_run(void)
             char parent[VFS_PATH_MAX];
             char from[VFS_NAME_MAX];
             snprintf(from, sizeof(from), "%s", vfs_basename(cwd));
+            char container[VFS_PATH_MAX];
+            if (vfs_is_archive(cwd) && arcfs_container(cwd, container, sizeof(container)) && cwd[strlen(container) + 2] == '\0')
+                snprintf(from, sizeof(from), "%s", vfs_basename(container));
             if (vfs_parent(cwd, parent, sizeof(parent))) {
                 load_dir(parent, from);
             } else {
@@ -929,7 +959,11 @@ int app_run(void)
                     if (vfs_join(path, sizeof(path), cwd, en->name))
                         load_dir(path, NULL);
                 } else {
-                    actions_menu();
+                    char path[VFS_PATH_MAX];
+                    if (vfs_join(path, sizeof(path), cwd, en->name) && arcfs_can_open(path))
+                        open_archive(en);
+                    else
+                        actions_menu();
                 }
             }
         }
@@ -946,7 +980,7 @@ int app_run(void)
         if (p & WPAD_BUTTON_PLUS)  do_copy_cut(false);
         if (p & WPAD_BUTTON_MINUS) {
             if (vfs_is_readonly(cwd))
-                ui_message("READ-ONLY", C_YELLOW, "Nothing can be cut from a read-only virtual drive. Use + to copy instead.");
+                ui_message("READ-ONLY", C_YELLOW, "Nothing can be cut from a read-only location. Use + to copy instead.");
             else
                 do_copy_cut(true);
         }
