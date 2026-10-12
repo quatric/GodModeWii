@@ -828,6 +828,10 @@ static void open_drive(int dev)
         ui_splash("Reading disc...");
         virt_refresh(DEV_DISC);
     }
+    if (dev == DEV_MCA || dev == DEV_MCB) {  /* cards get swapped: re-check on every visit */
+        ui_splash("Reading memory card...");
+        virt_refresh(dev);
+    }
     if (dev == DEV_KEYS) {
         ui_splash("Reading console keys...");
         virt_refresh(DEV_KEYS);

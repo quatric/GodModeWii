@@ -28,6 +28,7 @@ the console can see, watch the free space of each one, and (only if you really m
   | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
   | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
   | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out |
+  | GameCube memory cards | `mca:/`, `mcb:/` | read-only: every save as a `.gci` file (GCMM-compatible), original Wii only |
   | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
@@ -110,7 +111,7 @@ limited permissions.
 ### Wii U (vWii)
 
 Run it from the vWii Homebrew Channel. NAND access works the same way as in FSToolBox-Mod; the SD card and the USB ports
-are supported. SD Gecko, SEEPROM and the disc drive don't exist from within vWii and are shown as unavailable.
+are supported. SD Gecko, memory cards, SEEPROM and the disc drive don't exist from within vWii and are shown as unavailable.
 The vWii NAND is as brick-prone as the Wii's, and a bricked vWii may need the Wii U's own recovery tools.
 
 ## Building
@@ -146,6 +147,10 @@ hardware** and may need fixes — please report what you see:
 
 Known limitations: only FAT / FAT32 is supported (libfat), and only the first FAT partition of a drive is mounted.
 Files over 4 GiB can't be written to FAT.
+Memory cards: each save shows as `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry followed by the save data, the
+format GCMM and Dolphin import and export). Copy them to SD or USB for a backup; restoring to a card is not supported, the drives are read-only.
+Cards are re-read every time you open the drive, or with *Remount drives*.
+
 The disc drive shows files only (no raw image dumping, by design) and only the Wii data partition, not the update partition.
 
 ## Credits
@@ -167,6 +172,7 @@ GodModeWii stands on a lot of other people's work. Thank you!
   and FIX94, as shipped in FSToolBox-Mod. GodModeWii adds two tiny single-patch entry points (`IosPatch_ISFS`, `IosPatch_DIReadLimit`).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
 * **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch follow GlowWii's approach.
+* **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
 * **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
 * **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.
 * **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.

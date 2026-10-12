@@ -11,6 +11,7 @@
 #include "virt.h"
 #include "seeprom.h"
 #include "keys.h"
+#include "mcard.h"
 #include "runtimeiospatch.h"
 
 #define WII_MAGIC 0x5D1C9EA3u
@@ -18,7 +19,7 @@
 #define DI_BLOCK  0x8000u
 #define FST_MAX   (16u * 1024 * 1024)
 
-enum { V_SEEPROM = 1, V_DISC, V_KEYS };
+enum { V_SEEPROM = 1, V_DISC, V_KEYS, V_MCARD };
 enum { DISC_NONE, DISC_GC, DISC_WII };
 
 static u8 seeprom_data[SEEPROM_SIZE];
@@ -283,6 +284,7 @@ void virt_refresh(int dev)
 {
     if (dev == DEV_SEEPROM) refresh_seeprom();
     else if (dev == DEV_DISC) refresh_disc();
+    else if (dev == DEV_MCA || dev == DEV_MCB) mcard_refresh(dev);
     else if (dev == DEV_KEYS) keys_refresh();
 }
 
@@ -293,6 +295,8 @@ bool virt_list(int dev, const char *rel, vfs_entry **out, int *count)
 
     if (dev == DEV_KEYS)
         return keys_list(rel, out, count);
+    if (dev == DEV_MCA || dev == DEV_MCB)
+        return mcard_list(dev, rel, out, count);
 
     if (dev == DEV_SEEPROM) {
         if (!seeprom_ok || *rel)
@@ -341,6 +345,8 @@ bool virt_stat(int dev, const char *rel, bool *is_dir, u64 *size)
 {
     if (dev == DEV_KEYS)
         return keys_stat(rel, is_dir, size);
+    if (dev == DEV_MCA || dev == DEV_MCB)
+        return mcard_stat(dev, rel, is_dir, size);
     if (dev == DEV_SEEPROM) {
         if (!seeprom_ok) return false;
         if (!*rel) { if (is_dir) *is_dir = true; if (size) *size = 0; return true; }
@@ -366,6 +372,10 @@ bool virt_open(vfs_file *f, int dev, const char *rel)
     f->dev = dev;
     f->size = size;
     f->pos = 0;
+    if (dev == DEV_MCA || dev == DEV_MCB) {
+        f->vkind = V_MCARD;
+        return mcard_open(f, dev, rel);
+    }
     if (dev == DEV_KEYS) {
         f->vkind = V_KEYS;
         return keys_open(f, rel);
@@ -388,7 +398,9 @@ s32 virt_read(vfs_file *f, void *buf, u32 len)
     if (len > f->size - f->pos)
         len = (u32)(f->size - f->pos);
     s32 n;
-    if (f->vkind == V_KEYS) {
+    if (f->vkind == V_MCARD) {
+        return mcard_read(f, buf, len);
+    } else if (f->vkind == V_KEYS) {
         return keys_read(f, buf, len);
     } else if (f->vkind == V_SEEPROM) {
         memcpy(buf, seeprom_data + f->pos, len);
@@ -415,6 +427,7 @@ void virt_close(vfs_file *f)
 void virt_shutdown(void)
 {
     keys_shutdown();
+    mcard_shutdown();
     disc_forget();
     if (di_started) {
         DI_StopMotor();
