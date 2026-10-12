@@ -151,6 +151,8 @@ static usb_slot uslot[USB_SLOTS];
 static usbstorage_handle uhandle[USB_SLOTS];
 static int uhandles_open;
 static bool usb_inited;
+static int usb_seen;            /* mass-storage devices IOS listed */
+static char usb_diag[48];       /* why a device could not be used */
 static u8 *usb_bounce;
 
 static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
@@ -208,7 +210,11 @@ static void usb_close_all(void)
         /* unmounted by name in unmount_fat() */
         uslot[i].ok = false;
         g_devs[DEV_USB0 + i].mounted = false;
+        g_devs[DEV_USB0 + i].always_show = false;
+        g_devs[DEV_USB0 + i].note[0] = '\0';
     }
+    usb_seen = 0;
+    usb_diag[0] = '\0';
     for (int i = 0; i < uhandles_open; i++)
         USBStorage_Close(&uhandle[i]);
     uhandles_open = 0;
@@ -231,24 +237,35 @@ static int usb_scan_once(void)
     for (int i = 0; i < uhandles_open; i++)
         USBStorage_Close(&uhandle[i]);
     uhandles_open = 0;
+    usb_diag[0] = '\0';
     if (USB_GetDeviceList(list, 32, USB_CLASS_MASS_STORAGE, &cnt) < 0)
         return 0;
+    usb_seen = cnt;
 
     int slot = 0;
     for (int d = 0; d < cnt && slot < USB_SLOTS && uhandles_open < USB_SLOTS; d++) {
         usbstorage_handle *h = &uhandle[uhandles_open];
         memset(h, 0, sizeof(*h));
-        if (USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid) < 0)
+        s32 orr = USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid);
+        if (orr < 0) {
+            snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X cannot be opened (%d)", list[d].vid, list[d].pid, (int)orr);
             continue;
+        }
         int first = slot;
         int luns = (int)h->max_lun + 1;
         if (luns < 1) luns = 1;
         for (int l = 0; l < luns && slot < USB_SLOTS; l++) {
             u32 ss = 0, ns = 0;
-            if (USBStorage_MountLUN(h, l) < 0)
+            s32 mr = USBStorage_MountLUN(h, l);
+            if (mr < 0) {
+                snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X not ready (%d)", list[d].vid, list[d].pid, (int)mr);
                 continue;
-            if (USBStorage_ReadCapacity(h, l, &ss, &ns) < 0 || ss == 0)
+            }
+            if (USBStorage_ReadCapacity(h, l, &ss, &ns) < 0 || ss == 0) {
+                if (!usb_diag[0])
+                    snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X has no media", list[d].vid, list[d].pid);
                 continue;
+            }
             uslot[slot].h = h;
             uslot[slot].lun = l;
             uslot[slot].sector_size = ss;
@@ -304,6 +321,26 @@ static void mount_usb(int tries)
         char name[8];
         snprintf(name, sizeof(name), "usb%d", i + 1);
         g_devs[DEV_USB0 + i].mounted = fatMountSimple(name, &usb_iface[i]);
+        if (!g_devs[DEV_USB0 + i].mounted) {
+            /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
+            g_devs[DEV_USB0 + i].always_show = true;
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "unsupported file system - use FAT32");
+        }
+    }
+
+    /* Devices that were listed but never became a volume: say so instead of hiding them. */
+    int used = 0;
+    for (int i = 0; i < USB_SLOTS; i++)
+        if (uslot[i].ok) used = i + 1;
+    if (usb_seen > 0 && used < USB_SLOTS) {
+        int vols = 0;
+        for (int i = 0; i < USB_SLOTS; i++)
+            vols += uslot[i].ok;
+        if (usb_diag[0] || vols == 0) {
+            vfs_dev *d = &g_devs[DEV_USB0 + used];
+            d->always_show = true;
+            snprintf(d->note, sizeof(d->note), "%s", usb_diag[0] ? usb_diag : "device found but unreadable");
+        }
     }
 }
 
