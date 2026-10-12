@@ -12,6 +12,7 @@
 #include <sdcard/gcsd.h>
 #include <ogc/usb.h>
 #include <ogc/usbstorage.h>
+#include <ogc/lwp_heap.h>
 #include <ogc/isfs.h>
 
 #include "vfs.h"
@@ -151,6 +152,49 @@ static usb_slot uslot[USB_SLOTS];
 static usbstorage_handle uhandle[USB_SLOTS];
 static int uhandles_open;
 static bool usb_inited;
+
+/* libogc's USB storage code carves one 16 KiB transfer buffer per opened drive out
+ * of a private 18 KiB heap, so only the first drive can ever be opened (the
+ * second fails with -22, IPC_ENOMEM). The Makefile wraps __lwp_heap_allocate /
+ * __lwp_heap_free so that, while a drive is being opened, that buffer comes from
+ * this pool of MEM2 blocks instead. */
+#define USB_XFER_BUF 16384
+static u8 *ubuf_pool[USB_SLOTS];
+static bool ubuf_used[USB_SLOTS];
+static bool ubuf_active;
+void *__real___lwp_heap_allocate(heap_cntrl *heap, u32 size);
+BOOL __real___lwp_heap_free(heap_cntrl *heap, void *ptr);
+
+void *__wrap___lwp_heap_allocate(heap_cntrl *heap, u32 size)
+{
+    if (ubuf_active && size == USB_XFER_BUF) {
+        for (int i = 0; i < USB_SLOTS; i++) {
+            if (ubuf_used[i])
+                continue;
+            if (!ubuf_pool[i]) {
+                u32 hi = (u32)SYS_GetArena2Hi() & ~31u;
+                u32 blk = hi - USB_XFER_BUF;
+                if (blk < (u32)SYS_GetArena2Lo())
+                    break;
+                SYS_SetArena2Hi((void *)blk);
+                ubuf_pool[i] = (u8 *)blk;
+            }
+            ubuf_used[i] = true;
+            return ubuf_pool[i];
+        }
+    }
+    return __real___lwp_heap_allocate(heap, size);
+}
+
+BOOL __wrap___lwp_heap_free(heap_cntrl *heap, void *ptr)
+{
+    for (int i = 0; i < USB_SLOTS; i++)
+        if (ptr && ptr == ubuf_pool[i]) {
+            ubuf_used[i] = false;
+            return TRUE;
+        }
+    return __real___lwp_heap_free(heap, ptr);
+}
 static int usb_seen;            /* mass-storage devices IOS listed */
 static char usb_diag[48];       /* why a device could not be used */
 static u8 *usb_bounce;
@@ -246,13 +290,15 @@ static int usb_scan_once(void)
     for (int d = 0; d < cnt && slot < USB_SLOTS && uhandles_open < USB_SLOTS; d++) {
         usbstorage_handle *h = &uhandle[uhandles_open];
         memset(h, 0, sizeof(*h));
+        ubuf_active = true;
         s32 orr = USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid);
+        ubuf_active = false;
         if (orr < 0) {
             snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X cannot be opened (%d)", list[d].vid, list[d].pid, (int)orr);
             continue;
         }
         int first = slot;
-        int luns = (int)h->max_lun + 1;
+        int luns = (int)h->max_lun;            /* libogc already stores the LUN count */
         if (luns < 1) luns = 1;
         for (int l = 0; l < luns && slot < USB_SLOTS; l++) {
             u32 ss = 0, ns = 0;

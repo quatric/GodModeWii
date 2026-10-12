@@ -13,7 +13,7 @@ INCLUDES	:=	source
 
 CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE)
 CXXFLAGS	=	$(CFLAGS)
-LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
+LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
 LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
 LIBDIRS	:=
