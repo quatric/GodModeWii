@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p dist/apps/GodModeWii
           cp GodModeWii.dol dist/apps/GodModeWii/boot.dol
-          cp apps/GodModeWii/meta.xml dist/apps/GodModeWii/
+          cp apps/GodModeWii/meta.xml apps/GodModeWii/icon.png dist/apps/GodModeWii/
           cp README.md LICENSE dist/apps/GodModeWii/
           (cd dist && apt-get update -qq && apt-get install -y -qq zip >/dev/null && zip -qr ../GodModeWii.zip apps)
 

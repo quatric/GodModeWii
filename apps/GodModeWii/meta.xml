@@ -3,11 +3,11 @@
   <name>GodModeWii</name>
   <coder>quatric</coder>
   <version>0.1.0</version>
-  <release_date>20261011000000</release_date>
-  <short_description>GodMode9-style file manager</short_description>
+  <release_date>20261012000000</release_date>
+  <short_description>GodMode9-style file manager for Wii / vWii</short_description>
   <long_description>A text-mode, GodMode9-style file manager for the Wii and the Wii U's vWii.
 
-Browse the SD card, SD Gecko, every USB drive, the NAND, the SEEPROM and the disc drive. Copy, cut, paste and delete between devices, see free space, and edit the NAND only after the Konami code and a brick-risk disclaimer.
+Browse the SD card, SD Gecko, every USB drive, the NAND, the SEEPROM, the disc drive and your console's keys. Copy, cut, paste and delete between devices, see free space, and edit the NAND only after the Konami code and a brick-risk disclaimer.
 
 WARNING: modifying the NAND can permanently brick your console.</long_description>
 </app>
