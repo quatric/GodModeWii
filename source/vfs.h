@@ -11,7 +11,7 @@
  *   usb1:/..usb4:/ USB mass storage    (libfat, one per drive / LUN)
  *   nand:/path    Wii NAND             (ISFS, 12 char names, risky to modify)
  *   seeprom:/     SEEPROM dump         (virtual, read-only)
- *   disc:/        disc image           (virtual, read-only)
+ *   disc:/        files on the disc    (virtual, read-only)
  */
 
 #define USB_SLOTS 4
@@ -35,7 +35,7 @@ typedef struct {
     u64 size;
     int vkind;     /* virtual drives */
     u64 pos;
-    u8 *mem;
+    u64 base;      /* start of the file inside the virtual drive */
 } vfs_file;
 
 typedef struct {

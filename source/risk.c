@@ -28,10 +28,25 @@ static const char *SAFE_NAND[] = {
     "nand:/title/00010005",   /* DLC                  */
 };
 
+/* Always critical, whatever the safe list says. /shared1 holds the shared
+ * system content (the contents of system channels and IOS-used files) and
+ * deleting or corrupting it can brick the console. */
+static const char *CRITICAL_NAND[] = {
+    "nand:/sys",
+    "nand:/ticket",
+    "nand:/shared1",
+    "nand:/shared2",
+    "nand:/title/00000001",   /* IOS, boot2, System Menu */
+    "nand:/title/00000002",
+};
+
 bool risk_is_critical(const char *path)
 {
     if (vfs_dev_of(path) != DEV_NAND)
         return false;
+    for (size_t i = 0; i < sizeof(CRITICAL_NAND) / sizeof(CRITICAL_NAND[0]); i++)
+        if (vfs_is_within(path, CRITICAL_NAND[i]))
+            return true;
     for (size_t i = 0; i < sizeof(SAFE_NAND) / sizeof(SAFE_NAND[0]); i++)
         if (vfs_is_within(path, SAFE_NAND[i]))
             return false;

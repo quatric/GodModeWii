@@ -12,7 +12,7 @@ the console can see, watch the free space of each one, and (only if you really m
 >
 > * Everything that modifies the NAND is **locked by default**. Copying *from* the NAND is always safe.
 > * To unlock it you must read the disclaimer, enter the **Konami code** and hold **A** for 3 seconds.
-> * Even after unlocking, system areas (`/sys`, `/title/00000001`, `/ticket`, `/shared1`, ...) ask for another 3-second hold.
+> * Even after unlocking, system areas (`/sys`, `/title/00000001`, `/ticket`, `/shared1`, `/shared2`, ...; everything except a short list of save-data / channel folders counts as a system area) ask for another 3-second hold.
 > * **Make a full NAND backup with BootMii before you use risky mode**, and keep a copy of it off the console.
 > * This software comes with **no warranty**. You are solely responsible for whatever you do with it.
 >
@@ -28,7 +28,7 @@ the console can see, watch the free space of each one, and (only if you really m
   | USB drives | `usb1:/` ... `usb4:/` | every USB port, every drive, every LUN of card readers |
   | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
   | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
-  | Disc | `disc:/` | read-only virtual drive with a raw `disc.iso` / `disc.gcm` plus `disc-info.txt` |
+  | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out |
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
 * Multi-select, select all / invert, rename, new folder, folder size / info and a hex viewer.
@@ -95,11 +95,12 @@ hardware** and may need fixes — please report what you see:
 
 * multi-drive / multi-LUN USB mounting and SD Gecko,
 * the SEEPROM bit-banged reader (read-only, touches only the four EEPROM GPIO pins and restores them),
-* raw disc reading (needs the DI read-limit patch below and a readable disc; dual layer detection is heuristic),
+* browsing the disc (GameCube file table, or the Wii data partition opened through IOS; needs a readable disc),
 * running inside vWii.
 
 Known limitations: only FAT / FAT32 is supported (libfat), and only the first FAT partition of a drive is mounted.
-A file larger than 4 GiB can't be written to FAT, so a full Wii disc image can't be copied to a FAT32 drive yet.
+Files over 4 GiB can't be written to FAT.
+The disc drive shows files only (no raw image dumping, by design) and only the Wii data partition, not the update partition.
 
 ## Credits
 

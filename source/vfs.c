@@ -398,7 +398,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
         return false;
 
     if (vfs_is_virtual(dev))
-        return virt_list(dev, out, count);
+        return virt_list(dev, virt_name(path), out, count);
 
     int cap = 0, n = 0;
     vfs_entry *list = NULL;
@@ -485,12 +485,7 @@ bool vfs_stat(const char *path, bool *is_dir, u64 *size)
         return true;
     }
     if (vfs_is_virtual(dev)) {
-        u64 sz = 0;
-        if (!virt_stat(dev, virt_name(path), &sz))
-            return false;
-        if (is_dir) *is_dir = false;
-        if (size) *size = sz;
-        return true;
+        return virt_stat(dev, virt_name(path), is_dir, size);
     }
     if (dev == DEV_NAND) {
         const char *np = nand_path(path);
