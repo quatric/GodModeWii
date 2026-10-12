@@ -28,6 +28,7 @@ typedef struct tnode {
     char *name;
     int parent;                 /* -1 for the root */
     bool is_dir;
+    bool loaded;                /* children present (lazy archives only) */
     uint64_t size;
     uint64_t a, b;              /* format specific */
     uint32_t c;
@@ -54,12 +55,17 @@ struct archive {
     tree_t tree;
     int32_t (*read)(archive_t *a, const tnode *node, uint64_t off, void *buf, uint32_t len);
     void (*destroy)(archive_t *a);
+    bool (*expand)(archive_t *a, int node);     /* optional: fills in the children of a folder on demand */
     void *priv;
 };
 
 /* The PRNG key that content.bin contents are encrypted with is specific to the console. */
 typedef bool (*archive_key_fn)(uint8_t key[16]);
 void archive_set_prng_key_provider(archive_key_fn fn);
+
+/* Candidate AES keys for WFS volumes (Wii U USB / MLC): index 0, 1, ... until false. */
+typedef bool (*archive_wfs_key_fn)(int index, uint8_t key[16]);
+void archive_set_wfs_key_provider(archive_wfs_key_fn fn);
 
 extern const char *g_archive_err;           /* last failure, for the user */
 
@@ -69,6 +75,10 @@ bool archive_probe(const src_t *file, const char *name);
  * contents were decompressed into memory); on failure the caller still owns it. */
 archive_t *archive_open(const src_t *file, const char *name);
 void archive_close(archive_t *a);
+
+/* Lazy archives: make sure the children of a folder are in the tree / look a path up (expanding on the way). */
+bool archive_expand(archive_t *a, int node);
+int  archive_find(archive_t *a, const char *rel);
 
 /* Shared helpers for the format files. */
 #define ARC_MAX_DECOMPRESSED (24u * 1024 * 1024)
@@ -92,6 +102,10 @@ bool arc_contentbin_probe(const src_t *file, const char *name);
 archive_t *arc_contentbin_open(const src_t *file, const char *name);
 bool arc_databin_probe(const src_t *file, const char *name);
 archive_t *arc_databin_open(const src_t *file, const char *name);
+
+bool arc_wfs_probe(const src_t *file, const char *name);
+archive_t *arc_wfs_open(const src_t *file, const char *name);
+bool arc_wfs_key_at(int index, uint8_t key[16]);        /* the provider, used by arc_wfs.c */
 
 /* keys shared by wad / content.bin / data.bin */
 extern const uint8_t ARC_SD_KEY[16], ARC_SD_IV[16];

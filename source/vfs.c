@@ -56,7 +56,7 @@ int vfs_dev_of(const char *path)
 
 bool vfs_is_virtual(int dev)
 {
-    return dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_MCA || dev == DEV_MCB || dev == DEV_KEYS;
+    return arcfs_dev_pinned(dev) || dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_MCA || dev == DEV_MCB || dev == DEV_KEYS;
 }
 
 bool vfs_is_card(int dev)
@@ -173,6 +173,7 @@ typedef struct {
     usbstorage_handle *h;
     u8 lun;
     u32 sector_size;
+    u32 sectors;
     bool ok;
 } usb_slot;
 
@@ -343,6 +344,7 @@ static int usb_scan_once(void)
             uslot[slot].h = h;
             uslot[slot].lun = l;
             uslot[slot].sector_size = ss;
+            uslot[slot].sectors = ns;
             uslot[slot].ok = true;
             slot++;
         }
@@ -352,6 +354,47 @@ static int usb_scan_once(void)
             uhandles_open++;
     }
     return slot;
+}
+
+bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len)
+{
+    if (slot < 0 || slot >= USB_SLOTS || !uslot[slot].ok)
+        return false;
+    u32 ss = uslot[slot].sector_size;
+    if (!ss || ss > 32768)
+        return false;
+    static u8 *tmp;
+    if (!tmp)
+        tmp = malloc(32768);
+    if (!tmp)
+        return false;
+    u8 *out = buf;
+    while (len) {
+        u64 sector = off / ss;
+        u32 skew = (u32)(off % ss);
+        u32 secs = (skew + len + ss - 1) / ss;
+        if (secs > 32768 / ss)
+            secs = 32768 / ss;
+        if (sector + secs > uslot[slot].sectors)
+            return false;
+        if (!us_rw(slot, (sec_t)sector, secs, tmp, NULL))
+            return false;
+        u32 n = secs * ss - skew;
+        if (n > len)
+            n = len;
+        memcpy(out, tmp + skew, n);
+        out += n;
+        off += n;
+        len -= n;
+    }
+    return true;
+}
+
+u64 vfs_usb_raw_size(int slot)
+{
+    if (slot < 0 || slot >= USB_SLOTS || !uslot[slot].ok)
+        return 0;
+    return (u64)uslot[slot].sectors * uslot[slot].sector_size;
 }
 
 /* How many mass-storage devices IOS currently lists (cheap: nothing is opened). */
@@ -395,10 +438,14 @@ static void mount_usb(int tries)
         char name[8];
         snprintf(name, sizeof(name), "usb%d", i + 1);
         g_devs[DEV_USB0 + i].mounted = fatMountSimple(name, &usb_iface[i]);
-        if (!g_devs[DEV_USB0 + i].mounted) {
+        if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
+            /* a Wii U formatted drive: shown read-only through the WFS reader */
+            g_devs[DEV_USB0 + i].mounted = true;
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
+        } else if (!g_devs[DEV_USB0 + i].mounted) {
             /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
             g_devs[DEV_USB0 + i].always_show = true;
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "unsupported file system - use FAT32");
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "not FAT32 (Wii U WFS needs keys in sd:/wfs)");
         }
     }
 
@@ -506,7 +553,7 @@ void vfs_init(void)
 
 void vfs_remount(void)
 {
-    arcfs_flush();
+    arcfs_unpin_all();
     unmount_fat();
     usb_close_all();
     __io_wiisd.shutdown();
@@ -525,7 +572,7 @@ void vfs_remount(void)
 
 void vfs_shutdown(void)
 {
-    arcfs_flush();
+    arcfs_unpin_all();
     unmount_fat();
     usb_close_all();
     __io_wiisd.shutdown();

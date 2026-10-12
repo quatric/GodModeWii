@@ -22,6 +22,10 @@ s32  arcfs_read(vfs_file *f, void *buf, u32 len);
 bool arcfs_seek(vfs_file *f, u64 off);
 void arcfs_close(vfs_file *f);
 
+bool arcfs_dev_pinned(int dev);                       /* a USB volume shown through the WFS reader */
+bool arcfs_mount_wfs(int dev, int usb_slot);          /* try to read the raw drive as a Wii U WFS volume */
+void arcfs_unpin_all(void);                           /* before the USB handles are closed */
+
 void arcfs_flush(void);                               /* drop cached archives nobody is reading (after any change) */
 
 #endif

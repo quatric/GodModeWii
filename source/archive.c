@@ -12,6 +12,7 @@
 
 const char *g_archive_err;
 static archive_key_fn prng_provider;
+static archive_wfs_key_fn wfs_provider;
 static int open_depth;
 
 /* ---------------------------------------------------------------- bytes */
@@ -48,6 +49,13 @@ bool arc_common_key(int index, uint8_t key[16])
 }
 
 void archive_set_prng_key_provider(archive_key_fn fn) { prng_provider = fn; }
+
+void archive_set_wfs_key_provider(archive_wfs_key_fn fn) { wfs_provider = fn; }
+
+bool arc_wfs_key_at(int index, uint8_t key[16])
+{
+    return wfs_provider && wfs_provider(index, key);
+}
 
 bool arc_prng_key(uint8_t key[16])
 {
@@ -144,6 +152,7 @@ int tree_add(tree_t *t, int parent, const char *name, bool is_dir, uint64_t size
     n->name = copy;
     n->parent = parent;
     n->is_dir = is_dir;
+    n->loaded = false;
     n->size = size;
     n->a = a;
     n->b = b;
@@ -224,6 +233,34 @@ void archive_close(archive_t *a)
     if (a->src.ctx && a->src.ctx != a->base.ctx) src_close(&a->src);
     src_close(&a->base);
     free(a);
+}
+
+bool archive_expand(archive_t *a, int node)
+{
+    if (node < 0 || node >= a->tree.count || !a->tree.n[node].is_dir) return false;
+    if (a->tree.n[node].loaded || !a->expand) return true;
+    a->tree.n[node].loaded = true;
+    return a->expand(a, node);
+}
+
+int archive_find(archive_t *a, const char *rel)
+{
+    int cur = 0;
+    char part[256];
+    const char *p = rel;
+    while (*p) {
+        while (*p == '/') p++;
+        if (!*p) break;
+        size_t l = strcspn(p, "/");
+        if (l >= sizeof(part)) return -1;
+        memcpy(part, p, l);
+        part[l] = '\0';
+        p += l;
+        if (!a->tree.n[cur].is_dir || !archive_expand(a, cur)) return -1;
+        cur = tree_find_child(&a->tree, cur, part);
+        if (cur < 0) return -1;
+    }
+    return cur;
 }
 
 /* ---------------------------------------------------------------- CBC streams */
@@ -595,6 +632,7 @@ static const fmt_t formats[] = {
     { "U8",          probe_u8,             open_u8 },
     { "IMD5",        probe_imd5,           open_imd5 },
     { "LZ",          probe_lz,             open_lz },
+    { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
 
 bool archive_probe(const src_t *file, const char *name)

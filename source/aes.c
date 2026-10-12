@@ -131,3 +131,49 @@ void aes128_cbc_decrypt(const aes128_t *ctx, const uint8_t iv[16], const uint8_t
         memcpy(prev, cur, 16);
     }
 }
+
+void aes128_ecb_encrypt(const uint8_t key[16], const uint8_t in[16], uint8_t out[16])
+{
+    if (!tables_ready)
+        build_tables();
+    uint8_t rk[11][16];
+    memcpy(rk[0], key, 16);
+    uint8_t rcon = 1;
+    for (int r = 1; r <= 10; r++) {
+        const uint8_t *p = rk[r - 1];
+        uint8_t *n = rk[r];
+        n[0] = p[0] ^ sbox[p[13]] ^ rcon;
+        n[1] = p[1] ^ sbox[p[14]];
+        n[2] = p[2] ^ sbox[p[15]];
+        n[3] = p[3] ^ sbox[p[12]];
+        for (int i = 4; i < 16; i++)
+            n[i] = p[i] ^ n[i - 4];
+        rcon = xtime(rcon);
+    }
+    uint8_t s[16];
+    for (int i = 0; i < 16; i++)
+        s[i] = in[i] ^ rk[0][i];
+    for (int r = 1; r <= 10; r++) {
+        uint8_t t[16];
+        for (int i = 0; i < 16; i++)
+            t[i] = sbox[s[i]];
+        /* ShiftRows: column-major state, row i shifts left by i */
+        uint8_t u[16];
+        for (int c = 0; c < 4; c++)
+            for (int row = 0; row < 4; row++)
+                u[c * 4 + row] = t[((c + row) & 3) * 4 + row];
+        if (r != 10) {
+            for (int c = 0; c < 4; c++) {
+                uint8_t *x = &u[c * 4];
+                uint8_t a0 = x[0], a1 = x[1], a2 = x[2], a3 = x[3];
+                x[0] = xtime(a0) ^ (xtime(a1) ^ a1) ^ a2 ^ a3;
+                x[1] = a0 ^ xtime(a1) ^ (xtime(a2) ^ a2) ^ a3;
+                x[2] = a0 ^ a1 ^ xtime(a2) ^ (xtime(a3) ^ a3);
+                x[3] = (xtime(a0) ^ a0) ^ a1 ^ a2 ^ xtime(a3);
+            }
+        }
+        for (int i = 0; i < 16; i++)
+            s[i] = u[i] ^ rk[r][i];
+    }
+    memcpy(out, s, 16);
+}

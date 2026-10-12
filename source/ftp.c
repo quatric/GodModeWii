@@ -35,6 +35,7 @@
 #include "ui.h"
 #include "input.h"
 #include "vfs.h"
+#include "arcfs.h"
 #include "risk.h"
 
 #define FTP_PORT        21
@@ -261,7 +262,7 @@ static bool to_real(const char *v, char *real, size_t sz, int *dev)
     for (int i = 0; i < DEV_COUNT; i++) {
         size_t pl = strlen(g_devs[i].prefix) - 1;       /* without ':' */
         if (nl == pl && !strncasecmp(name, g_devs[i].prefix, pl)) {
-            if (!g_devs[i].mounted)
+            if (!g_devs[i].mounted || arcfs_dev_pinned(i))
                 return false;
             *dev = i;
             const char *rest = name + nl;
@@ -575,7 +576,7 @@ static void do_list(sess_t *s, int op, const char *arg)
         ents = calloc(DEV_COUNT, sizeof(vfs_entry));
         if (!ents) { reply(s, "451 Out of memory"); return; }
         for (int i = 0; i < DEV_COUNT; i++)
-            if (g_devs[i].mounted) {
+            if (g_devs[i].mounted && !arcfs_dev_pinned(i)) {
                 snprintf(ents[n].name, sizeof(ents[n].name), "%s", g_devs[i].prefix);
                 ents[n].name[strlen(ents[n].name) - 1] = '\0';   /* "sd:" -> "sd" */
                 ents[n].is_dir = true;

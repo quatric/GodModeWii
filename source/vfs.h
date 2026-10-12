@@ -88,6 +88,10 @@ bool vfs_mkdir(const char *path);
 bool vfs_remove(const char *path, bool is_dir);   /* empty dirs only */
 bool vfs_rename(const char *from, const char *to);
 
+/* Raw sectors of a USB volume (for file systems libfat can't mount, like Wii U WFS). */
+bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len);
+u64  vfs_usb_raw_size(int slot);
+
 bool vfs_open_read(vfs_file *f, const char *path);
 bool vfs_open_write(vfs_file *f, const char *path);   /* create / truncate */
 s32  vfs_read(vfs_file *f, void *buf, u32 len);       /* buf 32-byte aligned */

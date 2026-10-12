@@ -26,6 +26,7 @@ struct entry {
 };
 
 static entry cache[CACHE_N];
+static entry pins[USB_SLOTS];       /* USB drives read through the WFS reader, one archive per drive */
 static u32 clock_tick;
 static bool provider_set;
 
@@ -110,6 +111,115 @@ static void nestsrc_close(void *ctx)
 
 /* ---------------------------------------------------------------- cache */
 
+/* ---------------------------------------------------------------- WFS keys */
+
+/* Keys for Wii U volumes come from files on the SD card:
+ *   sd:/wfs/usb.key, mlc.key   the 16 byte AES keys themselves
+ *   sd:/wfs/otp.bin (+ seeprom.bin)  a Wii U's OTP / SEEPROM dump; the USB key is derived from both, the MLC key from the OTP
+ * (the same files are looked for in the root of the card). */
+#define WFS_KEYS_MAX 8
+static uint8_t wfs_keys[WFS_KEYS_MAX][16];
+static int wfs_key_count;
+static bool wfs_keys_loaded;
+
+static int read_small(const char *path, uint8_t *out, uint32_t max)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path))
+        return -1;
+    uint8_t *b = memalign(32, (max + 31) & ~31u);
+    if (!b) { vfs_close(&f); return -1; }
+    uint32_t got = 0;
+    while (got < max) {
+        s32 r = vfs_read(&f, b + got, max - got);
+        if (r <= 0) break;
+        got += (uint32_t)r;
+    }
+    vfs_close(&f);
+    memcpy(out, b, got);
+    memset(b, 0, max);
+    free(b);
+    return (int)got;
+}
+
+static void add_key(const uint8_t key[16])
+{
+    for (int i = 0; i < wfs_key_count; i++)
+        if (!memcmp(wfs_keys[i], key, 16)) return;
+    if (wfs_key_count < WFS_KEYS_MAX)
+        memcpy(wfs_keys[wfs_key_count++], key, 16);
+}
+
+static void load_wfs_keys(void)
+{
+    static const char *dirs[] = { "sd:/wfs/", "sd:/" };
+    wfs_key_count = 0;
+    wfs_keys_loaded = true;
+    if (!g_devs[DEV_SD].mounted)
+        return;
+    for (int d = 0; d < 2; d++) {
+        char path[64];
+        uint8_t k[16];
+        snprintf(path, sizeof(path), "%susb.key", dirs[d]);
+        if (read_small(path, k, 16) == 16) add_key(k);
+        snprintf(path, sizeof(path), "%smlc.key", dirs[d]);
+        if (read_small(path, k, 16) == 16) add_key(k);
+
+        static uint8_t otp[0x400], seeprom[0x200];
+        snprintf(path, sizeof(path), "%sotp.bin", dirs[d]);
+        int on = read_small(path, otp, sizeof(otp));
+        if (on >= 0x190) {
+            add_key(otp + 0x180);                                           /* MLC */
+            snprintf(path, sizeof(path), "%sseeprom.bin", dirs[d]);
+            int sn = read_small(path, seeprom, sizeof(seeprom));
+            if (sn >= 0xC0) {
+                uint8_t usb[16];
+                aes128_ecb_encrypt(otp + 0x130, seeprom + 0xB0, usb);      /* USB: seed encrypted with the OTP key */
+                add_key(usb);
+                memset(usb, 0, sizeof(usb));
+            }
+        }
+        memset(otp, 0, sizeof(otp));
+        memset(seeprom, 0, sizeof(seeprom));
+    }
+}
+
+static bool wfs_key_provider(int index, uint8_t key[16])
+{
+    if (!wfs_keys_loaded)
+        load_wfs_keys();
+    if (index < 0 || index >= wfs_key_count)
+        return false;
+    memcpy(key, wfs_keys[index], 16);
+    return true;
+}
+
+static bool prng_provider(uint8_t key[16]);
+
+static void init_providers(void)
+{
+    if (provider_set)
+        return;
+    archive_set_prng_key_provider(prng_provider);
+    archive_set_wfs_key_provider(wfs_key_provider);
+    provider_set = true;
+}
+
+/* ---------------------------------------------------------------- raw USB source */
+
+typedef struct { int slot; } rawsrc;
+
+static int32_t rawsrc_read(void *ctx, uint64_t off, void *buf, uint32_t len)
+{
+    rawsrc *r = ctx;
+    uint64_t size = vfs_usb_raw_size(r->slot);
+    if (off >= size) return 0;
+    if (len > size - off) len = (uint32_t)(size - off);
+    return vfs_usb_raw_read(r->slot, off, buf, len) ? (int32_t)len : -1;
+}
+
+static void rawsrc_close(void *ctx) { free(ctx); }
+
 static void entry_free(entry *e)
 {
     if (e->a) archive_close(e->a);
@@ -118,6 +228,7 @@ static void entry_free(entry *e)
 
 void arcfs_flush(void)
 {
+    wfs_keys_loaded = false;
     for (int pass = 0; pass < CACHE_N; pass++)          /* freeing a nested archive releases its parent */
         for (int i = 0; i < CACHE_N; i++)
             if (cache[i].a && cache[i].refs == 0)
@@ -176,7 +287,7 @@ static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t 
     if (!parent) return false;
     const char *inner = bar + 1;
     while (*inner == '/') inner++;
-    int node = tree_find(&parent->a->tree, inner);
+    int node = archive_find(parent->a, inner);
     if (node < 0 || parent->a->tree.n[node].is_dir) return false;
     nestsrc *s = calloc(1, sizeof(*s));
     if (!s) return false;
@@ -201,10 +312,7 @@ static entry *get_archive(const char *spec, size_t n)
     entry *e = cache_lookup(key);
     if (e) return e;
 
-    if (!provider_set) {
-        archive_set_prng_key_provider(prng_provider);
-        provider_set = true;
-    }
+    init_providers();
     g_archive_err = NULL;
     src_t src;
     char name[VFS_NAME_MAX];
@@ -233,7 +341,19 @@ static bool resolve(const char *path, entry **e, int *node)
     const char *bar = NULL;
     for (const char *p = path; *p; p++)
         if (*p == '|') bar = p;
-    if (!bar) return false;
+    if (!bar) {                                     /* a path on a WFS volume: "usb1:/usr/title" */
+        int dev = vfs_dev_of(path);
+        if (!arcfs_dev_pinned(dev)) return false;
+        *e = &pins[dev - DEV_USB0];
+        const char *rest = path + strlen(g_devs[dev].prefix);
+        char rel[KEY_MAX];
+        snprintf(rel, sizeof(rel), "%s", rest);
+        size_t l = strlen(rel);
+        while (l && rel[l - 1] == '/') rel[--l] = '\0';
+        *node = archive_find((*e)->a, rel);
+        if (*node < 0) { g_archive_err = "Not found on the volume"; return false; }
+        return true;
+    }
     *e = get_archive(path, (size_t)(bar - path));
     if (!*e) return false;
     const char *inner = bar + 1;
@@ -242,16 +362,60 @@ static bool resolve(const char *path, entry **e, int *node)
     snprintf(rel, sizeof(rel), "%s", inner);
     size_t l = strlen(rel);
     while (l && rel[l - 1] == '/') rel[--l] = '\0';
-    *node = tree_find(&(*e)->a->tree, rel);
+    *node = archive_find((*e)->a, rel);
     if (*node < 0) { g_archive_err = "Not found in the archive"; return false; }
     return true;
 }
 
 /* ---------------------------------------------------------------- public */
 
+bool arcfs_dev_pinned(int dev)
+{
+    return dev >= DEV_USB0 && dev < DEV_USB0 + USB_SLOTS && pins[dev - DEV_USB0].a != NULL;
+}
+
 bool arcfs_is_path(const char *path)
 {
-    return strchr(path, '|') != NULL;
+    return strchr(path, '|') != NULL || arcfs_dev_pinned(vfs_dev_of(path));
+}
+
+bool arcfs_mount_wfs(int dev, int usb_slot)
+{
+    if (dev < DEV_USB0 || dev >= DEV_USB0 + USB_SLOTS || pins[dev - DEV_USB0].a)
+        return false;
+    init_providers();
+    load_wfs_keys();
+    if (!wfs_key_count && vfs_usb_raw_size(usb_slot) == 0)
+        return false;
+    rawsrc *r = calloc(1, sizeof(*r));
+    if (!r) return false;
+    r->slot = usb_slot;
+    src_t src = { rawsrc_read, rawsrc_close, r, vfs_usb_raw_size(usb_slot) };
+    if (!arc_wfs_probe(&src, "")) {
+        rawsrc_close(r);
+        return false;
+    }
+    g_archive_err = NULL;
+    archive_t *a = arc_wfs_open(&src, "");
+    if (!a) {
+        rawsrc_close(r);
+        return false;
+    }
+    entry *e = &pins[dev - DEV_USB0];
+    snprintf(e->key, sizeof(e->key), "%s", g_devs[dev].prefix);
+    e->a = a;
+    e->refs = 0;
+    return true;
+}
+
+void arcfs_unpin_all(void)
+{
+    arcfs_flush();
+    for (int i = 0; i < USB_SLOTS; i++)
+        entry_free(&pins[i]);
+    memset(wfs_keys, 0, sizeof(wfs_keys));
+    wfs_key_count = 0;
+    wfs_keys_loaded = false;
 }
 
 bool arcfs_container(const char *path, char *out, size_t outsz)
@@ -274,10 +438,7 @@ const char *arcfs_error(void)
 
 bool arcfs_can_open(const char *path)
 {
-    if (!provider_set) {
-        archive_set_prng_key_provider(prng_provider);
-        provider_set = true;
-    }
+    init_providers();
     entry *e = cache_lookup(path);
     if (e) return true;
     src_t src;
@@ -297,6 +458,7 @@ bool arcfs_list(const char *path, vfs_entry **out, int *count)
     int node;
     if (!resolve(path, &e, &node) || !e->a->tree.n[node].is_dir)
         return false;
+    archive_expand(e->a, node);
     const tree_t *t = &e->a->tree;
     int n = 0;
     for (int i = 1; i < t->count; i++)
