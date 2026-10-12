@@ -485,7 +485,7 @@ bool vfs_is_hidden_name(const char *name)
         ".trashes", ".spotlight-v100", ".fseventsd", ".temporaryitems", ".apdisk",
         "__macosx", "ehthumbs.db", "found.000",
     };
-    if (name[0] == '.' && name[1] == '_')           /* macOS AppleDouble files */
+    if (name[0] == '.')                             /* dotfiles: .DS_Store, ._*, .Trashes, ... */
         return true;
     for (size_t i = 0; i < sizeof(junk) / sizeof(junk[0]); i++)
         if (!strcasecmp(name, junk[i]))
