@@ -553,7 +553,7 @@ static void do_list(sess_t *s, int op, const char *arg)
         u64 size;
         if (!vfs_stat(real, &is_dir, &size)) { reply(s, "550 No such file or directory"); return; }
         if (is_dir) {
-            if (!vfs_list(real, &ents, &n)) { reply(s, "550 Can't read directory"); return; }
+            if (!vfs_list_visible(real, &ents, &n)) { reply(s, "550 Can't read directory"); return; }
         } else {
             ents = calloc(1, sizeof(vfs_entry));
             if (!ents) { reply(s, "451 Out of memory"); return; }

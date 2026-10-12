@@ -72,7 +72,9 @@ const char *vfs_basename(const char *path);
 bool vfs_join(char *out, size_t outsz, const char *dir, const char *name);
 bool vfs_is_within(const char *path, const char *dir); /* path == dir or below */
 
-bool vfs_list(const char *path, vfs_entry **out, int *count);
+bool vfs_list(const char *path, vfs_entry **out, int *count);      /* everything, for copy / delete */
+bool vfs_list_visible(const char *path, vfs_entry **out, int *count); /* without OS junk, for display */
+bool vfs_is_hidden_name(const char *name);
 bool vfs_stat(const char *path, bool *is_dir, u64 *size);
 bool vfs_exists(const char *path);
 bool vfs_mkdir(const char *path);

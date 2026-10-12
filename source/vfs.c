@@ -477,6 +477,37 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
     return true;
 }
 
+/* Files the operating systems drop on FAT volumes: not worth showing. */
+bool vfs_is_hidden_name(const char *name)
+{
+    static const char *const junk[] = {
+        "thumbs.db", "desktop.ini", ".ds_store", "system volume information", "$recycle.bin",
+        ".trashes", ".spotlight-v100", ".fseventsd", ".temporaryitems", ".apdisk",
+        "__macosx", "ehthumbs.db", "found.000",
+    };
+    if (name[0] == '.' && name[1] == '_')           /* macOS AppleDouble files */
+        return true;
+    for (size_t i = 0; i < sizeof(junk) / sizeof(junk[0]); i++)
+        if (!strcasecmp(name, junk[i]))
+            return true;
+    return false;
+}
+
+bool vfs_list_visible(const char *path, vfs_entry **out, int *count)
+{
+    if (!vfs_list(path, out, count))
+        return false;
+    int dev = vfs_dev_of(path);
+    if (dev < 0 || dev >= DEV_NAND)                 /* only FAT drives carry this junk */
+        return true;
+    int k = 0;
+    for (int i = 0; i < *count; i++)
+        if (!vfs_is_hidden_name((*out)[i].name))
+            (*out)[k++] = (*out)[i];
+    *count = k;
+    return true;
+}
+
 bool vfs_stat(const char *path, bool *is_dir, u64 *size)
 {
     int dev = vfs_dev_of(path);

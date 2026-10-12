@@ -100,7 +100,7 @@ static bool load_dir(const char *path, const char *select_name)
 {
     vfs_entry *list;
     int n;
-    if (!vfs_list(path, &list, &n)) {
+    if (!vfs_list_visible(path, &list, &n)) {
         ui_message("ERROR", C_RED, "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
         return false;
     }
