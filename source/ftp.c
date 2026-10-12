@@ -87,6 +87,7 @@ typedef struct {
     bool f_open;
     u8 *buf;
     u32 blen, bpos;
+    u32 sendsz;            /* how much to hand net_send at once (adapts, see pump_transfer) */
     bool eof;
     vfs_entry *ents;
     int nent, eidx;
@@ -402,6 +403,7 @@ static void begin_data(sess_t *s, int op, const char *real)
 
 static void start_stream(sess_t *s)
 {
+    s->sendsz = 8192;
     s->t_last = now_ms();
     if (s->op == OP_RETR) s->ts = T_SEND_FILE;
     else if (s->op == OP_STOR) s->ts = T_RECV_FILE;
@@ -497,11 +499,21 @@ static bool pump_transfer(sess_t *s)
                 return true;
             }
         }
-        s32 n = net_send(s->ds, s->buf + s->bpos, s->blen - s->bpos, 0);
+        /* IOS can refuse a non-blocking write that is bigger than its free send
+         * buffer instead of taking part of it, and then never accepts it. So send in
+         * slices: halve the slice on EAGAIN, grow it again while writes succeed. */
+        u32 want = s->blen - s->bpos;
+        if (want > s->sendsz) want = s->sendsz;
+        s32 n = net_send(s->ds, s->buf + s->bpos, want, 0);
         if (n > 0) {
             s->bpos += n;
             s->t_bytes += n;
             s->t_last = t;
+            if ((u32)n == want && s->sendsz < 8192) s->sendsz *= 2;
+            return true;
+        }
+        if (would_block(n) && s->sendsz > 512) {
+            s->sendsz /= 2;
             return true;
         }
         if (n == 0 || !would_block(n)) { transfer_end(s, false, "426 Connection closed"); return true; }
