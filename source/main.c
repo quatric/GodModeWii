@@ -17,6 +17,7 @@
 #include "input.h"
 #include "vfs.h"
 #include "risk.h"
+#include "ftp.h"
 #include "runtimeiospatch.h"
 
 /* Stay on the IOS the loader started us with (IOS58 under the Homebrew
@@ -65,7 +66,7 @@ int main(int argc, char **argv)
 
     /* NAND permissions: the same ISFS patch FSToolBox-Mod applies, and only
      * that one (the hash / identify / setuid patches are not needed here). */
-    if (AHBPROT_DISABLED)
+    if (AHBPROT_DISABLED && !g_is_dolphin)     /* the scan is pointless (and very slow) in an emulator */
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
@@ -76,6 +77,7 @@ int main(int argc, char **argv)
 
     ui_splash("Unmounting...");
     risk_lock();
+    ftp_net_shutdown();
     vfs_shutdown();
     input_shutdown();
 

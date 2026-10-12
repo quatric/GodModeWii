@@ -28,9 +28,10 @@ static const char *SAFE_NAND[] = {
     "nand:/title/00010005",   /* DLC                  */
 };
 
-/* Always critical, whatever the safe list says. /shared1 holds the shared
- * system content (the contents of system channels and IOS-used files) and
- * deleting or corrupting it can brick the console. */
+/* Always "critical", whatever the safe list says. This is not a block: it
+ * only decides that the 3-second hold-A confirmation is required (after the
+ * Konami unlock). /shared1 holds shared system content, so a mistake there
+ * can brick the console. */
 static const char *CRITICAL_NAND[] = {
     "nand:/sys",
     "nand:/ticket",

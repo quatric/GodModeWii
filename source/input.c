@@ -102,11 +102,12 @@ void input_shutdown(void)
     USBKeyboard_Deinitialize();
 }
 
-u32 DetectInput(u8 DownOrHeld)
+static u32 detect(u8 DownOrHeld, bool wait)
 {
     const int down = DownOrHeld == IN_DOWN;
     u32 pressed = 0, buttons = 0, gcpressed = 0;
-    VIDEO_WaitVSync();
+    if (wait)
+        VIDEO_WaitVSync();
 
     if (WPAD_ScanPads() > WPAD_ERR_NONE) {
         for (int chan = 0; chan < 4; chan++)
@@ -135,6 +136,16 @@ u32 DetectInput(u8 DownOrHeld)
     kbd_buttons = 0;
 
     return pressed;
+}
+
+u32 DetectInput(u8 DownOrHeld)
+{
+    return detect(DownOrHeld, true);
+}
+
+u32 input_poll_nowait(void)
+{
+    return detect(IN_DOWN, false);
 }
 
 #define DPAD (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)

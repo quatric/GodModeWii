@@ -12,6 +12,7 @@
 #include "ops.h"
 #include "risk.h"
 #include "virt.h"
+#include "ftp.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -620,6 +621,15 @@ static void actions_menu(void)
     }
 }
 
+/* The FTP server may have changed anything: refresh what is on screen. */
+static void reload_keep_safe(void)
+{
+    for (int i = 0; i < DEV_COUNT; i++)
+        vfs_update_space(i);
+    if (cwd[0])
+        reload_keep();
+}
+
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
@@ -627,12 +637,14 @@ static bool system_menu(void)
         const char *items[] = {
             risk_unlocked() ? "Lock risky options" : "Unlock risky options (Konami code)",
             "Remount drives (SD / Gecko / USB)",
+            "FTP server (read-only)",
+            "FTP server (read/write)",
             "About / credits",
             "Exit to loader (Homebrew Channel)",
             "Exit to Wii Menu",
             "Power off",
         };
-        int r = ui_menu("SYSTEM", items, NULL, 6, 0);
+        int r = ui_menu("SYSTEM", items, NULL, 8, 0);
         switch (r) {
         case 0:
             if (risk_unlocked()) { risk_lock(); status(C_GREEN, "Risky options locked."); }
@@ -647,10 +659,15 @@ static bool system_menu(void)
             status(C_GREEN, "Drives re-scanned.");
             return false;
         }
-        case 2: show_credits(); return false;
-        case 3: exit_req = EXIT_LOADER; return true;
-        case 4: exit_req = EXIT_MENU; return true;
-        case 5: exit_req = EXIT_POWEROFF; return true;
+        case 2:
+        case 3:
+            ftp_run(r == 3);
+            reload_keep_safe();
+            return false;
+        case 4: show_credits(); return false;
+        case 5: exit_req = EXIT_LOADER; return true;
+        case 6: exit_req = EXIT_MENU; return true;
+        case 7: exit_req = EXIT_POWEROFF; return true;
         default: return false;
         }
     }

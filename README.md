@@ -35,7 +35,8 @@ the console can see, watch the free space of each one, and (only if you really m
 * Konami-code gate and brick warnings for risky NAND operations.
 * Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard.
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
-* No scripts, no WAD installation, no FTP — on purpose. It's a handy little tool.
+* A built-in **FTP server** (HOME → *FTP server*), a sturdier take on ftpii's — see below.
+* No scripts and no WAD installation, on purpose. It's a handy little tool.
 
 ## Controls
 
@@ -62,6 +63,26 @@ Start = **HOME**. USB keyboard: arrows, Enter = A, Backspace = B, X = 1, Y = 2, 
 HOME → *Unlock risky options*, then enter (D-Pad, then B and A):
 
 `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A`
+
+## FTP server
+
+HOME → *FTP server (read-only)* or *(read/write)* opens a status screen with the address, the user name (`godmode`) and a
+fresh random password. Connect with any FTP client; every mounted drive shows up as a folder (`/sd`, `/usb1`, `/nand`, `/disc`, ...).
+
+It is meant to be harder to break and harder to abuse than the original ftpii:
+
+* **Login is always required**; the password is random per run. Failed logins are throttled and a burst of them locks the server for a minute.
+* **LAN only**: peers outside private / link-local ranges are refused.
+* **No FTP bounce / hijack**: `PORT` must point back at the client (port >= 1024) and passive data connections must come from the client's IP.
+* **Sandboxed paths**: every path is canonicalised inside the virtual root, so `..` tricks, odd characters and unmounted drives go nowhere.
+* **Read-only by default**, and the SEEPROM / disc drives are always read-only.
+* **Same NAND rules as the browser**: writes need the Konami unlock, and writes to system areas pop the 3-second hold-A confirmation on the console.
+* **Safe uploads**: files are written to a temporary name and only swapped in when complete (the old file is restored if the swap fails), so a dropped connection can't leave a half-written file.
+* `RMD` only removes empty folders; nothing is deleted recursively over the network.
+* Single-threaded and non-blocking with bounded buffers, command lines, sessions (4) and timeouts, so a stuck client can't hang the console.
+
+It speaks plain FTP (no TLS): only use it on a network you trust. Supported commands include `LIST`, `NLST`, `MLSD`, `RETR`
+(with `REST`), `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` / `RNTO`, `SIZE`, `PASV`, `EPSV`, `PORT`.
 
 ## Installation
 

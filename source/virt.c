@@ -148,7 +148,8 @@ static void refresh_disc(void)
     if (!AHBPROT_DISABLED) { set_note(DEV_DISC, "needs Homebrew Channel (AHBPROT)"); return; }
 
     if (!di_started) {
-        IosPatch_DIReadLimit(false);
+        if (!g_is_dolphin)
+            IosPatch_DIReadLimit(false);
         DI_UseCache(false);
         DI_Init();
         di_started = true;

@@ -17,6 +17,9 @@ u32 DetectInput(u8 down_or_held);
 /* Edge-triggered presses plus auto-repeat on the D-Pad, for scrolling. */
 u32 input_pressed(void);
 
+/* Like DetectInput(IN_DOWN) but without waiting for vsync. */
+u32 input_poll_nowait(void);
+
 /* Non-blocking check used by long operations to allow cancelling. */
 bool input_cancel_held(void);
 
