@@ -317,7 +317,7 @@ static void draw_home(void)
         else ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
         char note[56] = "";
         if (devs[idx] == DEV_NAND)
-            snprintf(note, sizeof(note), "%s", risk_unlocked() ? "WRITABLE - BRICK RISK" : "read-only (locked)");
+            snprintf(note, sizeof(note), "%s", risk_unlocked() ? "UNLOCKED - BRICK RISK" : "protected (Konami code to edit)");
         else if (!d->mounted && d->note[0])
             snprintf(note, sizeof(note), "%s", d->note);
         else if (!d->mounted)
@@ -451,6 +451,11 @@ static void do_copy_cut(bool cut)
     int n;
     char **t = targets(&n);
     if (!n) return;
+    /* Cutting from the NAND removes files there: ask for the code now. */
+    if (cut && vfs_dev_of(t[0]) == DEV_NAND && !risk_ensure_unlocked()) {
+        free_paths(t, n);
+        return;
+    }
     clip_clear();
     clip = t;
     clip_n = n;
@@ -562,25 +567,24 @@ static void actions_menu(void)
     int e = cursor - off;
     bool on_entry = e >= 0 && e < nents;
     int dev = vfs_dev_of(cwd);
-    bool nand_locked = dev == DEV_NAND && !risk_unlocked();
     bool ro = dev >= 0 && vfs_is_virtual(dev);
 
     const char *items[A_COUNT];
     bool en[A_COUNT];
     int code[A_COUNT];
     int n = 0;
-    char paste_label[48], del_label[48] = "Delete", ren_label[48] = "Rename";
+    char paste_label[48];
+    const char *del_label = "Delete", *ren_label = "Rename";
 
     if (clip_n) {
-        snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here%s", clip_n, nand_locked ? "  (locked)" : "");
-        items[n] = paste_label; en[n] = !nand_locked && !ro; code[n++] = A_PASTE;
+        snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
+        items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
     }
     items[n] = "Copy";   en[n] = on_entry || nmarks; code[n++] = A_COPY;
-    items[n] = "Cut";    en[n] = (on_entry || nmarks) && !nand_locked && !ro; code[n++] = A_CUT;
-    if (nand_locked) { snprintf(del_label, sizeof(del_label), "Delete  (locked)"); snprintf(ren_label, sizeof(ren_label), "Rename  (locked)"); }
-    items[n] = del_label; en[n] = (on_entry || nmarks) && !nand_locked && !ro; code[n++] = A_DELETE;
-    items[n] = ren_label; en[n] = on_entry && !nmarks && !nand_locked && !ro; code[n++] = A_RENAME;
-    items[n] = nand_locked ? "New folder  (locked)" : "New folder"; en[n] = !nand_locked && !ro; code[n++] = A_MKDIR;
+    items[n] = "Cut";    en[n] = (on_entry || nmarks) && !ro; code[n++] = A_CUT;
+    items[n] = del_label; en[n] = (on_entry || nmarks) && !ro; code[n++] = A_DELETE;
+    items[n] = ren_label; en[n] = on_entry && !nmarks && !ro; code[n++] = A_RENAME;
+    items[n] = "New folder"; en[n] = !ro; code[n++] = A_MKDIR;
     items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
     items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;
     items[n] = "Select all"; en[n] = nents > 0; code[n++] = A_ALL;
@@ -594,8 +598,6 @@ static void actions_menu(void)
     if (!en[r]) {
         if (ro)
             ui_message("READ-ONLY", C_YELLOW, "This is a read-only virtual drive. Copy its files to the SD card or a USB drive instead.");
-        else if (nand_locked)
-            ui_message("LOCKED", C_YELLOW, "Modifying the NAND is locked.\n\nOpen the HOME menu and choose \"Unlock risky options\" to enter the Konami code.");
         return;
     }
     int t; char **tp;
@@ -633,24 +635,29 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_ABOUT, M_LOADER, M_WIIMENU, M_POWER };
     for (;;) {
-        const char *items[] = {
-            risk_unlocked() ? "Lock risky options" : "Unlock risky options (Konami code)",
-            "Remount drives (SD / Gecko / USB)",
-            "FTP server (read-only)",
-            "FTP server (read/write)",
-            "About / credits",
-            "Exit to loader (Homebrew Channel)",
-            "Exit to Wii Menu",
-            "Power off",
-        };
-        int r = ui_menu("SYSTEM", items, NULL, 8, 0);
-        switch (r) {
-        case 0:
-            if (risk_unlocked()) { risk_lock(); status(C_GREEN, "Risky options locked."); }
-            else if (risk_unlock_flow()) status(C_RED, "RISKY MODE ON - be careful.");
+        const char *items[8];
+        int code[8];
+        int n = 0;
+        if (risk_unlocked()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
+        items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
+        items[n] = "FTP server (read-only)";            code[n++] = M_FTP_RO;
+        items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
+        items[n] = "About / credits";                   code[n++] = M_ABOUT;
+        items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;
+        items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
+        items[n] = "Power off";                         code[n++] = M_POWER;
+
+        int r = ui_menu("SYSTEM", items, NULL, n, 0);
+        if (r < 0)
             return false;
-        case 1: {
+        switch (code[r]) {
+        case M_LOCK:
+            risk_lock();
+            status(C_GREEN, "Risky options locked.");
+            return false;
+        case M_REMOUNT:
             ui_splash("Looking for drives...");
             vfs_remount();
             clip_clear();
@@ -658,17 +665,15 @@ static bool system_menu(void)
             cwd[0] = '\0';
             status(C_GREEN, "Drives re-scanned.");
             return false;
-        }
-        case 2:
-        case 3:
-            ftp_run(r == 3);
+        case M_FTP_RO:
+        case M_FTP_RW:
+            ftp_run(code[r] == M_FTP_RW);
             reload_keep_safe();
             return false;
-        case 4: show_credits(); return false;
-        case 5: exit_req = EXIT_LOADER; return true;
-        case 6: exit_req = EXIT_MENU; return true;
-        case 7: exit_req = EXIT_POWEROFF; return true;
-        default: return false;
+        case M_ABOUT: show_credits(); return false;
+        case M_LOADER: exit_req = EXIT_LOADER; return true;
+        case M_WIIMENU: exit_req = EXIT_MENU; return true;
+        default: exit_req = EXIT_POWEROFF; return true;
         }
     }
 }
@@ -681,6 +686,12 @@ static void open_drive(int dev)
     if (dev == DEV_DISC) {          /* discs come and go: re-check on every visit */
         ui_splash("Reading disc...");
         virt_refresh(DEV_DISC);
+    }
+    if (dev == DEV_KEYS) {
+        ui_splash("Reading console keys...");
+        virt_refresh(DEV_KEYS);
+        if (d->mounted)
+            ui_message("PRIVATE KEYS", C_YELLOW, "These keys are unique to your console. Copy them out for your own backups and keep them private - never share them.");
     }
     if (!d->mounted) {
         char why[160];
@@ -782,8 +793,6 @@ int app_run(void)
         if (p & WPAD_BUTTON_MINUS) {
             if (vfs_is_readonly(cwd))
                 ui_message("READ-ONLY", C_YELLOW, "Nothing can be cut from a read-only virtual drive. Use + to copy instead.");
-            else if (vfs_dev_of(cwd) == DEV_NAND && !risk_unlocked())
-                ui_message("LOCKED", C_YELLOW, "Cutting from the NAND removes files there, so it is locked.\n\nCopy them instead, or unlock risky options from the HOME menu.");
             else
                 do_copy_cut(true);
         }

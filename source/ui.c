@@ -168,39 +168,59 @@ static int wrap_lines(const char *text, int width, char lines[][BOX_W_MAX + 2], 
     return n;
 }
 
-/* Draws a framed box sized for `nlines` of text; returns first content row. */
-static int draw_box(const char *title, int color, int nlines, int extra, int w, int *out_left)
+/* Dialogs are drawn as solid colour windows (no ASCII frames): a coloured
+ * title bar, a blue body and a dark button strip at the bottom. */
+#define WIN_BG C_BLUE
+
+static int title_fg(int bar)
 {
-    int h = nlines + extra + 4;
+    return (bar == C_RED || bar == C_BLUE || bar == C_MAGENTA) ? C_WHITE : C_BLACK;
+}
+
+static void win_blank(int row, int left, int w, int bg)
+{
+    ui_bg(bg);
+    ui_goto(row, left);
+    for (int i = 0; i < w; i++)
+        putchar(' ');
+}
+
+/* Body text inside the window, padded to the window width. */
+static void win_text(int row, int left, int w, int fg, bool bold, const char *s)
+{
+    ui_bg(WIN_BG);
+    ui_color(fg, bold);
+    ui_field(row, left + 2, w - 4, "%s", s);
+}
+
+static void win_strip(int row, int left, int w, const char *text)
+{
+    win_blank(row, left, w, C_CYAN);
+    ui_color(C_BLACK, false);
+    ui_field(row, left + 2, w - 4, "%s", text);
+    ui_reset();
+}
+
+/* Draws title bar + body + button strip; returns the first content row. */
+static int draw_window(const char *title, int color, int content_rows, int w,
+                       const char *strip, int *out_left, int *out_strip_row)
+{
+    int h = content_rows + 4;                 /* title, pad, content, pad, strip */
     int top = (g_rows - h) / 2;
     int left = (g_cols - w) / 2;
     if (top < 0) top = 0;
     if (left < 0) left = 0;
 
-    ui_reset();
-    ui_color(color, true);
-    ui_goto(top, left);
-    putchar('+');
-    for (int i = 0; i < w - 2; i++) putchar('-');
-    putchar('+');
-    for (int r = 1; r < h - 1; r++) {
-        ui_goto(top + r, left);
-        putchar('|');
-        for (int i = 0; i < w - 2; i++) putchar(' ');
-        putchar('|');
-    }
-    ui_goto(top + h - 1, left);
-    putchar('+');
-    for (int i = 0; i < w - 2; i++) putchar('-');
-    putchar('+');
-
-    if (title && *title) {
-        ui_goto(top, left + 2);
-        ui_color(C_WHITE, true);
-        printf(" %s ", title);
-    }
+    win_blank(top, left, w, color);
+    ui_color(title_fg(color), true);
+    ui_field(top, left + 2, w - 4, "%s", title ? title : "");
+    for (int r = 1; r < h - 1; r++)
+        win_blank(top + r, left, w, WIN_BG);
+    win_strip(top + h - 1, left, w, strip);
     ui_reset();
     *out_left = left;
+    if (out_strip_row)
+        *out_strip_row = top + h - 1;
     return top + 2;
 }
 
@@ -211,22 +231,14 @@ static int box_width(void)
 }
 
 static void draw_text_box(const char *title, int color, const char *text,
-                          const char *footer, int extra, int *content_row, int *left)
+                          const char *strip, int extra, int *content_row, int *left)
 {
     int w = box_width();
     char lines[16][BOX_W_MAX + 2];
     int n = wrap_lines(text, w - 4, lines, 16);
-    int row = draw_box(title, color, n, extra + (footer ? 2 : 0), w, left);
-    for (int i = 0; i < n; i++) {
-        ui_goto(row + i, *left + 2);
-        ui_color(C_WHITE, false);
-        fputs(lines[i], stdout);
-    }
-    if (footer) {
-        ui_goto(row + n + extra + 1, *left + 2);
-        ui_color(C_CYAN, true);
-        fputs(footer, stdout);
-    }
+    int row = draw_window(title, color, n + extra, w, strip, left, NULL);
+    for (int i = 0; i < n; i++)
+        win_text(row + i, *left, w, C_WHITE, true, lines[i]);
     ui_reset();
     if (content_row)
         *content_row = row + n;
@@ -235,7 +247,7 @@ static void draw_text_box(const char *title, int color, const char *text,
 void ui_message(const char *title, int color, const char *text)
 {
     int left;
-    draw_text_box(title, color, text, "Press A to continue", 0, NULL, &left);
+    draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
     for (;;) {
         u32 p = DetectInput(IN_DOWN);
         if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
@@ -246,33 +258,11 @@ void ui_message(const char *title, int color, const char *text)
 bool ui_confirm(const char *title, int color, const char *text)
 {
     int left;
-    draw_text_box(title, color, text, "A: Yes    B: No", 0, NULL, &left);
+    draw_text_box(title, color, text, "A  Yes        B  No", 0, NULL, &left);
     for (;;) {
         u32 p = DetectInput(IN_DOWN);
         if (p & WPAD_BUTTON_A) return true;
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) return false;
-    }
-}
-
-bool ui_hold_confirm(const char *title, const char *text, int seconds)
-{
-    int left, crow;
-    char foot[64];
-    snprintf(foot, sizeof(foot), "HOLD A for %d seconds to continue - B cancels", seconds);
-    draw_text_box(title, C_RED, text, foot, 1, &crow, &left);
-    int need = seconds * 60, held = 0;
-    int w = box_width();
-    for (;;) {
-        u32 p = DetectInput(IN_HELD);
-        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME))
-            return false;
-        if (p & WPAD_BUTTON_A) {
-            if (++held >= need)
-                return true;
-        } else if (held > 0) {
-            held = 0;
-        }
-        ui_bar(crow, left + 2, w - 4, held * 100 / need, C_RED);
     }
 }
 
@@ -281,8 +271,8 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
     int w = 0;
     for (int i = 0; i < n; i++)
         if ((int)strlen(items[i]) > w) w = strlen(items[i]);
-    w += 8;
-    if (w < 28) w = 28;
+    w += 10;
+    if (w < 34) w = 34;
     if (w > g_cols - 4) w = g_cols - 4;
     int sel = start;
     if (sel < 0 || sel >= n) sel = 0;
@@ -296,26 +286,18 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
         if (sel < scroll) scroll = sel;
         if (sel >= scroll + view) scroll = sel - view + 1;
         if (first) {
-            row = draw_box(title, C_CYAN, view, 2, w, &left);
+            row = draw_window(title, C_CYAN, view, w, "A  Select        B  Back", &left, NULL);
             first = false;
         }
         for (int i = 0; i < view; i++) {
             int idx = scroll + i;
-            ui_goto(row + i, left + 1);
-            if (idx == sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
+            bool on = idx == sel;
+            ui_bg(on ? C_CYAN : WIN_BG);
+            if (on)                          ui_color(C_BLACK, false);
             else if (enabled && !enabled[idx]) ui_color(C_WHITE, false);
-            else ui_color(C_WHITE, true);
-            char line[96];
-            snprintf(line, sizeof(line), " %c %s", idx == sel ? '>' : ' ', items[idx]);
-            int len = strlen(line);
-            for (int k = len; k < w - 2; k++) line[k] = ' ';
-            line[w - 2] = '\0';
-            fputs(line, stdout);
-            ui_reset();
+            else                             ui_color(C_WHITE, true);
+            ui_field(row + i, left + 1, w - 2, "  %s", items[idx]);
         }
-        ui_goto(row + view + 1, left + 2);
-        ui_color(C_CYAN, true);
-        fputs("A: Select   B: Back", stdout);
         ui_reset();
 
         u32 p = input_pressed();
@@ -337,32 +319,24 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
     int w = box_width();
     int len = strlen(buf);
     int pos = len ? len - 1 : 0;
-    int left;
-    char hint[2][BOX_W_MAX + 2];
-    (void)hint;
-    int row = draw_box(title, C_CYAN, 3, 3, w, &left);
-    ui_goto(row + 4, left + 2);
-    ui_color(C_CYAN, true);
-    fputs("U/D: char  L/R: move  +/-: jump  1: delete  2: space", stdout);
-    ui_goto(row + 5, left + 2);
-    fputs("A: OK    B: Cancel", stdout);
-    ui_reset();
+    int left, strip_row;
+    int row = draw_window(title, C_CYAN, 4, w, "A  OK     B  Cancel", &left, &strip_row);
+    win_text(row + 2, left, w, C_CYAN, true, "U/D char  L/R move  +/- jump  1 del  2 space");
 
     for (;;) {
         int vis = w - 6;
         int off = pos >= vis ? pos - vis + 1 : 0;
-        ui_goto(row + 1, left + 2);
+        ui_goto(row, left + 2);
         for (int i = 0; i < vis; i++) {
             int idx = off + i;
             char c = idx < len ? buf[idx] : ' ';
             if (idx == pos) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-            else { ui_color(C_YELLOW, true); }
+            else            { ui_bg(C_BLACK); ui_color(C_YELLOW, true); }
             putchar(c);
-            ui_reset();
         }
-        ui_goto(row + 2, left + 2);
+        ui_bg(WIN_BG);
         ui_color(C_WHITE, false);
-        printf("%d/%d chars  ", len, maxlen);
+        ui_field(row + 1, left + 2, w - 4, "%d / %d characters", len, maxlen);
         ui_reset();
 
         u32 p = input_pressed();

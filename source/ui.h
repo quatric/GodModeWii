@@ -27,7 +27,6 @@ void ui_message(const char *title, int color, const char *text);
 bool ui_confirm(const char *title, int color, const char *text);
 int  ui_menu(const char *title, const char **items, const bool *enabled, int n, int start);
 bool ui_text_input(const char *title, char *buf, int maxlen);
-bool ui_hold_confirm(const char *title, const char *text, int seconds);
 
 void ui_splash(const char *status);
 

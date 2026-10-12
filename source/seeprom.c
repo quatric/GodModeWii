@@ -4,9 +4,11 @@
  * The SEEPROM is a Microwire EEPROM (93C56 or similar, 128 x 16 bit words)
  * that hangs off four Hollywood GPIO lines which are owned by Starlet:
  * pin 10 = CS, 11 = CLK, 12 = MOSI, 13 = MISO. We bit-bang the READ command
- * through HW_GPIO_{OUT,DIR,IN}; this needs the PPC to have full register
+ * through HW_GPIO_{OUT,IN}; this needs the PPC to have full register
  * access (HW_AHBPROT disabled, i.e. launched from the Homebrew Channel).
  * Only the four EEPROM pins are touched and they are restored afterwards.
+ * The access sequence is the same one xyzzy-mod (DarkMatterCore) uses, which
+ * took it from libSEEPROM (joedj) / MINI (Sven Peter, Haxx, marcan, ...).
  *
  * Register map and pin numbers: WiiBrew "Hardware/Hollywood Registers" and
  * "Hardware/Hollywood GPIOs"; READ framing (start bit + opcode 10 + 8 bit
@@ -21,7 +23,6 @@
 #include "seeprom.h"
 
 #define HW_GPIO_OUT (*(vu32 *)0xCD8000E0)
-#define HW_GPIO_DIR (*(vu32 *)0xCD8000E4)
 #define HW_GPIO_IN  (*(vu32 *)0xCD8000E8)
 
 #define EEP_CS   (1u << 10)
@@ -30,11 +31,11 @@
 #define EEP_MISO (1u << 13)
 #define EEP_MASK (EEP_CS | EEP_CLK | EEP_MOSI | EEP_MISO)
 
-/* busy-wait ~3 us: usleep() would sleep far longer than a clock phase */
+/* busy-wait ~5 us: usleep() would sleep far longer than a clock phase */
 static inline void tick(void)
 {
     u64 start = gettime();
-    while (ticks_to_microsecs(gettime() - start) < 3)
+    while (ticks_to_microsecs(gettime() - start) < 5)
         ;
 }
 
@@ -67,9 +68,9 @@ static u16 recv_bits16(void)
 
 bool seeprom_read(u8 out[SEEPROM_SIZE])
 {
-    u32 save_out = HW_GPIO_OUT, save_dir = HW_GPIO_DIR;
+    u32 save_out = HW_GPIO_OUT;
 
-    HW_GPIO_DIR = (save_dir | (EEP_CS | EEP_CLK | EEP_MOSI)) & ~EEP_MISO;
+    /* The pin directions are already set up by IOS, as in xyzzy-mod. */
     HW_GPIO_OUT &= ~(EEP_CS | EEP_CLK | EEP_MOSI);
     tick();
 
@@ -85,7 +86,6 @@ bool seeprom_read(u8 out[SEEPROM_SIZE])
     }
 
     HW_GPIO_OUT = (HW_GPIO_OUT & ~EEP_MASK) | (save_out & EEP_MASK);
-    HW_GPIO_DIR = (HW_GPIO_DIR & ~EEP_MASK) | (save_dir & EEP_MASK);
 
     /* A bus that isn't answering reads back as all 0x00 or all 0xFF. */
     u8 all_or = 0, all_and = 0xFF;

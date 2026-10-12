@@ -28,6 +28,7 @@ vfs_dev g_devs[DEV_COUNT] = {
     { "nand:", "nand:/", "Wii NAND",          "NAND", true,  false, false, 0, 0 },
     { "seeprom:", "seeprom:/", "SEEPROM",     "SEEP", true,  false, false, 0, 0 },
     { "disc:", "disc:/", "Disc Drive",        "DISC", true,  false, false, 0, 0 },
+    { "keys:", "keys:/", "Console Keys",      "KEYS", true,  false, false, 0, 0 },
 };
 
 bool g_is_vwii, g_is_dolphin, g_nand_full;
@@ -45,7 +46,7 @@ int vfs_dev_of(const char *path)
 
 bool vfs_is_virtual(int dev)
 {
-    return dev == DEV_SEEPROM || dev == DEV_DISC;
+    return dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_KEYS;
 }
 
 bool vfs_is_readonly(const char *path)
@@ -328,6 +329,7 @@ void vfs_init(void)
     mount_usb(8);
     virt_refresh(DEV_SEEPROM);
     virt_refresh(DEV_DISC);
+    virt_refresh(DEV_KEYS);
     for (int i = 0; i < DEV_COUNT; i++)
         vfs_update_space(i);
 }
@@ -343,6 +345,7 @@ void vfs_remount(void)
     g_devs[DEV_NAND].mounted = nand_ready;
     virt_refresh(DEV_SEEPROM);
     virt_refresh(DEV_DISC);
+    virt_refresh(DEV_KEYS);
     for (int i = 0; i < DEV_COUNT; i++)
         vfs_update_space(i);
 }

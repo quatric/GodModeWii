@@ -12,8 +12,7 @@
  *  - every path is canonicalised inside a virtual root ("/sd", "/usb1",
  *    "/nand", ...) so nothing can escape or reach an unmounted device
  *  - read-only by default; SEEPROM and Disc are always read-only
- *  - NAND writes need the Konami unlock; writes to system areas additionally
- *    pop the same 3-second hold-A confirmation on the console
+ *  - NAND writes need the Konami code, typed on the console itself
  *  - uploads go to a temporary file and replace the target only when they
  *    finished, so a dropped connection never leaves a half-written file
  *  - bounded command lines, session count, buffers and timeouts
@@ -279,13 +278,11 @@ static bool can_write(const char *real, int dev, const char **why)
     if (dev < 0 || vfs_is_virtual(dev)) { *why = "Read-only location"; return false; }
     if (!g_rw)                          { *why = "Server is read-only"; return false; }
     if (dev == DEV_NAND) {
-        if (!risk_unlocked()) { *why = "NAND is locked on the console (Konami code)"; return false; }
-        if (risk_is_critical(real)) {
-            ftp_log("System area write asked: hold A on the Wii");
-            if (!risk_authorize(real, "let an FTP client modify")) {
-                *why = "Not confirmed on the console";
-                return false;
-            }
+        /* The code is typed on the console itself; the FTP command waits. */
+        ftp_log("NAND change asked: Konami code on the Wii");
+        if (!risk_authorize(real, "let an FTP client modify")) {
+            *why = "Not confirmed on the console";
+            return false;
         }
     }
     return true;

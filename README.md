@@ -11,8 +11,7 @@ the console can see, watch the free space of each one, and (only if you really m
 > unbootable, and on a Wii U the vWii NAND is just as fragile.
 >
 > * Everything that modifies the NAND is **locked by default**. Copying *from* the NAND is always safe.
-> * To unlock it you must read the disclaimer, enter the **Konami code** and hold **A** for 3 seconds.
-> * Even after unlocking, system areas (`/sys`, `/title/00000001`, `/ticket`, `/shared1`, `/shared2`, ...; everything except a short list of save-data / channel folders counts as a system area) ask for another 3-second hold.
+> * The first time you try to change the NAND (delete, paste, cut, rename, new folder, ...) a warning appears and you must enter the **Konami code**. There is no menu to visit first, and once is enough: it stays unlocked until you exit or lock it again from the HOME menu.
 > * **Make a full NAND backup with BootMii before you use risky mode**, and keep a copy of it off the console.
 > * This software comes with **no warranty**. You are solely responsible for whatever you do with it.
 >
@@ -29,10 +28,11 @@ the console can see, watch the free space of each one, and (only if you really m
   | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
   | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
   | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out |
+  | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
 * Multi-select, select all / invert, rename, new folder, folder size / info and a hex viewer.
-* Konami-code gate and brick warnings for risky NAND operations.
+* Konami-code gate (asked once, at the moment you try something risky) and brick warnings for NAND changes.
 * Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard.
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
 * A built-in **FTP server** (HOME → *FTP server*), a sturdier take on ftpii's — see below.
@@ -50,7 +50,7 @@ the console can see, watch the free space of each one, and (only if you really m
 | **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, hex viewer, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
-| **HOME** | System menu: unlock / lock risky options, remount drives, credits, exit |
+| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit |
 
 Copy or cut something, browse to the destination and press **A** on the green `Paste` row at the top of the list
 (or use *Paste* in the actions menu).
@@ -60,9 +60,24 @@ Start = **HOME**. USB keyboard: arrows, Enter = A, Backspace = B, X = 1, Y = 2, 
 
 ### Konami code
 
-HOME → *Unlock risky options*, then enter (D-Pad, then B and A):
+It appears by itself the first time you try to change the NAND. Enter (D-Pad, then B and A):
 
 `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A`
+
+HOME cancels. After that the NAND stays unlocked for the rest of the session.
+
+## Console keys (xyzzy-mod compatible)
+
+The `keys:/` drive (original Wii, launched from the Homebrew Channel) exposes what [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)
+dumps, laid out the way it writes it, so existing tools and [wad2bin](https://github.com/DarkMatterCore/wad2bin) understand the files:
+
+* `keys.txt` — a hex dump of every key in the wad2bin format (`boot1_hash`, `wii_common_key`, `console_id`, `ecc_private_key`,
+  `nand_hmac`, `nand_aes_key`, `prng_key`, `ng_key_id`, `ng_signature`, `wii_korean_key`, `sd_key`)
+* `otp.bin`, `seeprom.bin`, `bootmii_keys.bin` (BootMii `keys.bin` layout) and `device.cert`
+* `keys/<name>.bin` — **each key as its own file**, named like the entries in `keys.txt`
+
+Copy them wherever you like (for xyzzy-mod's layout, into `xyzzy/<console id>/` on your SD card). Not included yet: SD IV, MD5 blanker,
+MAC address and the boot0 dump. **These keys are unique to your console. Keep them private.**
 
 ## FTP server
 
@@ -76,7 +91,7 @@ It is meant to be harder to break and harder to abuse than the original ftpii:
 * **No FTP bounce / hijack**: `PORT` must point back at the client (port >= 1024) and passive data connections must come from the client's IP.
 * **Sandboxed paths**: every path is canonicalised inside the virtual root, so `..` tricks, odd characters and unmounted drives go nowhere.
 * **Read-only by default**, and the SEEPROM / disc drives are always read-only.
-* **Same NAND rules as the browser**: writes need the Konami unlock, and writes to system areas pop the 3-second hold-A confirmation on the console.
+* **Same NAND rules as the browser**: the first NAND change asks for the Konami code on the console itself (the FTP command waits for it).
 * **Safe uploads**: files are written to a temporary name and only swapped in when complete (the old file is restored if the swap fails), so a dropped connection can't leave a half-written file.
 * `RMD` only removes empty folders; nothing is deleted recursively over the network.
 * Single-threaded and non-blocking with bounded buffers, command lines, sessions (4) and timeouts, so a stuck client can't hang the console.
@@ -115,7 +130,7 @@ Developed against devkitPPC / libogc and exercised in the Dolphin emulator only.
 hardware** and may need fixes — please report what you see:
 
 * multi-drive / multi-LUN USB mounting and SD Gecko,
-* the SEEPROM bit-banged reader (read-only, touches only the four EEPROM GPIO pins and restores them),
+* the SEEPROM and OTP readers and the Console Keys drive (read-only; the SEEPROM sequence matches xyzzy-mod's),
 * browsing the disc (GameCube file table, or the Wii data partition opened through IOS; needs a readable disc),
 * running inside vWii.
 
@@ -132,6 +147,9 @@ GodModeWii stands on a lot of other people's work. Thank you!
 * **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — Wii file-management homebrew that
   inspired this project (no FTP here, but the spirit is the same).
 * **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
+* **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
+  Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
+  OTP and SEEPROM access sequences used here. The hashes used to recognise the SD key come from it too.
 * **[FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod)** by the WiiDatabase.de team, based on **FSToolBox by nickasa**
   and the **AHBPROT mod by Lupo96** — the approach for NAND access on the Wii and the Wii U's vWii mode
   (staying on the loader's IOS, ISFS permission patch). Parts of its code are included in `source/runtimeiospatch.c/.h`.

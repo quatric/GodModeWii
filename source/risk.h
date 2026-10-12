@@ -3,18 +3,18 @@
 
 #include <stdbool.h>
 
-/* Anything that writes to the Wii NAND can brick the console, so it stays
- * locked until the user has read the disclaimer and typed the Konami code. */
+/* Anything that changes the Wii NAND can brick the console, so the first
+ * attempt shows a warning and asks for the Konami code. The code is asked for once per
+ * session. There is no menu to visit first: the prompt
+ * appears when you try the risky thing (delete, paste, rename, ...). */
 
 bool risk_unlocked(void);
 void risk_lock(void);
-bool risk_unlock_flow(void);
+/* Warning + Konami code if the NAND is not unlocked yet. */
+bool risk_ensure_unlocked(void);
 
-/* True for NAND areas where a mistake means a brick (IOS, System Menu...). */
-bool risk_is_critical(const char *path);
-
-/* Gate for any modifying operation on `path`. Shows the appropriate
- * message and returns false when the action must not go ahead. */
+/* Gate for any modifying operation on `path`: asks for the Konami code when
+ * needed. Returns false if the user cancelled. */
 bool risk_authorize(const char *path, const char *what);
 
 #endif

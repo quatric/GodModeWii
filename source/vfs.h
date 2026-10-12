@@ -12,11 +12,12 @@
  *   nand:/path    Wii NAND             (ISFS, 12 char names, risky to modify)
  *   seeprom:/     SEEPROM dump         (virtual, read-only)
  *   disc:/        files on the disc    (virtual, read-only)
+ *   keys:/        console keys        (virtual, read-only, xyzzy-mod layout)
  */
 
 #define USB_SLOTS 4
 
-enum { DEV_SD, DEV_GCA, DEV_GCB, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_NAND, DEV_SEEPROM, DEV_DISC, DEV_COUNT };
+enum { DEV_SD, DEV_GCA, DEV_GCB, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_NAND, DEV_SEEPROM, DEV_DISC, DEV_KEYS, DEV_COUNT };
 
 #define VFS_PATH_MAX 256
 #define VFS_NAME_MAX 256
