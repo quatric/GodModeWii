@@ -213,7 +213,7 @@ static void draw_browser(void)
             continue;
         }
         bool sel = idx == cursor;
-        if (sel) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+        if (sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
 
         if (off && idx == 0) {
             if (!sel) ui_color(C_GREEN, true);
@@ -294,7 +294,7 @@ static void draw_home(void)
     int cols = ui_cols(), rows = ui_rows();
     int devs[DEV_COUNT];
     int n = home_list(devs);
-    int vis = (rows - 7) / 2;
+    int vis = rows - 7;
     if (vis < 1) vis = 1;
     if (home_cursor >= n) home_cursor = n - 1;
     if (home_cursor < home_scroll) home_scroll = home_cursor;
@@ -311,9 +311,9 @@ static void draw_home(void)
     for (int i = 0; i < vis && home_scroll + i < n; i++) {
         int idx = home_scroll + i;
         vfs_dev *d = &g_devs[devs[idx]];
-        int row = 3 + i * 2;
+        int row = 3 + i;
         bool sel = idx == home_cursor;
-        if (sel) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+        if (sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
         else ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
         char note[56] = "";
         if (devs[idx] == DEV_NAND)

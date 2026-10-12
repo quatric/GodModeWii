@@ -17,6 +17,7 @@ void ui_init(void)
     VIDEO_Init();
     rmode = VIDEO_GetPreferredMode(NULL);
     xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
+    VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
     console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
     VIDEO_Configure(rmode);
@@ -36,14 +37,38 @@ void ui_init(void)
 int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
 
-void ui_clear(void) { printf("\x1b[0m\x1b[2J"); }
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
 void ui_goto(int row, int col) { printf("\x1b[%d;%dH", row + 1, col + 1); }
 
-void ui_color(int fg, bool bold) { printf("\x1b[%d;%dm", 30 + fg, bold ? 1 : 0); }
-void ui_bg(int bg) { printf("\x1b[%dm", 40 + bg); }
-void ui_reset(void) { printf("\x1b[0m\x1b[37;0m\x1b[40m"); }
+/* The "0" in "\x1b[30;0m" clears every attribute including the background,
+ * so the current background is tracked and re-applied after each colour. */
+static int cur_bg = -1;
+
+void ui_clear(void)
+{
+    cur_bg = -1;
+    printf("\x1b[0m\x1b[2J");
+}
+
+void ui_bg(int bg)
+{
+    cur_bg = bg;
+    printf("\x1b[%dm", 40 + bg);
+}
+
+void ui_color(int fg, bool bold)
+{
+    printf("\x1b[%d;%dm", 30 + fg, bold ? 1 : 0);
+    if (cur_bg >= 0)
+        printf("\x1b[%dm", 40 + cur_bg);
+}
+
+void ui_reset(void)
+{
+    cur_bg = -1;
+    printf("\x1b[0m\x1b[37;0m\x1b[40m");
+}
 
 void ui_field(int row, int col, int width, const char *fmt, ...)
 {
@@ -277,7 +302,7 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
         for (int i = 0; i < view; i++) {
             int idx = scroll + i;
             ui_goto(row + i, left + 1);
-            if (idx == sel) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+            if (idx == sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
             else if (enabled && !enabled[idx]) ui_color(C_WHITE, false);
             else ui_color(C_WHITE, true);
             char line[96];
@@ -330,7 +355,7 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
         for (int i = 0; i < vis; i++) {
             int idx = off + i;
             char c = idx < len ? buf[idx] : ' ';
-            if (idx == pos) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+            if (idx == pos) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
             else { ui_color(C_YELLOW, true); }
             putchar(c);
             ui_reset();
