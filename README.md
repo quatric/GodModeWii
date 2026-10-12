@@ -50,7 +50,7 @@ the console can see, watch the free space of each one, and (only if you really m
 | **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
-| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit |
+| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. **Press HOME again to quit straight back to the Homebrew Channel.** |
 
 Copy or cut something, browse to the destination and press **A** on the green `Paste` row at the top of the list
 (or use *Paste* in the actions menu).

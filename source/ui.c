@@ -268,6 +268,11 @@ bool ui_confirm(const char *title, int color, const char *text)
 
 int ui_menu(const char *title, const char **items, const bool *enabled, int n, int start)
 {
+    return ui_menu_ex(title, items, enabled, n, start, "A  Select        B  Back");
+}
+
+int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start, const char *strip)
+{
     int w = 0;
     for (int i = 0; i < n; i++)
         if ((int)strlen(items[i]) > w) w = strlen(items[i]);
@@ -286,7 +291,7 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
         if (sel < scroll) scroll = sel;
         if (sel >= scroll + view) scroll = sel - view + 1;
         if (first) {
-            row = draw_window(title, C_CYAN, view, w, "A  Select        B  Back", &left, NULL);
+            row = draw_window(title, C_CYAN, view, w, strip, &left, NULL);
             first = false;
         }
         for (int i = 0; i < view; i++) {
@@ -304,7 +309,8 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
         if (p & WPAD_BUTTON_UP)   sel = (sel + n - 1) % n;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % n;
         if (p & WPAD_BUTTON_A)    return sel;
-        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) return -1;
+        if (p & WPAD_BUTTON_B)    return -1;
+        if (p & WPAD_BUTTON_HOME) return UI_MENU_HOME;
     }
 }
 
@@ -385,6 +391,8 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
     }
 }
 
+/* ---------------------------------------------------------------- splash */
+
 void ui_splash(const char *status)
 {
     ui_clear();
@@ -398,7 +406,7 @@ void ui_splash(const char *status)
     };
     for (int i = 0; i < 5; i++) {
         ui_goto(r + i, (g_cols - 61) / 2);
-        ui_color(i < 3 ? C_CYAN : C_BLUE, true);
+        ui_color(C_CYAN, true);          /* one solid colour for the whole logo */
         fputs(art[i], stdout);
     }
     ui_reset();

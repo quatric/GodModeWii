@@ -786,7 +786,11 @@ static bool system_menu(void)
         items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
         items[n] = "Power off";                         code[n++] = M_POWER;
 
-        int r = ui_menu("SYSTEM", items, NULL, n, 0);
+        int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B Back   HOME Exit");
+        if (r == UI_MENU_HOME) {            /* HOME, HOME: back to the Homebrew Channel */
+            exit_req = EXIT_LOADER;
+            return true;
+        }
         if (r < 0)
             return false;
         switch (code[r]) {
