@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make
+      - name: Package
+        run: |
+          mkdir -p dist/apps/GodModeWii
+          cp GodModeWii.dol dist/apps/GodModeWii/boot.dol
+          cp apps/GodModeWii/meta.xml dist/apps/GodModeWii/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GodModeWii
+          path: dist

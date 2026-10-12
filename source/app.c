@@ -1,0 +1,779 @@
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <malloc.h>
+
+#include "app.h"
+#include "ui.h"
+#include "input.h"
+#include "vfs.h"
+#include "ops.h"
+#include "risk.h"
+#include "virt.h"
+
+volatile bool g_quit_request;
+volatile bool g_power_request;
+
+/* ---------------------------------------------------------------- state */
+
+static char cwd[VFS_PATH_MAX];       /* "" = drive list */
+static vfs_entry *ents;
+static bool *marks;
+static int nents, nmarks;
+static int cursor, scroll;
+static int home_cursor, home_scroll;
+
+static char **clip;
+static int clip_n;
+static bool clip_cut;
+
+static char status_msg[96];
+static int status_color = C_WHITE;
+static bool nand_warned;
+static int exit_req = EXIT_LOADER;
+
+static void status(int color, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void status(int color, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(status_msg, sizeof(status_msg), fmt, ap);
+    va_end(ap);
+    status_color = color;
+}
+
+static int list_rows(void) { return ui_rows() - 8; }
+
+/* ---------------------------------------------------------------- clipboard */
+
+static void clip_clear(void)
+{
+    for (int i = 0; i < clip_n; i++)
+        free(clip[i]);
+    free(clip);
+    clip = NULL;
+    clip_n = 0;
+}
+
+/* Paths of the marked entries, or the entry under the cursor. */
+static char **targets(int *count)
+{
+    int off = clip_n ? 1 : 0;
+    int n = nmarks ? nmarks : ((cursor - off >= 0 && cursor - off < nents) ? 1 : 0);
+    *count = n;
+    if (!n)
+        return NULL;
+    char **out = calloc(n, sizeof(char *));
+    int k = 0;
+    for (int i = 0; i < nents && k < n; i++) {
+        if (nmarks ? marks[i] : (i == cursor - off)) {
+            out[k] = malloc(VFS_PATH_MAX);
+            vfs_join(out[k], VFS_PATH_MAX, cwd, ents[i].name);
+            k++;
+        }
+    }
+    return out;
+}
+
+static void free_paths(char **p, int n)
+{
+    for (int i = 0; i < n; i++)
+        free(p[i]);
+    free(p);
+}
+
+/* ---------------------------------------------------------------- directory */
+
+static void free_dir(void)
+{
+    free(ents);
+    free(marks);
+    ents = NULL;
+    marks = NULL;
+    nents = nmarks = 0;
+}
+
+static bool load_dir(const char *path, const char *select_name)
+{
+    vfs_entry *list;
+    int n;
+    if (!vfs_list(path, &list, &n)) {
+        ui_message("ERROR", C_RED, "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
+        return false;
+    }
+    free_dir();
+    ents = list;
+    nents = n;
+    marks = calloc(n ? n : 1, sizeof(bool));
+    snprintf(cwd, sizeof(cwd), "%s", path);
+    cursor = scroll = 0;
+    int off = clip_n ? 1 : 0;
+    if (select_name)
+        for (int i = 0; i < n; i++)
+            if (!strcmp(ents[i].name, select_name)) {
+                cursor = i + off;
+                break;
+            }
+    return true;
+}
+
+static void reload_keep(void)
+{
+    int c = cursor, s = scroll;
+    char keep[VFS_PATH_MAX];
+    snprintf(keep, sizeof(keep), "%s", cwd);
+    if (load_dir(keep, NULL)) {
+        int total = nents + (clip_n ? 1 : 0);
+        cursor = c < total ? c : (total ? total - 1 : 0);
+        scroll = s;
+    }
+}
+
+/* ---------------------------------------------------------------- drawing */
+
+static void draw_header(void)
+{
+    int cols = ui_cols();
+    char left[64], right[48];
+    snprintf(left, sizeof(left), " GodModeWii v%s", GMW_VERSION);
+    snprintf(right, sizeof(right), "%s%s ", g_is_vwii ? "vWii  " : "",
+             risk_unlocked() ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]");
+    ui_bg(risk_unlocked() ? C_RED : C_BLUE);
+    ui_color(C_WHITE, true);
+    int gap = cols - 1 - (int)strlen(left) - (int)strlen(right);
+    if (gap < 1) gap = 1;
+    ui_field(0, 0, cols - 1, "%s%*s%s", left, gap, "", right);
+    ui_reset();
+}
+
+static void draw_space_line(int row, int dev, bool tag)
+{
+    int cols = ui_cols();
+    vfs_dev *d = &g_devs[dev];
+    ui_reset();
+    ui_field(row, 0, cols - 1, "");
+    if (tag) {
+        ui_color(C_CYAN, true);
+        ui_field(row, 1, 6, "%s", d->tag);
+    }
+    if (!d->space_known) {
+        ui_color(C_WHITE, false);
+        ui_field(row, 8, cols - 10, "free space unknown");
+        ui_reset();
+        return;
+    }
+    char f[24], t[24];
+    ui_fmt_size(f, sizeof(f), d->free);
+    ui_fmt_size(t, sizeof(t), d->total);
+    int used = d->total ? (int)((d->total - d->free) * 100 / d->total) : 0;
+    int bw = 22;
+    ui_bar(row, 8, bw, used, used < 75 ? C_GREEN : (used < 90 ? C_YELLOW : C_RED));
+    ui_color(C_WHITE, true);
+    ui_field(row, 8 + bw + 1, cols - 10 - bw, "%s free of %s", f, t);
+    ui_reset();
+}
+
+static void draw_browser(void)
+{
+    int cols = ui_cols(), rows = ui_rows();
+    int L = list_rows();
+    int off = clip_n ? 1 : 0;
+    int total = nents + off;
+
+    ui_clear();
+    draw_header();
+
+    ui_color(C_CYAN, true);
+    int pl = strlen(cwd);
+    if (pl > cols - 3)
+        ui_field(1, 1, cols - 2, "...%s", cwd + pl - (cols - 6));
+    else
+        ui_field(1, 1, cols - 2, "%s", cwd);
+    ui_reset();
+    ui_color(C_WHITE, false);
+    ui_fill(2, 0, cols - 1, '-');
+    ui_reset();
+
+    if (cursor < scroll) scroll = cursor;
+    if (cursor >= scroll + L) scroll = cursor - L + 1;
+
+    int nw = cols - 1 - 2 - 12;
+    for (int i = 0; i < L; i++) {
+        int idx = scroll + i;
+        int row = 3 + i;
+        if (idx >= total) {
+            if (total == 0 && i == 0) {
+                ui_color(C_WHITE, false);
+                ui_field(row, 2, cols - 3, "(empty)");
+                ui_reset();
+            }
+            continue;
+        }
+        bool sel = idx == cursor;
+        if (sel) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+
+        if (off && idx == 0) {
+            if (!sel) ui_color(C_GREEN, true);
+            ui_field(row, 0, cols - 1, "> Paste %d item(s) here  [%s]", clip_n, clip_cut ? "MOVE" : "COPY");
+            ui_reset();
+            continue;
+        }
+        int e = idx - off;
+        vfs_entry *en = &ents[e];
+        if (!sel) {
+            if (marks[e]) ui_color(C_GREEN, true);
+            else if (en->is_dir) ui_color(C_YELLOW, true);
+            else ui_color(C_WHITE, true);
+        }
+        char sz[24];
+        if (en->is_dir) snprintf(sz, sizeof(sz), "<DIR>");
+        else ui_fmt_size(sz, sizeof(sz), en->size);
+        ui_field(row, 0, cols - 1, "%c %-*.*s %11s", marks[e] ? '*' : ' ', nw, nw, en->name, sz);
+        ui_reset();
+    }
+
+    ui_color(C_WHITE, false);
+    ui_fill(rows - 5, 0, cols - 1, '-');
+    ui_reset();
+
+    int dev = vfs_dev_of(cwd);
+    if (dev >= 0 && vfs_is_virtual(dev)) {
+        ui_reset();
+        ui_field(rows - 4, 0, cols - 1, "");
+        ui_color(C_CYAN, true);
+        ui_field(rows - 4, 1, 6, "%s", g_devs[dev].tag);
+        ui_color(C_WHITE, false);
+        ui_field(rows - 4, 8, cols - 10, "read-only virtual drive - copy files out to SD/USB");
+        ui_reset();
+    } else if (dev >= 0) {
+        draw_space_line(rows - 4, dev, true);
+    }
+
+    /* status line: marks / clipboard / last message */
+    ui_reset();
+    ui_field(rows - 3, 0, cols - 1, "");
+    int col = 1;
+    if (nmarks) {
+        ui_color(C_GREEN, true);
+        ui_field(rows - 3, col, 14, "%d marked", nmarks);
+        col += 14;
+    }
+    if (clip_n) {
+        ui_color(clip_cut ? C_RED : C_GREEN, true);
+        ui_field(rows - 3, col, 20, "Clip: %s %d", clip_cut ? "CUT" : "COPY", clip_n);
+        col += 20;
+    }
+    if (status_msg[0]) {
+        ui_color(status_color, true);
+        ui_field(rows - 3, col, cols - 1 - col, "%s", status_msg);
+    }
+    ui_reset();
+
+    ui_color(C_CYAN, true);
+    ui_field(rows - 2, 1, cols - 2, "A Open  B Back  1 Mark  2 Menu  + Copy  - Cut");
+    ui_color(C_WHITE, false);
+    ui_field(rows - 1, 1, cols - 2, "HOME System menu    D-Pad L/R Page");
+    ui_reset();
+}
+
+/* Drives shown on the home screen. */
+static int home_list(int *out)
+{
+    int n = 0;
+    for (int i = 0; i < DEV_COUNT; i++)
+        if (g_devs[i].always_show || g_devs[i].mounted)
+            out[n++] = i;
+    return n;
+}
+
+static void draw_home(void)
+{
+    int cols = ui_cols(), rows = ui_rows();
+    int devs[DEV_COUNT];
+    int n = home_list(devs);
+    int vis = (rows - 7) / 2;
+    if (vis < 1) vis = 1;
+    if (home_cursor >= n) home_cursor = n - 1;
+    if (home_cursor < home_scroll) home_scroll = home_cursor;
+    if (home_cursor >= home_scroll + vis) home_scroll = home_cursor - vis + 1;
+
+    ui_clear();
+    draw_header();
+    ui_color(C_CYAN, true);
+    ui_field(1, 1, cols - 2, "Select a drive");
+    ui_color(C_WHITE, false);
+    ui_fill(2, 0, cols - 1, '-');
+    ui_reset();
+
+    for (int i = 0; i < vis && home_scroll + i < n; i++) {
+        int idx = home_scroll + i;
+        vfs_dev *d = &g_devs[devs[idx]];
+        int row = 3 + i * 2;
+        bool sel = idx == home_cursor;
+        if (sel) { ui_bg(C_WHITE); ui_color(C_BLACK, false); }
+        else ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
+        char note[56] = "";
+        if (devs[idx] == DEV_NAND)
+            snprintf(note, sizeof(note), "%s", risk_unlocked() ? "WRITABLE - BRICK RISK" : "read-only (locked)");
+        else if (!d->mounted && d->note[0])
+            snprintf(note, sizeof(note), "%s", d->note);
+        else if (!d->mounted)
+            snprintf(note, sizeof(note), "not detected");
+        else if (vfs_is_virtual(devs[idx]))
+            snprintf(note, sizeof(note), "%s", d->note);
+        ui_field(row, 0, cols - 1, " [%-4s]  %-20s %-10s %s", d->tag, d->name, d->root, note);
+        ui_reset();
+    }
+
+    if (n > vis) {
+        ui_color(C_WHITE, false);
+        ui_field(rows - 4, 1, cols - 2, "%d/%d", home_cursor + 1, n);
+    }
+    ui_color(C_CYAN, true);
+    ui_field(rows - 2, 1, cols - 2, "A Open drive  HOME System menu");
+    if (status_msg[0]) {
+        ui_color(status_color, true);
+        ui_field(rows - 3, 1, cols - 2, "%s", status_msg);
+    }
+    ui_reset();
+}
+
+/* ---------------------------------------------------------------- viewers */
+
+static void hexview(const char *path)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) {
+        ui_message("ERROR", C_RED, "Cannot open the file for reading.");
+        return;
+    }
+    int cols = ui_cols(), rows = ui_rows();
+    int L = rows - 5;
+    int per = 16;
+    u8 *buf = memalign(32, (size_t)L * per + 32);
+    u64 off = 0;
+    bool redraw = true;
+    int got = 0;
+
+    for (;;) {
+        if (redraw) {
+            vfs_seek(&f, off);
+            got = vfs_read(&f, buf, L * per);
+            if (got < 0) got = 0;
+            ui_clear();
+            ui_bg(C_BLUE);
+            ui_color(C_WHITE, true);
+            ui_field(0, 0, cols - 1, " HEX  %s", vfs_basename(path));
+            ui_reset();
+            ui_color(C_WHITE, false);
+            ui_fill(1, 0, cols - 1, '-');
+            for (int r = 0; r < L; r++) {
+                int base = r * per;
+                if (base >= got) break;
+                ui_goto(2 + r, 1);
+                ui_color(C_CYAN, true);
+                printf("%08X ", (unsigned)(off + base));
+                ui_color(C_WHITE, false);
+                for (int c = 0; c < per; c++) {
+                    if (base + c < got) printf("%02X ", buf[base + c]);
+                    else printf("   ");
+                }
+                ui_color(C_YELLOW, false);
+                for (int c = 0; c < per && base + c < got; c++) {
+                    u8 b = buf[base + c];
+                    putchar(b >= 32 && b < 127 ? b : '.');
+                }
+            }
+            ui_reset();
+            char tsz[24];
+            ui_fmt_size(tsz, sizeof(tsz), f.size);
+            ui_color(C_CYAN, true);
+            ui_field(rows - 3, 1, cols - 2, "Offset %08X / %s", (unsigned)off, tsz);
+            ui_field(rows - 2, 1, cols - 2, "U/D Line  L/R Page  +/- x16 pages  B Close");
+            ui_reset();
+            redraw = false;
+        }
+        u32 p = input_pressed();
+        u64 page = (u64)L * per;
+        u64 last = f.size > page ? ((f.size - 1) / per * per) - (page - per) : 0;
+        if (f.size <= page) last = 0;
+        u64 o = off;
+        if (p & WPAD_BUTTON_DOWN) o += per;
+        if (p & WPAD_BUTTON_UP)   o = o >= per ? o - per : 0;
+        if (p & WPAD_BUTTON_RIGHT) o += page;
+        if (p & WPAD_BUTTON_LEFT)  o = o >= page ? o - page : 0;
+        if (p & WPAD_BUTTON_PLUS)  o += page * 16;
+        if (p & WPAD_BUTTON_MINUS) o = o >= page * 16 ? o - page * 16 : 0;
+        if (o > last) o = last;
+        if (o != off) { off = o; redraw = true; }
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME | WPAD_BUTTON_A))
+            break;
+    }
+    free(buf);
+    vfs_close(&f);
+}
+
+static void show_info(char **paths, int n)
+{
+    u64 bytes = 0;
+    u32 files = 0, dirs = 0;
+    for (int i = 0; i < n; i++)
+        ops_tree_info(paths[i], &bytes, &files, &dirs);
+    char sz[32], msg[512];
+    ui_fmt_size(sz, sizeof(sz), bytes);
+    if (n == 1)
+        snprintf(msg, sizeof(msg), "%s\n\n%u file(s), %u folder(s)\nTotal: %s (%llu bytes)",
+                 paths[0], (unsigned)files, (unsigned)dirs, sz, (unsigned long long)bytes);
+    else
+        snprintf(msg, sizeof(msg), "%d items selected\n\n%u file(s), %u folder(s)\nTotal: %s (%llu bytes)",
+                 n, (unsigned)files, (unsigned)dirs, sz, (unsigned long long)bytes);
+    ui_message("INFO", C_CYAN, msg);
+}
+
+static void show_credits(void)
+{
+    ui_message("ABOUT / CREDITS", C_CYAN,
+        "GodModeWii " GMW_VERSION " - a GodMode9-style file manager for Wii and Wii U (vWii).\n"
+        "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
+        "NAND access + IOS patching: FSToolBox (nickasa), the Lupo96 mod, the WiiDatabase FSToolBox-Mod "
+        "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).\n"
+        "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n"
+        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-2.0. See README.");
+}
+
+/* ---------------------------------------------------------------- actions */
+
+static void do_copy_cut(bool cut)
+{
+    int n;
+    char **t = targets(&n);
+    if (!n) return;
+    clip_clear();
+    clip = t;
+    clip_n = n;
+    clip_cut = cut;
+    for (int i = 0; i < nents; i++) marks[i] = false;
+    nmarks = 0;
+    if (cursor == 0) cursor = 0;
+    status(cut ? C_RED : C_GREEN, "%d item(s) in clipboard - open the target and press A on the Paste row", n);
+}
+
+static void do_paste(void)
+{
+    if (!clip_n || !cwd[0]) return;
+    if (vfs_is_readonly(cwd)) {
+        ui_message("READ-ONLY", C_YELLOW, "You can't paste into a read-only virtual drive.");
+        return;
+    }
+    bool ok = ops_paste(clip, clip_n, clip_cut, cwd);
+    if (ok && clip_cut)
+        clip_clear();
+    reload_keep();
+    status_msg[0] = 0;
+}
+
+static void do_delete(void)
+{
+    int n;
+    char **t = targets(&n);
+    if (!n) return;
+    char msg[300];
+    if (n == 1)
+        snprintf(msg, sizeof(msg), "Delete \"%s\"?\n\nThis cannot be undone.", vfs_basename(t[0]));
+    else
+        snprintf(msg, sizeof(msg), "Delete %d items?\n\nThis cannot be undone.", n);
+    if (ui_confirm("DELETE", C_RED, msg)) {
+        ops_delete(t, n);
+        reload_keep();
+    }
+    free_paths(t, n);
+}
+
+static void do_rename(void)
+{
+    int off = clip_n ? 1 : 0;
+    int e = cursor - off;
+    if (e < 0 || e >= nents) return;
+    char old[VFS_PATH_MAX];
+    vfs_join(old, sizeof(old), cwd, ents[e].name);
+    if (!risk_authorize(old, "rename"))
+        return;
+    int dev = vfs_dev_of(cwd);
+    char name[VFS_NAME_MAX];
+    snprintf(name, sizeof(name), "%s", ents[e].name);
+    if (!ui_text_input("RENAME", name, dev == DEV_NAND ? NAND_NAME_MAX : 120))
+        return;
+    char dst[VFS_PATH_MAX];
+    vfs_join(dst, sizeof(dst), cwd, name);
+    if (vfs_exists(dst))
+        ui_message("ERROR", C_RED, "Something with that name already exists.");
+    else if (!vfs_rename(old, dst))
+        ui_message("ERROR", C_RED, "Rename failed.");
+    else
+        status(C_GREEN, "Renamed.");
+    load_dir(cwd, name);
+}
+
+static void do_mkdir(void)
+{
+    if (!risk_authorize(cwd, "create a folder"))
+        return;
+    char name[VFS_NAME_MAX] = "";
+    int dev = vfs_dev_of(cwd);
+    if (!ui_text_input("NEW FOLDER", name, dev == DEV_NAND ? NAND_NAME_MAX : 120))
+        return;
+    char dst[VFS_PATH_MAX];
+    vfs_join(dst, sizeof(dst), cwd, name);
+    if (vfs_exists(dst))
+        ui_message("ERROR", C_RED, "Something with that name already exists.");
+    else if (!vfs_mkdir(dst))
+        ui_message("ERROR", C_RED, "Could not create the folder.");
+    else
+        vfs_update_space(dev);
+    load_dir(cwd, name);
+}
+
+static void select_all(bool all)
+{
+    nmarks = 0;
+    for (int i = 0; i < nents; i++) {
+        marks[i] = all ? true : false;
+        nmarks += marks[i];
+    }
+}
+
+static void invert_marks(void)
+{
+    nmarks = 0;
+    for (int i = 0; i < nents; i++) {
+        marks[i] = !marks[i];
+        nmarks += marks[i];
+    }
+}
+
+enum { A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+
+static void actions_menu(void)
+{
+    int off = clip_n ? 1 : 0;
+    int e = cursor - off;
+    bool on_entry = e >= 0 && e < nents;
+    int dev = vfs_dev_of(cwd);
+    bool nand_locked = dev == DEV_NAND && !risk_unlocked();
+    bool ro = dev >= 0 && vfs_is_virtual(dev);
+
+    const char *items[A_COUNT];
+    bool en[A_COUNT];
+    int code[A_COUNT];
+    int n = 0;
+    char paste_label[48], del_label[48] = "Delete", ren_label[48] = "Rename";
+
+    if (clip_n) {
+        snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here%s", clip_n, nand_locked ? "  (locked)" : "");
+        items[n] = paste_label; en[n] = !nand_locked && !ro; code[n++] = A_PASTE;
+    }
+    items[n] = "Copy";   en[n] = on_entry || nmarks; code[n++] = A_COPY;
+    items[n] = "Cut";    en[n] = (on_entry || nmarks) && !nand_locked && !ro; code[n++] = A_CUT;
+    if (nand_locked) { snprintf(del_label, sizeof(del_label), "Delete  (locked)"); snprintf(ren_label, sizeof(ren_label), "Rename  (locked)"); }
+    items[n] = del_label; en[n] = (on_entry || nmarks) && !nand_locked && !ro; code[n++] = A_DELETE;
+    items[n] = ren_label; en[n] = on_entry && !nmarks && !nand_locked && !ro; code[n++] = A_RENAME;
+    items[n] = nand_locked ? "New folder  (locked)" : "New folder"; en[n] = !nand_locked && !ro; code[n++] = A_MKDIR;
+    items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
+    items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;
+    items[n] = "Select all"; en[n] = nents > 0; code[n++] = A_ALL;
+    items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
+    items[n] = "Invert selection"; en[n] = nents > 0; code[n++] = A_INVERT;
+    items[n] = "Refresh"; en[n] = true; code[n++] = A_REFRESH;
+
+    int r = ui_menu("ACTIONS", items, en, n, 0);
+    if (r < 0)
+        return;
+    if (!en[r]) {
+        if (ro)
+            ui_message("READ-ONLY", C_YELLOW, "This is a read-only virtual drive. Copy its files to the SD card or a USB drive instead.");
+        else if (nand_locked)
+            ui_message("LOCKED", C_YELLOW, "Modifying the NAND is locked.\n\nOpen the HOME menu and choose \"Unlock risky options\" to enter the Konami code.");
+        return;
+    }
+    int t; char **tp;
+    switch (code[r]) {
+    case A_PASTE:   do_paste(); break;
+    case A_COPY:    do_copy_cut(false); break;
+    case A_CUT:     do_copy_cut(true); break;
+    case A_DELETE:  do_delete(); break;
+    case A_RENAME:  do_rename(); break;
+    case A_MKDIR:   do_mkdir(); break;
+    case A_INFO:
+        tp = targets(&t);
+        if (t) { show_info(tp, t); free_paths(tp, t); }
+        break;
+    case A_HEX:
+        tp = targets(&t);
+        if (t) { hexview(tp[0]); free_paths(tp, t); }
+        break;
+    case A_ALL:     select_all(true); break;
+    case A_NONE:    select_all(false); break;
+    case A_INVERT:  invert_marks(); break;
+    case A_REFRESH: vfs_update_space(dev); reload_keep(); break;
+    }
+}
+
+/* Returns true if the user wants to leave the program. */
+static bool system_menu(void)
+{
+    for (;;) {
+        const char *items[] = {
+            risk_unlocked() ? "Lock risky options" : "Unlock risky options (Konami code)",
+            "Remount drives (SD / Gecko / USB)",
+            "About / credits",
+            "Exit to loader (Homebrew Channel)",
+            "Exit to Wii Menu",
+            "Power off",
+        };
+        int r = ui_menu("SYSTEM", items, NULL, 6, 0);
+        switch (r) {
+        case 0:
+            if (risk_unlocked()) { risk_lock(); status(C_GREEN, "Risky options locked."); }
+            else if (risk_unlock_flow()) status(C_RED, "RISKY MODE ON - be careful.");
+            return false;
+        case 1: {
+            ui_splash("Looking for drives...");
+            vfs_remount();
+            clip_clear();
+            free_dir();
+            cwd[0] = '\0';
+            status(C_GREEN, "Drives re-scanned.");
+            return false;
+        }
+        case 2: show_credits(); return false;
+        case 3: exit_req = EXIT_LOADER; return true;
+        case 4: exit_req = EXIT_MENU; return true;
+        case 5: exit_req = EXIT_POWEROFF; return true;
+        default: return false;
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- main loop */
+
+static void open_drive(int dev)
+{
+    vfs_dev *d = &g_devs[dev];
+    if (dev == DEV_DISC) {          /* discs come and go: re-check on every visit */
+        ui_splash("Reading disc...");
+        virt_refresh(DEV_DISC);
+    }
+    if (!d->mounted) {
+        char why[160];
+        snprintf(why, sizeof(why), "%s%s%s", d->name, d->note[0] ? ": " : " is not available.", d->note);
+        if (!d->note[0])
+            snprintf(why, sizeof(why), "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
+        ui_message("NOT AVAILABLE", C_YELLOW, why);
+        return;
+    }
+    if (0) {
+        ui_message("NOT AVAILABLE", C_YELLOW, "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
+        return;
+    }
+    if (dev == DEV_NAND && !nand_warned) {
+        nand_warned = true;
+        if (!g_nand_full)
+            ui_message("NOTE", C_YELLOW, "NAND permissions are not patched (HW_AHBPROT is on), so some protected files may be unreadable. Launch from the Homebrew Channel (IOS58) for full access.");
+    }
+    vfs_update_space(dev);
+    load_dir(d->root, NULL);
+}
+
+int app_run(void)
+{
+    bool dirty = true;
+
+    while (!g_quit_request) {
+        if (dirty) {
+            if (cwd[0]) draw_browser(); else draw_home();
+            dirty = false;
+        }
+        u32 p = input_pressed();
+        if (!p)
+            continue;
+        status_msg[0] = '\0';
+        dirty = true;
+
+        if (p & WPAD_BUTTON_HOME) {
+            if (system_menu())
+                break;
+            continue;
+        }
+
+        if (!cwd[0]) {
+            int devs[DEV_COUNT];
+            int n = home_list(devs);
+            if (p & WPAD_BUTTON_UP)   home_cursor = (home_cursor + n - 1) % n;
+            if (p & WPAD_BUTTON_DOWN) home_cursor = (home_cursor + 1) % n;
+            if (p & WPAD_BUTTON_A)    open_drive(devs[home_cursor]);
+            continue;
+        }
+
+        int off = clip_n ? 1 : 0;
+        int total = nents + off;
+        int L = list_rows();
+
+        if (p & WPAD_BUTTON_UP)    { if (total) cursor = (cursor + total - 1) % total; }
+        if (p & WPAD_BUTTON_DOWN)  { if (total) cursor = (cursor + 1) % total; }
+        if (p & WPAD_BUTTON_LEFT)  { cursor -= L - 1; if (cursor < 0) cursor = 0; }
+        if (p & WPAD_BUTTON_RIGHT) { cursor += L - 1; if (cursor >= total) cursor = total ? total - 1 : 0; }
+
+        if (p & WPAD_BUTTON_B) {
+            char parent[VFS_PATH_MAX];
+            char from[VFS_NAME_MAX];
+            snprintf(from, sizeof(from), "%s", vfs_basename(cwd));
+            if (vfs_parent(cwd, parent, sizeof(parent))) {
+                load_dir(parent, from);
+            } else {
+                free_dir();
+                cwd[0] = '\0';
+            }
+        }
+
+        if (p & WPAD_BUTTON_A) {
+            if (off && cursor == 0) {
+                do_paste();
+            } else if (cursor - off >= 0 && cursor - off < nents) {
+                vfs_entry *en = &ents[cursor - off];
+                if (en->is_dir) {
+                    char path[VFS_PATH_MAX];
+                    if (vfs_join(path, sizeof(path), cwd, en->name))
+                        load_dir(path, NULL);
+                } else {
+                    actions_menu();
+                }
+            }
+        }
+
+        if (p & WPAD_BUTTON_1) {
+            int e = cursor - off;
+            if (e >= 0 && e < nents) {
+                marks[e] = !marks[e];
+                nmarks += marks[e] ? 1 : -1;
+                if (cursor + 1 < total) cursor++;
+            }
+        }
+        if (p & WPAD_BUTTON_2)     actions_menu();
+        if (p & WPAD_BUTTON_PLUS)  do_copy_cut(false);
+        if (p & WPAD_BUTTON_MINUS) {
+            if (vfs_is_readonly(cwd))
+                ui_message("READ-ONLY", C_YELLOW, "Nothing can be cut from a read-only virtual drive. Use + to copy instead.");
+            else if (vfs_dev_of(cwd) == DEV_NAND && !risk_unlocked())
+                ui_message("LOCKED", C_YELLOW, "Cutting from the NAND removes files there, so it is locked.\n\nCopy them instead, or unlock risky options from the HOME menu.");
+            else
+                do_copy_cut(true);
+        }
+    }
+
+    /* Reset / power buttons end up here through the quit flags. */
+    if (g_power_request)
+        return EXIT_POWEROFF;
+    return exit_req;
+}
