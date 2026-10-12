@@ -4,6 +4,15 @@
 #include <ogcsys.h>
 #include <wiiuse/wpad.h>
 #include <wiikeyboard/usbkeyboard.h>
+#ifdef HAVE_WIIDRC
+#include <wiidrc/wiidrc.h>
+#endif
+#ifdef HAVE_WUPC
+#include <wupc/wupc.h>
+#endif
+#ifdef HAVE_SICKSAXIS
+#include <sicksaxis.h>
+#endif
 
 #include "input.h"
 
@@ -27,6 +36,84 @@ static u32 map_classic(u32 buttons)
     if (buttons & WPAD_CLASSIC_BUTTON_LEFT)  out |= WPAD_BUTTON_LEFT;
     if (buttons & WPAD_CLASSIC_BUTTON_RIGHT) out |= WPAD_BUTTON_RIGHT;
     return out;
+}
+
+#ifdef HAVE_WIIDRC
+static u32 map_drc(u32 buttons)
+{
+    u32 out = 0;
+    if (buttons & (WIIDRC_BUTTON_R | WIIDRC_BUTTON_ZR)) out |= WPAD_BUTTON_PLUS;
+    if (buttons & (WIIDRC_BUTTON_L | WIIDRC_BUTTON_ZL)) out |= WPAD_BUTTON_MINUS;
+    if (buttons & WIIDRC_BUTTON_PLUS)  out |= WPAD_BUTTON_PLUS;
+    if (buttons & WIIDRC_BUTTON_MINUS) out |= WPAD_BUTTON_MINUS;
+    if (buttons & WIIDRC_BUTTON_A)     out |= WPAD_BUTTON_A;
+    if (buttons & WIIDRC_BUTTON_B)     out |= WPAD_BUTTON_B;
+    if (buttons & WIIDRC_BUTTON_X)     out |= WPAD_BUTTON_2;
+    if (buttons & WIIDRC_BUTTON_Y)     out |= WPAD_BUTTON_1;
+    if (buttons & WIIDRC_BUTTON_HOME)  out |= WPAD_BUTTON_HOME;
+    if (buttons & WIIDRC_BUTTON_UP)    out |= WPAD_BUTTON_UP;
+    if (buttons & WIIDRC_BUTTON_DOWN)  out |= WPAD_BUTTON_DOWN;
+    if (buttons & WIIDRC_BUTTON_LEFT)  out |= WPAD_BUTTON_LEFT;
+    if (buttons & WIIDRC_BUTTON_RIGHT) out |= WPAD_BUTTON_RIGHT;
+    return out;
+}
+#endif
+
+#ifdef HAVE_SICKSAXIS
+static struct ss_device ds3;
+static int ds3_initialized;
+static u32 ds3_previous;
+
+static u32 poll_ds3(int down)
+{
+    if (!ds3_initialized) return 0;
+    if (!ss_is_connected(&ds3)) {
+        ds3_previous = 0;
+        if (ss_open(&ds3) > 0) ss_start_reading(&ds3);
+        else return 0;
+    }
+    const struct SS_BUTTONS *b = &ds3.pad.buttons;
+    u32 held = 0;
+    if (b->start || b->R1 || b->R2)  held |= WPAD_BUTTON_PLUS;
+    if (b->select || b->L1 || b->L2) held |= WPAD_BUTTON_MINUS;
+    if (b->cross)    held |= WPAD_BUTTON_A;
+    if (b->circle)   held |= WPAD_BUTTON_B;
+    if (b->triangle) held |= WPAD_BUTTON_2;
+    if (b->square)   held |= WPAD_BUTTON_1;
+    if (b->PS)       held |= WPAD_BUTTON_HOME;
+    if (b->up)       held |= WPAD_BUTTON_UP;
+    if (b->down)     held |= WPAD_BUTTON_DOWN;
+    if (b->left)     held |= WPAD_BUTTON_LEFT;
+    if (b->right)    held |= WPAD_BUTTON_RIGHT;
+    u32 pressed = held & ~ds3_previous;
+    ds3_previous = held;
+    return down ? pressed : held;
+}
+#endif
+
+/* Optional controllers (Wii U Pro, Wii U GamePad, SIXAXIS), mapped like the rest.
+ * Compiles to nothing unless built with the matching WITH_* option. */
+static u32 scan_extra(int down)
+{
+    u32 pressed = 0;
+    (void)down;
+#ifdef HAVE_WUPC
+    {
+        u32 b = 0;
+        WUPC_UpdateButtonStats();
+        for (int chan = 0; chan < 4; chan++)
+            b |= down ? WUPC_ButtonsDown(chan) : WUPC_ButtonsHeld(chan);
+        pressed |= map_classic(b);
+    }
+#endif
+#ifdef HAVE_WIIDRC
+    if (WiiDRC_Inited() && WiiDRC_Connected() && WiiDRC_ScanPads())
+        pressed |= map_drc(down ? WiiDRC_ButtonsDown() : WiiDRC_ButtonsHeld());
+#endif
+#ifdef HAVE_SICKSAXIS
+    pressed |= poll_ds3(down);
+#endif
+    return pressed;
 }
 
 /* USB keyboard support */
@@ -82,8 +169,21 @@ static void *kbd_thread(void *userp)
 void input_init(void)
 {
     PAD_Init();
+#ifdef HAVE_WUPC
+    WUPC_Init();
+#endif
     WPAD_Init();
     WPAD_SetDataFormat(WPAD_CHAN_ALL, WPAD_FMT_BTNS);
+#ifdef HAVE_WIIDRC
+    WiiDRC_Init();
+#endif
+#ifdef HAVE_SICKSAXIS
+    USB_Initialize();
+    if (ss_init() >= 0 && ss_initialize(&ds3) >= 0) {
+        ds3_initialized = 1;
+        if (ss_open(&ds3) > 0) ss_start_reading(&ds3);
+    }
+#endif
 
     if (USBKeyboard_Initialize() == 0) {
         kbd_thread_should_run = true;
@@ -93,6 +193,16 @@ void input_init(void)
 
 void input_shutdown(void)
 {
+#ifdef HAVE_SICKSAXIS
+    if (ds3_initialized) {
+        if (ss_is_connected(&ds3)) ss_stop_reading(&ds3);
+        ss_close(&ds3);
+        ds3_initialized = 0;
+    }
+#endif
+#ifdef HAVE_WUPC
+    WUPC_Shutdown();
+#endif
     kbd_thread_should_run = false;
     if (kbd_thread_hndl != LWP_THREAD_NULL) {
         LWP_JoinThread(kbd_thread_hndl, NULL);
@@ -130,6 +240,8 @@ static u32 detect(u8 DownOrHeld, bool wait)
         if (gcpressed & PAD_BUTTON_LEFT)  pressed |= WPAD_BUTTON_LEFT;
         if (gcpressed & PAD_BUTTON_RIGHT) pressed |= WPAD_BUTTON_RIGHT;
     }
+
+    pressed |= scan_extra(down);
 
     /* kbd_buttons is consumed so a key press fires once (edge-triggered). */
     pressed |= kbd_buttons;
@@ -173,6 +285,8 @@ u32 input_pressed(void)
             if (g & PAD_BUTTON_RIGHT) held |= WPAD_BUTTON_RIGHT;
         }
 
+    held |= scan_extra(0);
+
     held &= DPAD;
     if (!held || (down & DPAD)) {
         hold_frames = 0;
@@ -198,5 +312,6 @@ bool input_cancel_held(void)
         for (int chan = 0; chan < 4; chan++)
             if (PAD_ButtonsHeld(chan) & PAD_BUTTON_B)
                 held |= WPAD_BUTTON_B;
+    held |= scan_extra(0);
     return (held & WPAD_BUTTON_B) != 0;
 }

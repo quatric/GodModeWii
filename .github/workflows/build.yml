@@ -21,8 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build controller libraries
+        run: |
+          apt-get update -qq && apt-get install -y -qq python3 git ca-certificates >/dev/null
+          ./scripts/build_controller_portlibs.sh
+
       - name: Build
-        run: make
+        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1
 
       - name: Package for the Homebrew Channel
         run: |

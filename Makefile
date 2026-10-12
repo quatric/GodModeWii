@@ -18,6 +18,32 @@ LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
 LIBDIRS	:=
 
+# Optional controller support (build the libraries first with
+# scripts/build_controller_portlibs.sh):
+#   make WITH_WIIDRC=1     Wii U GamePad (vWii)
+#   make WITH_WUPC=1       Wii U Pro Controller (vWii)
+#   make WITH_SICKSAXIS=1  PS3 SIXAXIS / DualShock 3
+WITH_WIIDRC ?= 0
+WITH_WUPC ?= 0
+WITH_SICKSAXIS ?= 0
+
+ifneq ($(filter 1,$(WITH_WIIDRC) $(WITH_WUPC) $(WITH_SICKSAXIS)),)
+LIBDIRS	+=	$(CURDIR)/portlibs/ppc
+endif
+ifeq ($(WITH_WIIDRC),1)
+CFLAGS	+=	-DHAVE_WIIDRC
+LIBS	:=	-lwiidrc $(LIBS)
+endif
+ifeq ($(WITH_WUPC),1)
+CFLAGS	+=	-DHAVE_WUPC
+LDFLAGS	+=	-Wl,-wrap,wiiuse_accept
+LIBS	:=	-lwupc $(LIBS)
+endif
+ifeq ($(WITH_SICKSAXIS),1)
+CFLAGS	+=	-DHAVE_SICKSAXIS
+LIBS	:=	-lsicksaxis $(LIBS)
+endif
+
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)

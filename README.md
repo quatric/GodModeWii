@@ -33,7 +33,7 @@ the console can see, watch the free space of each one, and (only if you really m
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
 * Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer.
 * Konami-code gate (asked once, at the moment you try something risky) and brick warnings for NAND changes.
-* Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard.
+* Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard; release builds also support the Wii U GamePad, Wii U Pro Controller and PS3 SIXAXIS / DualShock 3 (untested on hardware).
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
 * A built-in **FTP server** (HOME → *FTP server*), a sturdier take on ftpii's — see below.
 * No scripts and no WAD installation, on purpose. It's a handy little tool.
@@ -56,7 +56,8 @@ Copy or cut something, browse to the destination and press **A** on the green `P
 (or use *Paste* in the actions menu).
 
 Classic Controller: ZR / + = **+**, ZL / - = **-**, X = **2**, Y = **1**. GameCube pad: R = **+**, L = **-**, X = **2**, Y = **1**,
-Start = **HOME**. USB keyboard: arrows, Enter = A, Backspace = B, X = 1, Y = 2, C = copy, V = cut, Esc = HOME.
+Start = **HOME**. Wii U GamePad / Pro Controller: like the Classic Controller (R/ZR/+ = **+**, L/ZL/- = **-**, X = **2**, Y = **1**).
+PS3 pad: Start/R1/R2 = **+**, Select/L1/L2 = **-**, Triangle = **2**, Square = **1**, Cross = A, Circle = B, PS = **HOME**. USB keyboard: arrows, Enter = A, Backspace = B, X = 1, Y = 2, C = copy, V = cut, Esc = HOME.
 
 ### Konami code
 
@@ -122,7 +123,16 @@ export DEVKITPPC=$DEVKITPRO/devkitPPC
 make
 ```
 
-The result is `GodModeWii.dol`. GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
+The result is `GodModeWii.dol`.
+
+Optional controller support is off by default. Build the libraries once, then enable what you want:
+
+```sh
+./scripts/build_controller_portlibs.sh        # needs git, python3, network
+make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1
+```
+
+`WITH_WIIDRC` = Wii U GamePad, `WITH_WUPC` = Wii U Pro Controller, `WITH_SICKSAXIS` = PS3 SIXAXIS / DualShock 3. The CI and release builds enable all three. GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
 
 ## Status / honesty section
 
@@ -156,6 +166,7 @@ GodModeWii stands on a lot of other people's work. Thank you!
 * **libruntimeiospatch** by Nano (Christopher Bratusek), with code by Joseph Jordan, damysteryman, DarkMatterCore, megazig
   and FIX94, as shipped in FSToolBox-Mod. GodModeWii adds two tiny single-patch entry points (`IosPatch_ISFS`, `IosPatch_DIReadLimit`).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
+* **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch follow GlowWii's approach.
 * **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
 * **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.
 * **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.
