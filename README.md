@@ -31,7 +31,7 @@ the console can see, watch the free space of each one, and (only if you really m
   | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
-* Multi-select, select all / invert, rename, new folder, folder size / info and a hex viewer.
+* Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer.
 * Konami-code gate (asked once, at the moment you try something risky) and brick warnings for NAND changes.
 * Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard.
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
@@ -47,7 +47,7 @@ the console can see, watch the free space of each one, and (only if you really m
 | **A** | Open folder / actions menu on a file / paste on the green `Paste` row |
 | **B** | Go up one folder (back to the drive list at the top) |
 | **1** | Mark / unmark the item and move down |
-| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, hex viewer, selection tools) |
+| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
 | **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit |

@@ -416,6 +416,138 @@ static void hexview(const char *path)
     vfs_close(&f);
 }
 
+/* Plain text viewer: loads the first MiB, wraps it to the screen width and
+ * scrolls by line. Tabs are expanded; anything that isn't ASCII shows as '?'. */
+#define TEXT_MAX_BYTES (1024 * 1024)
+#define TEXT_MAX_LINES 200000
+
+static void textview(const char *path)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) {
+        ui_message("ERROR", C_RED, "Cannot open the file for reading.");
+        return;
+    }
+    u32 want = f.size < TEXT_MAX_BYTES ? (u32)f.size : TEXT_MAX_BYTES;
+    u8 *buf = memalign(32, want + 32);
+    u32 got = 0;
+    while (buf && got < want) {
+        u32 n = want - got > 32768 ? 32768 : want - got;
+        s32 r = vfs_read(&f, buf + got, n);
+        if (r <= 0)
+            break;
+        got += r;
+    }
+    bool truncated = f.size > got;
+    vfs_close(&f);
+    if (!buf) {
+        ui_message("ERROR", C_RED, "Out of memory.");
+        return;
+    }
+
+    /* Warn before dumping a binary file on the screen. */
+    u32 probe = got < 1024 ? got : 1024, odd = 0;
+    for (u32 i = 0; i < probe; i++)
+        if (buf[i] == 0 || (buf[i] < 32 && buf[i] != '\n' && buf[i] != '\r' && buf[i] != '\t'))
+            odd++;
+    if (probe && odd * 10 > probe &&
+        !ui_confirm("BINARY FILE", C_YELLOW, "This doesn't look like text. Open it as text anyway?\n\nThe hex viewer suits it better.")) {
+        free(buf);
+        return;
+    }
+
+    int cols = ui_cols(), rows = ui_rows();
+    int width = cols - 2;
+    int L = rows - 5;
+
+    u32 cap = 1024, nl = 0;
+    u32 *lines = malloc(cap * sizeof(u32));
+    if (!lines) { free(buf); return; }
+    lines[nl++] = 0;
+    int col = 0;
+    for (u32 i = 0; i < got && nl < TEXT_MAX_LINES; i++) {
+        u8 c = buf[i];
+        if (nl + 2 >= cap) {
+            cap *= 2;
+            u32 *nlines = realloc(lines, cap * sizeof(u32));
+            if (!nlines) break;
+            lines = nlines;
+        }
+        if (c == '\n') {
+            lines[nl++] = i + 1;
+            col = 0;
+        } else if (c != '\r') {
+            int w = c == '\t' ? 4 - (col % 4) : 1;
+            if (col + w > width) {
+                lines[nl++] = i;
+                col = 0;
+                w = c == '\t' ? 4 : 1;
+            }
+            col += w;
+        }
+    }
+    lines[nl] = got;       /* sentinel (cap always leaves room) */
+
+    u32 top = 0;
+    bool redraw = true;
+    char row_text[256];
+    for (;;) {
+        if (redraw) {
+            ui_clear();
+            ui_bg(C_BLUE);
+            ui_color(C_WHITE, true);
+            ui_field(0, 0, cols - 1, " TEXT  %s", vfs_basename(path));
+            ui_reset();
+            ui_color(C_WHITE, false);
+            ui_fill(1, 0, cols - 1, '-');
+            ui_color(C_WHITE, true);
+            for (int r = 0; r < L; r++) {
+                u32 li = top + r;
+                if (li >= nl) break;
+                u32 s0 = lines[li], e0 = (li + 1 < nl) ? lines[li + 1] : got;
+                int k = 0, cc = 0;
+                for (u32 i = s0; i < e0 && k < (int)sizeof(row_text) - 5; i++) {
+                    u8 c = buf[i];
+                    if (c == '\n' || c == '\r') continue;
+                    if (c == '\t') {
+                        int w = 4 - (cc % 4);
+                        while (w-- && k < (int)sizeof(row_text) - 5) { row_text[k++] = ' '; cc++; }
+                    } else {
+                        row_text[k++] = (c >= 32 && c < 127) ? (char)c : (c >= 128 ? '?' : '.');
+                        cc++;
+                    }
+                }
+                row_text[k] = '\0';
+                ui_field(2 + r, 1, width, "%s", row_text);
+            }
+            ui_reset();
+            int pct = nl > 1 ? (int)((u64)(top + 1) * 100 / nl) : 100;
+            char tsz[24];
+            ui_fmt_size(tsz, sizeof(tsz), f.size);
+            ui_color(C_CYAN, true);
+            ui_field(rows - 3, 1, cols - 2, "Line %u / %u  (%d%%)   %s%s", (unsigned)(top + 1), (unsigned)nl, pct, tsz,
+                     truncated ? "  - first 1 MiB shown" : "");
+            ui_field(rows - 2, 1, cols - 2, "U/D Line  L/R Page  +/- x10 pages  B Close");
+            ui_reset();
+            redraw = false;
+        }
+        u32 p = input_pressed();
+        u32 t = top, last = nl > (u32)L ? nl - L : 0;
+        if (p & WPAD_BUTTON_DOWN)  t += 1;
+        if (p & WPAD_BUTTON_UP)    t = t ? t - 1 : 0;
+        if (p & WPAD_BUTTON_RIGHT) t += L - 1;
+        if (p & WPAD_BUTTON_LEFT)  t = t > (u32)(L - 1) ? t - (L - 1) : 0;
+        if (p & WPAD_BUTTON_PLUS)  t += (L - 1) * 10;
+        if (p & WPAD_BUTTON_MINUS) t = t > (u32)((L - 1) * 10) ? t - (L - 1) * 10 : 0;
+        if (t > last) t = last;
+        if (t != top) { top = t; redraw = true; }
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME | WPAD_BUTTON_A))
+            break;
+    }
+    free(lines);
+    free(buf);
+}
+
 static void show_info(char **paths, int n)
 {
     u64 bytes = 0;
@@ -559,7 +691,7 @@ static void invert_marks(void)
     }
 }
 
-enum { A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
 
 static void actions_menu(void)
 {
@@ -586,6 +718,7 @@ static void actions_menu(void)
     items[n] = ren_label; en[n] = on_entry && !nmarks && !ro; code[n++] = A_RENAME;
     items[n] = "New folder"; en[n] = !ro; code[n++] = A_MKDIR;
     items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
+    items[n] = "Text viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_TEXT;
     items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;
     items[n] = "Select all"; en[n] = nents > 0; code[n++] = A_ALL;
     items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
@@ -615,6 +748,10 @@ static void actions_menu(void)
     case A_HEX:
         tp = targets(&t);
         if (t) { hexview(tp[0]); free_paths(tp, t); }
+        break;
+    case A_TEXT:
+        tp = targets(&t);
+        if (t) { textview(tp[0]); free_paths(tp, t); }
         break;
     case A_ALL:     select_all(true); break;
     case A_NONE:    select_all(false); break;
