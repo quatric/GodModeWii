@@ -107,7 +107,7 @@ export DEVKITPPC=$DEVKITPRO/devkitPPC
 make
 ```
 
-The result is `GodModeWii.dol`. CI builds are produced by `.github/workflows/build.yml`.
+The result is `GodModeWii.dol`. GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
 
 ## Status / honesty section
 
