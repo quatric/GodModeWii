@@ -25,6 +25,7 @@ typedef struct {
     u8 *work;
     save_t *saves;
     int count;
+    s32 mem, sect;
 } slot_t;
 
 static slot_t slots[SLOTS];
@@ -119,6 +120,34 @@ static bool load_saves(int dev, u32 *used)
     return true;
 }
 
+/* Re-reads the directory and the space figures of a mounted card. */
+static bool reload(int dev)
+{
+    int chn = chan_of(dev);
+    slot_t *s = &slots[chn];
+    free(s->saves);
+    s->saves = NULL;
+    s->count = 0;
+    u32 used = 0;
+    if (!load_saves(dev, &used))
+        return false;
+
+    u32 sector = 0;
+    if (CARD_GetSectorSize(chn, &sector) != CARD_ERROR_READY || !sector)
+        sector = (u32)s->sect ? (u32)s->sect : 8192;
+    vfs_dev *d = &g_devs[dev];
+    /* 5 blocks hold the card's own directory / allocation tables */
+    u64 total = (u64)s->mem * 131072;
+    d->space_known = false;
+    if (total > 5ull * sector) {
+        d->total = total - 5ull * sector;
+        d->free = d->total > used ? d->total - used : 0;
+        d->space_known = true;
+    }
+    set_note(dev, "%d save%s", s->count, s->count == 1 ? "" : "s");
+    return true;
+}
+
 void mcard_refresh(int dev)
 {
     int chn = chan_of(dev);
@@ -151,22 +180,10 @@ void mcard_refresh(int dev)
     if (r < 0 && r != CARD_ERROR_ENCODING) { set_note(dev, "mount failed (%d)", (int)r); return; }
     s->mounted = true;
 
-    u32 used = 0;
-    if (!load_saves(dev, &used)) { set_note(dev, "out of memory"); return; }
-
-    u32 sector = 0;
-    if (CARD_GetSectorSize(chn, &sector) != CARD_ERROR_READY || !sector)
-        sector = (u32)sect ? (u32)sect : 8192;
-    vfs_dev *d = &g_devs[dev];
-    d->mounted = true;
-    /* 5 blocks hold the card's own directory / allocation tables */
-    u64 total = (u64)mem * 131072;
-    if (total > 5ull * sector) {
-        d->total = total - 5ull * sector;
-        d->free = d->total > used ? d->total - used : 0;
-        d->space_known = true;
-    }
-    set_note(dev, "%d save%s, read-only", s->count, s->count == 1 ? "" : "s");
+    s->mem = mem;
+    s->sect = sect;
+    g_devs[dev].mounted = true;
+    if (!reload(dev)) { forget(dev); set_note(dev, "out of memory"); }
 }
 
 static save_t *find(int dev, const char *rel)
@@ -267,6 +284,154 @@ s32 mcard_read(vfs_file *f, void *buf, u32 len)
     }
     f->pos += done;
     return (s32)done;
+}
+
+/* ---------------------------------------------------------------- restore */
+
+typedef struct {
+    u8 hdr[GCI_HEADER];
+    u32 hdr_have;
+    u8 *data;            /* 32-byte aligned, the save's blocks */
+    u32 data_len;        /* length from the header, a multiple of the sector size */
+    u32 data_have;
+    bool committed;
+    bool failed;
+} wctx_t;
+
+static u32 be16(const u8 *p) { return ((u32)p[0] << 8) | p[1]; }
+
+static bool werr(wctx_t *w, const char *msg)
+{
+    g_write_err = msg;
+    w->failed = true;
+    return false;
+}
+
+static const char *card_err(s32 r)
+{
+    switch (r) {
+    case CARD_ERROR_EXIST:    return "This save is already on the card (delete it first)";
+    case CARD_ERROR_INSSPACE: return "Not enough free blocks on the card";
+    case CARD_ERROR_NOENT:    return "No free directory entry on the card";
+    case CARD_ERROR_NOCARD:   return "Memory card removed";
+    case CARD_ERROR_NOPERM:   return "Card refused the write";
+    default:                  return "Memory card write failed";
+    }
+}
+
+bool mcard_open_write(vfs_file *f, int dev)
+{
+    slot_t *s = &slots[chan_of(dev)];
+    if (!s->mounted) return false;
+    wctx_t *w = calloc(1, sizeof(*w));
+    if (!w) return false;
+    f->ctx = w;
+    f->pos = 0;
+    return true;
+}
+
+/* All bytes are here: validate the header and write the save to the card. */
+static bool commit(int dev, wctx_t *w)
+{
+    int chn = chan_of(dev);
+    const u8 *h = w->hdr;
+    card_dir d;
+    memset(&d, 0, sizeof(d));
+    d.chn = chn;
+    d.filelen = w->data_len;
+    d.permissions = h[0x34];
+    memcpy(d.filename, h + 8, CARD_FILENAMELEN);
+    memcpy(d.gamecode, h, 4);
+    memcpy(d.company, h + 4, 2);
+
+    card_file cf;
+    s32 r = CARD_CreateEntry(chn, &d, &cf);
+    if (r != CARD_ERROR_READY) return werr(w, card_err(r));
+
+    for (u32 off = 0; off < w->data_len; off += CHUNK) {
+        u32 n = w->data_len - off;
+        if (n > CHUNK) n = CHUNK;
+        r = CARD_Write(&cf, w->data + off, n, off);
+        if (r != CARD_ERROR_READY) break;
+    }
+    if (r == CARD_ERROR_READY) {
+        card_direntry ent;
+        memcpy(&ent, h, sizeof(ent));
+        r = CARD_SetStatusEx(chn, cf.filenum, &ent);   /* icon, banner, comment, permissions */
+    }
+    CARD_Close(&cf);
+    if (r != CARD_ERROR_READY) {
+        CARD_DeleteEntry(chn, &d);                      /* no half-restored saves */
+        reload(dev);
+        return werr(w, card_err(r));
+    }
+    w->committed = true;
+    reload(dev);
+    return true;
+}
+
+s32 mcard_write(vfs_file *f, const void *buf, u32 len)
+{
+    wctx_t *w = f->ctx;
+    if (!w || w->failed) return -1;
+    const u8 *src = buf;
+    u32 left = len;
+
+    while (left) {
+        if (w->hdr_have < GCI_HEADER) {
+            u32 n = GCI_HEADER - w->hdr_have;
+            if (n > left) n = left;
+            memcpy(w->hdr + w->hdr_have, src, n);
+            w->hdr_have += n; src += n; left -= n;
+            if (w->hdr_have == GCI_HEADER) {
+                u32 blocks = be16(w->hdr + 0x38);
+                u32 sector = 0;
+                CARD_GetSectorSize(chan_of(f->dev), &sector);
+                if (!sector) sector = 8192;
+                if (w->hdr[6] != 0xFF || !w->hdr[8] || !blocks || blocks > 2043)
+                    { werr(w, "Not a valid .gci save"); return -1; }
+                w->data_len = blocks * sector;
+                w->data = memalign(32, w->data_len);
+                if (!w->data) { werr(w, "Not enough memory for this save"); return -1; }
+            }
+            continue;
+        }
+        u32 n = w->data_len - w->data_have;
+        if (n == 0) { werr(w, "File is larger than its .gci header says"); return -1; }
+        if (n > left) n = left;
+        memcpy(w->data + w->data_have, src, n);
+        w->data_have += n; src += n; left -= n;
+        if (w->data_have == w->data_len && !commit(f->dev, w))
+            return -1;
+    }
+    f->pos += len;
+    return (s32)len;
+}
+
+bool mcard_close_write(vfs_file *f)
+{
+    wctx_t *w = f->ctx;
+    bool ok = true;
+    if (w) {
+        if (!w->committed && !w->failed) {
+            g_write_err = "Incomplete .gci file, nothing was written";
+            ok = false;
+        }
+        free(w->data);
+        free(w);
+    }
+    f->ctx = NULL;
+    return ok && !(w && w->failed);
+}
+
+bool mcard_delete(int dev, const char *name)
+{
+    save_t *v = find(dev, name);
+    if (!v) return false;
+    card_dir d = v->dir;
+    if (CARD_DeleteEntry(chan_of(dev), &d) != CARD_ERROR_READY)
+        return false;
+    return reload(dev);
 }
 
 void mcard_shutdown(void)

@@ -240,7 +240,15 @@ static void draw_browser(void)
     ui_reset();
 
     int dev = vfs_dev_of(cwd);
-    if (dev >= 0 && vfs_is_virtual(dev)) {
+    if (dev >= 0 && vfs_is_card(dev)) {
+        ui_reset();
+        ui_field(rows - 4, 0, cols - 1, "");
+        ui_color(C_CYAN, true);
+        ui_field(rows - 4, 1, 6, "%s", g_devs[dev].tag);
+        ui_color(C_WHITE, false);
+        ui_field(rows - 4, 8, cols - 10, "memory card - paste .gci saves here to restore them");
+        ui_reset();
+    } else if (dev >= 0 && vfs_is_virtual(dev)) {
         ui_reset();
         ui_field(rows - 4, 0, cols - 1, "");
         ui_color(C_CYAN, true);
@@ -699,7 +707,8 @@ static void actions_menu(void)
     int e = cursor - off;
     bool on_entry = e >= 0 && e < nents;
     int dev = vfs_dev_of(cwd);
-    bool ro = dev >= 0 && vfs_is_virtual(dev);
+    bool ro = dev >= 0 && vfs_is_virtual(dev) && !vfs_is_card(dev);
+    bool card = dev >= 0 && vfs_is_card(dev);
 
     const char *items[A_COUNT];
     bool en[A_COUNT];
@@ -715,8 +724,8 @@ static void actions_menu(void)
     items[n] = "Copy";   en[n] = on_entry || nmarks; code[n++] = A_COPY;
     items[n] = "Cut";    en[n] = (on_entry || nmarks) && !ro; code[n++] = A_CUT;
     items[n] = del_label; en[n] = (on_entry || nmarks) && !ro; code[n++] = A_DELETE;
-    items[n] = ren_label; en[n] = on_entry && !nmarks && !ro; code[n++] = A_RENAME;
-    items[n] = "New folder"; en[n] = !ro; code[n++] = A_MKDIR;
+    items[n] = ren_label; en[n] = on_entry && !nmarks && !ro && !card; code[n++] = A_RENAME;
+    items[n] = "New folder"; en[n] = !ro && !card; code[n++] = A_MKDIR;
     items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
     items[n] = "Text viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_TEXT;
     items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;

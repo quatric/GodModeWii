@@ -24,11 +24,11 @@ the console can see, watch the free space of each one, and (only if you really m
   | --- | --- | --- |
   | SD card | `sd:/` | read / write |
   | SD Gecko (slot A / B) | `gca:/`, `gcb:/` | original Wii only |
-  | USB drives | `usb1:/` ... `usb4:/` | every USB port, every drive, every LUN of card readers |
+  | USB drives | `usb1:/` ... `usb8:/` | every USB port and every drive behind a hub, every LUN of card readers (up to 8 volumes) |
   | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
   | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
   | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out |
-  | GameCube memory cards | `mca:/`, `mcb:/` | read-only: every save as a `.gci` file (GCMM-compatible), original Wii only |
+  | GameCube memory cards | `mca:/`, `mcb:/` | every save as a `.gci` file (GCMM-compatible): copy them out to back up, paste `.gci` files in to restore, delete saves. Original Wii only |
   | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
@@ -148,8 +148,10 @@ hardware** and may need fixes — please report what you see:
 Known limitations: only FAT / FAT32 is supported (libfat), and only the first FAT partition of a drive is mounted.
 Files over 4 GiB can't be written to FAT.
 Memory cards: each save shows as `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry followed by the save data, the
-format GCMM and Dolphin import and export). Copy them to SD or USB for a backup; restoring to a card is not supported, the drives are read-only.
-Cards are re-read every time you open the drive, or with *Remount drives*.
+format GCMM and Dolphin import and export). Copy them to SD or USB for a backup. To restore, copy `.gci` files onto the card (only `.gci`, not `.gcs` / `.sav`): you are asked to
+confirm first, a save that is already on the card is never replaced (delete it first), and a file is only written once it is complete and valid.
+The save's identity comes from the `.gci` header, not the file name. Renaming and folders don't exist on cards, and the FTP server keeps them read-only.
+Don't pull the card out while it is writing. Cards are re-read every time you open the drive, or with *Remount drives*.
 
 The disc drive shows files only (no raw image dumping, by design) and only the Wii data partition, not the update partition.
 

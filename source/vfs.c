@@ -16,6 +16,7 @@
 
 #include "vfs.h"
 #include "virt.h"
+#include "mcard.h"
 
 vfs_dev g_devs[DEV_COUNT] = {
     { "sd:",   "sd:/",   "SD Card",           "SD",   true,  false, false, 0, 0 },
@@ -25,6 +26,10 @@ vfs_dev g_devs[DEV_COUNT] = {
     { "usb2:", "usb2:/", "USB Drive 2",       "USB2", false, false, false, 0, 0 },
     { "usb3:", "usb3:/", "USB Drive 3",       "USB3", false, false, false, 0, 0 },
     { "usb4:", "usb4:/", "USB Drive 4",       "USB4", false, false, false, 0, 0 },
+    { "usb5:", "usb5:/", "USB Drive 5",       "USB5", false, false, false, 0, 0 },
+    { "usb6:", "usb6:/", "USB Drive 6",       "USB6", false, false, false, 0, 0 },
+    { "usb7:", "usb7:/", "USB Drive 7",       "USB7", false, false, false, 0, 0 },
+    { "usb8:", "usb8:/", "USB Drive 8",       "USB8", false, false, false, 0, 0 },
     { "nand:", "nand:/", "Wii NAND",          "NAND", true,  false, false, 0, 0 },
     { "seeprom:", "seeprom:/", "SEEPROM",     "SEEP", true,  false, false, 0, 0 },
     { "disc:", "disc:/", "Disc Drive",        "DISC", true,  false, false, 0, 0 },
@@ -34,6 +39,7 @@ vfs_dev g_devs[DEV_COUNT] = {
 };
 
 bool g_is_vwii, g_is_dolphin, g_nand_full;
+const char *g_write_err;
 static bool nand_ready;
 
 /* ---------------------------------------------------------------- paths */
@@ -51,10 +57,15 @@ bool vfs_is_virtual(int dev)
     return dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_MCA || dev == DEV_MCB || dev == DEV_KEYS;
 }
 
+bool vfs_is_card(int dev)
+{
+    return dev == DEV_MCA || dev == DEV_MCB;
+}
+
 bool vfs_is_readonly(const char *path)
 {
     int d = vfs_dev_of(path);
-    return d >= 0 && vfs_is_virtual(d);
+    return d >= 0 && vfs_is_virtual(d) && !vfs_is_card(d);
 }
 
 /* "seeprom:/name" -> "name" ("" for the root) */
@@ -184,11 +195,12 @@ static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
     static bool us_write_##I(sec_t s, sec_t n, const void *b) { return us_rw(I, s, n, NULL, b); } \
     static bool us_clear_##I(void) { return true; }                               \
     static bool us_shutdown_##I(void) { return true; }
-USB_IFACE(0) USB_IFACE(1) USB_IFACE(2) USB_IFACE(3)
+USB_IFACE(0) USB_IFACE(1) USB_IFACE(2) USB_IFACE(3) USB_IFACE(4) USB_IFACE(5) USB_IFACE(6) USB_IFACE(7)
 
 #define USB_ENTRY(I) { DEVICE_TYPE_WII_USB, FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE | FEATURE_WII_USB, \
     us_startup_##I, us_inserted_##I, us_read_##I, us_write_##I, us_clear_##I, us_shutdown_##I }
-static const DISC_INTERFACE usb_iface[USB_SLOTS] = { USB_ENTRY(0), USB_ENTRY(1), USB_ENTRY(2), USB_ENTRY(3) };
+static const DISC_INTERFACE usb_iface[USB_SLOTS] = { USB_ENTRY(0), USB_ENTRY(1), USB_ENTRY(2), USB_ENTRY(3),
+                                                      USB_ENTRY(4), USB_ENTRY(5), USB_ENTRY(6), USB_ENTRY(7) };
 
 static void usb_close_all(void)
 {
@@ -202,17 +214,25 @@ static void usb_close_all(void)
     uhandles_open = 0;
 }
 
-static void usb_scan_once(void)
+/* Returns how many volumes (drive / LUN) were found. Devices behind a hub are
+ * flattened by IOS, so they show up in the same device list; the hub itself is
+ * not mass storage and is skipped by the class filter. */
+static int usb_scan_once(void)
 {
-    static usb_device_entry list[16];
+    static usb_device_entry list[32];
     u8 cnt = 0;
     if (!usb_inited) {
         if (USBStorage_Initialize() < 0)
-            return;
+            return 0;
         usb_inited = true;
     }
-    if (USB_GetDeviceList(list, 16, USB_CLASS_MASS_STORAGE, &cnt) < 0)
-        return;
+    for (int i = 0; i < USB_SLOTS; i++)
+        uslot[i].ok = false;
+    for (int i = 0; i < uhandles_open; i++)
+        USBStorage_Close(&uhandle[i]);
+    uhandles_open = 0;
+    if (USB_GetDeviceList(list, 32, USB_CLASS_MASS_STORAGE, &cnt) < 0)
+        return 0;
 
     int slot = 0;
     for (int d = 0; d < cnt && slot < USB_SLOTS && uhandles_open < USB_SLOTS; d++) {
@@ -220,7 +240,7 @@ static void usb_scan_once(void)
         memset(h, 0, sizeof(*h));
         if (USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid) < 0)
             continue;
-        uhandles_open++;
+        int first = slot;
         int luns = (int)h->max_lun + 1;
         if (luns < 1) luns = 1;
         for (int l = 0; l < luns && slot < USB_SLOTS; l++) {
@@ -235,16 +255,26 @@ static void usb_scan_once(void)
             uslot[slot].ok = true;
             slot++;
         }
+        if (slot == first)
+            USBStorage_Close(h);            /* nothing usable on it */
+        else
+            uhandles_open++;
     }
+    return slot;
 }
 
+/* Drives behind a hub spin up and enumerate one after another, so keep
+ * scanning until the number of volumes stops changing. */
 static void mount_usb(int tries)
 {
+    int last = -1, stable = 0;
     for (int i = 0; i < tries; i++) {
-        usb_scan_once();
-        if (uslot[0].ok)
+        int n = usb_scan_once();
+        stable = (n == last) ? stable + 1 : 0;
+        last = n;
+        if (n > 0 && stable >= 1)
             break;
-        usleep(250000);
+        usleep(400000);
     }
     for (int i = 0; i < USB_SLOTS; i++) {
         if (!uslot[i].ok)
@@ -276,10 +306,11 @@ static void unmount_fat(void)
     fatUnmount("sd");
     fatUnmount("gca");
     fatUnmount("gcb");
-    fatUnmount("usb1");
-    fatUnmount("usb2");
-    fatUnmount("usb3");
-    fatUnmount("usb4");
+    for (int i = 0; i < USB_SLOTS; i++) {
+        char name[8];
+        snprintf(name, sizeof(name), "usb%d", i + 1);
+        fatUnmount(name);
+    }
     for (int i = 0; i < DEV_NAND; i++)
         g_devs[i].mounted = false;
 }
@@ -571,6 +602,8 @@ bool vfs_mkdir(const char *path)
 bool vfs_remove(const char *path, bool is_dir)
 {
     int dev = vfs_dev_of(path);
+    if (vfs_is_card(dev))
+        return !is_dir && mcard_delete(dev, virt_name(path));
     if (dev < 0 || vfs_is_virtual(dev))
         return false;
     if (dev == DEV_NAND)
@@ -631,6 +664,9 @@ bool vfs_open_write(vfs_file *f, const char *path)
     memset(f, 0, sizeof(*f));
     f->dev = vfs_dev_of(path);
     f->fd = -1;
+    g_write_err = NULL;
+    if (vfs_is_card(f->dev))
+        return mcard_open_write(f, f->dev);
     if (f->dev < 0 || vfs_is_virtual(f->dev))
         return false;
     if (f->dev == DEV_NAND) {
@@ -659,6 +695,8 @@ s32 vfs_read(vfs_file *f, void *buf, u32 len)
 
 s32 vfs_write(vfs_file *f, const void *buf, u32 len)
 {
+    if (vfs_is_card(f->dev))
+        return mcard_write(f, buf, len);
     if (vfs_is_virtual(f->dev))
         return -1;
     if (f->dev == DEV_NAND)
@@ -676,13 +714,15 @@ bool vfs_seek(vfs_file *f, u64 off)
     return fseek(f->fp, (long)off, SEEK_SET) == 0;
 }
 
-void vfs_close(vfs_file *f)
+bool vfs_close_checked(vfs_file *f)
 {
-    if (vfs_is_virtual(f->dev)) {
+    bool ok = true;
+    if (vfs_is_card(f->dev) && f->ctx) {
+        ok = mcard_close_write(f);
+    } else if (vfs_is_virtual(f->dev)) {
         virt_close(f);
-        return;
-    }
-    if (f->dev == DEV_NAND) {
+        return true;
+    } else if (f->dev == DEV_NAND) {
         if (f->fd >= 0)
             ISFS_Close(f->fd);
     } else if (f->fp) {
@@ -691,4 +731,10 @@ void vfs_close(vfs_file *f)
     }
     f->fp = NULL;
     f->fd = -1;
+    return ok;
+}
+
+void vfs_close(vfs_file *f)
+{
+    vfs_close_checked(f);
 }

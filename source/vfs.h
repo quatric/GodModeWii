@@ -8,7 +8,7 @@
 /* One flat namespace for every storage device:
  *   sd:/path      SD card              (libfat)
  *   gca:/ gcb:/   SD Gecko, slot A / B (libfat)
- *   usb1:/..usb4:/ USB mass storage    (libfat, one per drive / LUN)
+ *   usb1:/..usb8:/ USB mass storage    (libfat, one per drive / LUN)
  *   nand:/path    Wii NAND             (ISFS, 12 char names, risky to modify)
  *   seeprom:/     SEEPROM dump         (virtual, read-only)
  *   disc:/        files on the disc    (virtual, read-only)
@@ -17,9 +17,9 @@
  *   keys:/        console keys        (virtual, read-only, xyzzy-mod layout)
  */
 
-#define USB_SLOTS 4
+#define USB_SLOTS 8
 
-enum { DEV_SD, DEV_GCA, DEV_GCB, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_NAND, DEV_SEEPROM, DEV_DISC, DEV_MCA, DEV_MCB, DEV_KEYS, DEV_COUNT };
+enum { DEV_SD, DEV_GCA, DEV_GCB, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_USB4, DEV_USB5, DEV_USB6, DEV_USB7, DEV_NAND, DEV_SEEPROM, DEV_DISC, DEV_MCA, DEV_MCB, DEV_KEYS, DEV_COUNT };
 
 #define VFS_PATH_MAX 256
 #define VFS_NAME_MAX 256
@@ -39,6 +39,7 @@ typedef struct {
     int vkind;     /* virtual drives */
     u64 pos;
     u64 base;      /* start of the file inside the virtual drive */
+    void *ctx;     /* memory card writes */
 } vfs_file;
 
 typedef struct {
@@ -58,6 +59,7 @@ extern vfs_dev g_devs[DEV_COUNT];
 extern bool g_is_vwii;      /* running inside the Wii U's vWii */
 extern bool g_is_dolphin;
 extern bool g_nand_full;    /* ISFS permission patch applied (AHBPROT off) */
+extern const char *g_write_err; /* why the last write / close failed, if a backend says so */
 
 void vfs_init(void);
 void vfs_shutdown(void);
@@ -65,7 +67,8 @@ void vfs_remount(void);                 /* re-detect SD / USB, refresh space */
 void vfs_update_space(int dev);
 
 int  vfs_dev_of(const char *path);      /* -1 if unknown */
-bool vfs_is_virtual(int dev);           /* SEEPROM / disc: read-only */
+bool vfs_is_virtual(int dev);           /* not FAT / NAND: SEEPROM, disc, memory cards, keys */
+bool vfs_is_card(int dev);              /* GameCube memory card: .gci saves can be added / deleted */
 bool vfs_is_readonly(const char *path);
 const char *vfs_dev_root(int dev);      /* "sd:/" */
 bool vfs_is_root(const char *path);     /* "sd:/" */
@@ -89,6 +92,7 @@ s32  vfs_read(vfs_file *f, void *buf, u32 len);       /* buf 32-byte aligned */
 s32  vfs_write(vfs_file *f, const void *buf, u32 len);
 bool vfs_seek(vfs_file *f, u64 off);
 void vfs_close(vfs_file *f);
+bool vfs_close_checked(vfs_file *f);                  /* false if a card save was left incomplete */
 void vfs_clone_attrs(const char *from, const char *to); /* NAND only, best effort */
 
 #endif

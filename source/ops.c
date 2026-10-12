@@ -200,7 +200,7 @@ static bool copy_file(const char *src, const char *dst)
         if (r == 0)
             break;
         if (vfs_write(&out, X.buf, r) != r) {
-            fail("Write error (disk full?)", dst);
+            fail(g_write_err ? g_write_err : "Write error (disk full?)", dst);
             ok = false;
             break;
         }
@@ -212,7 +212,10 @@ static bool copy_file(const char *src, const char *dst)
         }
     }
     vfs_close(&in);
-    vfs_close(&out);
+    if (!vfs_close_checked(&out) && ok) {
+        fail(g_write_err ? g_write_err : "Write error", dst);
+        ok = false;
+    }
 
     if (!ok) {
         vfs_remove(dst, false);         /* never leave half a file behind */
@@ -396,6 +399,12 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
         return false;
     }
     if (!risk_authorize(dst_dir, cut ? "move files into" : "copy files into"))
+        return false;
+    if (vfs_is_card(vfs_dev_of(dst_dir)) &&
+        !ui_confirm("MEMORY CARD", C_YELLOW, "Write these saves to the memory card? Saves already on the card are not replaced. Never remove the card while writing."))
+        return false;
+    if (cut && vfs_is_card(vfs_dev_of(srcs[0])) &&
+        !ui_confirm("MEMORY CARD", C_YELLOW, "Moving takes the saves off the card once they are copied. Continue?"))
         return false;
     if (cut)
         for (int i = 0; i < n; i++)
