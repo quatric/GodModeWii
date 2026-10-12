@@ -53,7 +53,7 @@
 #define IOS_NONBLOCK    0x04
 #define FTP_USER        "godmode"
 
-enum { T_NONE, T_ACCEPT, T_CONNECT, T_SEND_FILE, T_RECV_FILE, T_SEND_LIST };
+enum { T_NONE, T_ACCEPT, T_CONNECT, T_SEND_FILE, T_RECV_FILE, T_SEND_LIST, T_LINGER };
 enum { OP_RETR, OP_STOR, OP_LIST, OP_NLST, OP_MLSD };
 
 typedef struct {
@@ -432,6 +432,15 @@ static int fill_list(sess_t *s)
     return s->blen;
 }
 
+#define LINGER_MS 3000
+
+static void start_linger(sess_t *s, u64 t)
+{
+    net_shutdown(s->ds, 1);         /* send FIN after the data, keep reading */
+    s->t_last = t;
+    s->ts = T_LINGER;
+}
+
 /* Returns true if it made progress. */
 static bool pump_transfer(sess_t *s)
 {
@@ -480,11 +489,11 @@ static bool pump_transfer(sess_t *s)
             if (s->ts == T_SEND_FILE) {
                 s32 n = vfs_read(&s->f, s->buf, IO_CHUNK);
                 if (n < 0) { transfer_end(s, false, "451 Read error"); return true; }
-                if (n == 0) { transfer_end(s, true, NULL); return true; }
+                if (n == 0) { start_linger(s, t); return true; }
                 s->blen = n;
                 s->bpos = 0;
             } else if (fill_list(s) == 0) {
-                transfer_end(s, true, NULL);
+                start_linger(s, t);
                 return true;
             }
         }
@@ -497,6 +506,18 @@ static bool pump_transfer(sess_t *s)
         }
         if (n == 0 || !would_block(n)) { transfer_end(s, false, "426 Connection closed"); return true; }
         if (t - s->t_last > DATA_IDLE_MS) transfer_end(s, false, "426 Data connection timed out");
+        return false;
+    }
+    case T_LINGER: {
+        /* Everything is sent and our side is shut down: wait for the client to
+         * read it and close, so the data is never cut off by an early close. */
+        u8 tmp[64];
+        s32 n = net_recv(s->ds, tmp, sizeof(tmp), 0);
+        if (n > 0) return true;
+        if (n == 0 || !would_block(n) || t - s->t_last > LINGER_MS) {
+            transfer_end(s, true, NULL);
+            return true;
+        }
         return false;
     }
     case T_RECV_FILE: {
