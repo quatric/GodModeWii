@@ -297,7 +297,10 @@ static void draw_browser(void)
     ui_reset();
 
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Open  B Back  1 Mark  2 Menu  + Copy  - Cut");
+    if (off && cursor == 0)
+        ui_field(rows - 2, 1, cols - 2, "A Paste  B Back  1 Clear clipboard  2 Menu  + Copy  - Cut");
+    else
+        ui_field(rows - 2, 1, cols - 2, "A Open  B Back  1 Mark  2 Menu  + Copy  - Cut");
     ui_color(C_WHITE, false);
     ui_field(rows - 1, 1, cols - 2, "HOME System menu    D-Pad L/R Page");
     ui_reset();
@@ -622,6 +625,14 @@ static void do_copy_cut(bool cut)
     status(cut ? C_RED : C_GREEN, "%d item(s) in clipboard - open the target and press A on the Paste row", n);
 }
 
+static void do_clip_clear(void)
+{
+    clip_clear();
+    if (cursor > 0) cursor--;
+    if (scroll > 0) scroll--;
+    status(C_GREEN, "Clipboard cleared.");
+}
+
 static void do_paste(void)
 {
     if (!clip_n || !cwd[0]) return;
@@ -715,7 +726,7 @@ static void invert_marks(void)
     }
 }
 
-enum { A_OPEN, A_PASTE, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
 
 static bool open_archive(const vfs_entry *en)
 {
@@ -748,6 +759,7 @@ static void actions_menu(void)
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
+        items[n] = "Clear clipboard"; en[n] = true; code[n++] = A_CLIP_CLEAR;
     }
     items[n] = "Copy";   en[n] = on_entry || nmarks; code[n++] = A_COPY;
     items[n] = "Cut";    en[n] = (on_entry || nmarks) && !ro; code[n++] = A_CUT;
@@ -774,6 +786,7 @@ static void actions_menu(void)
     switch (code[r]) {
     case A_OPEN:    open_archive(&ents[e]); break;
     case A_PASTE:   do_paste(); break;
+    case A_CLIP_CLEAR: do_clip_clear(); break;
     case A_COPY:    do_copy_cut(false); break;
     case A_CUT:     do_copy_cut(true); break;
     case A_DELETE:  do_delete(); break;
@@ -980,6 +993,8 @@ int app_run(void)
                 marks[e] = !marks[e];
                 nmarks += marks[e] ? 1 : -1;
                 if (cursor + 1 < total) cursor++;
+            } else if (off && cursor == 0) {
+                do_clip_clear();
             }
         }
         if (p & WPAD_BUTTON_2)     actions_menu();

@@ -61,14 +61,15 @@ the console can see, watch the free space of each one, and (only if you really m
 | D-Pad Left / Right | Page up / down |
 | **A** | Open folder or archive / actions menu on any other file / paste on the green `Paste` row |
 | **B** | Go up one folder (back to the drive list at the top) |
-| **1** | Mark / unmark the item and move down |
-| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
+| **1** | Mark / unmark the item and move down / clear the clipboard on the green `Paste` row |
+| **2** | Actions menu (paste, clear clipboard, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
 | **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. **Press HOME again to quit straight back to the Homebrew Channel.** |
 
 Copy or cut something, browse to the destination and press **A** on the green `Paste` row at the top of the list
-(or use *Paste* in the actions menu).
+(or use *Paste* in the actions menu). A copy stays in the clipboard so you can paste it in several places. To empty the
+clipboard without pasting, press **1** on the `Paste` row or pick *Clear clipboard* in the actions menu.
 
 Classic Controller: ZR / + = **+**, ZL / - = **-**, X = **2**, Y = **1**. GameCube pad: R = **+**, L = **-**, X = **2**, Y = **1**,
 Start = **HOME**. Wii U GamePad / Pro Controller: like the Classic Controller (R/ZR/+ = **+**, L/ZL/- = **-**, X = **2**, Y = **1**).
