@@ -112,6 +112,16 @@ It is meant to be harder to break and harder to abuse than the original ftpii:
 * `RMD` only removes empty folders; nothing is deleted recursively over the network.
 * Single-threaded and non-blocking with bounded buffers, command lines, sessions (4) and timeouts, so a stuck client can't hang the console.
 
+### FTP install server
+
+HOME → *FTP install server (archives to SD)* or *(archives to USB)* starts the same server in read/write mode and
+unpacks every **`.zip`, `.7z` or `.rar`** (RAR 1.5 - 5.x, single volume, no password) you upload straight onto the SD card
+or the first USB drive, then deletes the archive. The contents go where they belong: an archive that already holds the
+drive layout (`apps/...`, `wad/...`, `private/...`) is unpacked at the root, a wrapper folder around it is dropped, a single
+program folder (`Foo/boot.dol`) goes to `apps/Foo`, and loose files get a folder named after the archive (`.wad` files go to
+`wad/`). Docs (`.txt`, `.md`...) at the top level of a ready-made layout are skipped. A failed or cancelled install keeps
+the archive; hold **B** to cancel. Big 7z / RAR dictionaries need RAM, so an archive can be refused on low memory.
+
 It speaks plain FTP (no TLS): only use it on a network you trust. Supported commands include `LIST`, `NLST`, `MLSD`, `RETR`
 (with `REST`), `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` / `RNTO`, `SIZE`, `PASV`, `EPSV`, `PORT`.
 
@@ -199,6 +209,7 @@ GodModeWii stands on a lot of other people's work. Thank you!
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` layout (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents) and the IMET / U8 handling.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
+* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer; RAR5 is read by `source/rar5.c`, written from the public format description.
 * **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
 * **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
 * **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.

@@ -37,6 +37,7 @@
 #include "vfs.h"
 #include "arcfs.h"
 #include "risk.h"
+#include "install.h"
 
 #define FTP_PORT        21
 #define FTP_PORT_ALT    2121
@@ -99,6 +100,8 @@ static sess_t S[MAX_SESS];
 static s32 listener = -1;
 static int g_port;
 static bool g_rw;
+static int g_install;                 /* FTP_INSTALL_*: unpack uploaded archives */
+static char g_pend[VFS_PATH_MAX];     /* archive waiting to be installed */
 static char g_pass[10];
 static bool net_ready;
 
@@ -359,8 +362,11 @@ static void transfer_end(sess_t *s, bool ok, const char *err)
     }
 
     if (ok) {
-        reply(s, "226 Transfer complete");
+        bool queue = stor && g_install && !g_pend[0] && install_is_archive_name(real);
+        reply(s, queue ? "226 Transfer complete, installing..." : "226 Transfer complete");
         ftp_log("%s: done %s", stor ? "STOR" : "RETR", s->t_name);
+        if (queue)
+            snprintf(g_pend, sizeof(g_pend), "%s", real);
     } else {
         reply(s, "%s", err ? err : "426 Transfer aborted");
         ftp_log("Aborted %s: %s", s->t_name, err ? err + 4 : "aborted");
@@ -1041,6 +1047,71 @@ static bool pump_session(sess_t *s)
     return progress;
 }
 
+/* ---------------------------------------------------------------- install */
+
+static u64 inst_last_draw;
+
+static bool install_progress(const char *file, u64 done, u64 total)
+{
+    u64 t = now_ms();
+    if (input_cancel_held())
+        return false;
+    if (t - inst_last_draw < 250 && done != total)
+        return true;
+    inst_last_draw = t;
+    int cols = ui_cols();
+    char a[24], b[24];
+    ui_fmt_size(a, sizeof(a), done);
+    ui_fmt_size(b, sizeof(b), total);
+    ui_clear();
+    ui_bg(C_BLUE);
+    ui_color(C_WHITE, true);
+    ui_field(0, 0, cols - 1, " GodModeWii v%s  -  INSTALLING ARCHIVE", GMW_VERSION);
+    ui_reset();
+    ui_color(C_WHITE, true);
+    ui_field(3, 2, cols - 4, "%s", vfs_basename(g_pend));
+    ui_color(C_WHITE, false);
+    ui_field(5, 2, cols - 4, "%s", file);
+    ui_bar(7, 2, cols - 4, total ? (int)(done * 100 / total) : 0, C_GREEN);
+    ui_field(8, 2, cols - 4, "%s / %s", a, b);
+    ui_color(C_CYAN, true);
+    ui_field(ui_rows() - 2, 1, cols - 2, "Hold B: cancel");
+    ui_reset();
+#ifdef __WIIU__
+    ui_present();
+#endif
+    return true;
+}
+
+/* Unpacks the archive that was just uploaded (see g_pend). */
+static void run_install(void)
+{
+    char path[VFS_PATH_MAX];
+    snprintf(path, sizeof(path), "%s", g_pend);
+    for (int i = 0; i < MAX_SESS; i++)
+        if (S[i].used) flush_out(&S[i]);
+
+    int dev = install_pick_device(g_install == FTP_INSTALL_USB);
+    char err[96] = "";
+    ftp_log("Installing %s", vfs_basename(path));
+    inst_last_draw = 0;
+    int n = dev < 0 ? -1 : install_archive(path, dev, install_progress, err, sizeof(err));
+    if (dev < 0)
+        snprintf(err, sizeof(err), "No %s to install onto", g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
+    if (n >= 0) {
+        vfs_remove(path, false);
+        ftp_log("Installed %d file%s to %s", n, n == 1 ? "" : "s", g_devs[dev].tag);
+    } else {
+        ftp_log("Install failed: %s", err);
+        ftp_log("The archive was kept: %s", vfs_basename(path));
+    }
+    for (int i = 0; i < DEV_COUNT; i++)
+        vfs_update_space(i);
+    for (int i = 0; i < MAX_SESS; i++)
+        if (S[i].used) S[i].last = now_ms();
+    g_pend[0] = '\0';
+}
+
 /* ---------------------------------------------------------------- screen */
 
 static void draw(u32 ip)
@@ -1062,7 +1133,10 @@ static void draw(u32 ip)
     ui_color(g_rw ? C_YELLOW : C_CYAN, true);
     ui_field(7, 1, cols - 2, "Mode    :  %s", g_rw ? "READ / WRITE (NAND still needs the Konami unlock)" : "READ-ONLY");
     ui_color(C_WHITE, false);
-    ui_field(8, 1, cols - 2, "Plain FTP: use it on a trusted network only.");
+    if (g_install)
+        ui_field(8, 1, cols - 2, "Archives (.zip .7z .rar) you upload are unpacked onto the %s", g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
+    else
+        ui_field(8, 1, cols - 2, "Plain FTP: use it on a trusted network only.");
 
     ui_color(C_CYAN, true);
     ui_field(10, 1, cols - 2, "Sessions");
@@ -1111,7 +1185,7 @@ static void gen_password(void)
     g_pass[8] = '\0';
 }
 
-bool ftp_run(bool read_write)
+bool ftp_run(bool read_write, int install_mode)
 {
     ui_splash("Connecting to the network...");
     if (!net_ready) {
@@ -1138,7 +1212,9 @@ bool ftp_run(bool read_write)
         return false;
     }
 
-    g_rw = read_write;
+    g_rw = read_write || install_mode;
+    g_install = install_mode;
+    g_pend[0] = '\0';
     gen_password();
     g_fail_count = 0;
     g_block_until = 0;
@@ -1160,6 +1236,12 @@ bool ftp_run(bool read_write)
                     p |= pump_session(&S[i]);
             progress |= p;
             if (!p) break;
+        }
+
+        if (g_pend[0]) {
+            run_install();
+            last_draw = 0;
+            continue;
         }
 
         u32 btn = progress ? input_poll_nowait() : DetectInput(IN_DOWN);

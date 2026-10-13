@@ -810,15 +810,17 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_ABOUT, M_LOADER, M_WIIMENU, M_POWER };
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_ABOUT, M_LOADER, M_WIIMENU, M_POWER };
     for (;;) {
-        const char *items[8];
-        int code[8];
+        const char *items[10];
+        int code[10];
         int n = 0;
         if (risk_unlocked()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
         items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
         items[n] = "FTP server (read-only)";            code[n++] = M_FTP_RO;
         items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
+        items[n] = "FTP install server (archives to SD)";  code[n++] = M_FTP_SD;
+        items[n] = "FTP install server (archives to USB)"; code[n++] = M_FTP_USB;
         items[n] = "About / credits";                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;
         items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
@@ -846,7 +848,9 @@ static bool system_menu(void)
             return false;
         case M_FTP_RO:
         case M_FTP_RW:
-            ftp_run(code[r] == M_FTP_RW);
+        case M_FTP_SD:
+        case M_FTP_USB:
+            ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD ? FTP_INSTALL_SD : code[r] == M_FTP_USB ? FTP_INSTALL_USB : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
         case M_ABOUT: show_credits(); return false;
