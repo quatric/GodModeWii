@@ -3,7 +3,7 @@
   <name>GodModeWii</name>
   <coder>quatric</coder>
   <ahb_access/>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
   <release_date>20261013000000</release_date>
   <short_description>GodMode9-style file manager for Wii / vWii</short_description>
   <long_description>A text-mode, GodMode9-style file manager for the Wii and the Wii U's vWii.
