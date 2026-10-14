@@ -1114,10 +1114,13 @@ static void run_install(void)
 
 /* ---------------------------------------------------------------- screen */
 
-static void draw(u32 ip)
+/* The Wii draws straight to the visible framebuffer, so clearing on every
+ * refresh flickers; `full` is only needed after another screen covered this one. */
+static void draw(u32 ip, bool full)
 {
     int cols = ui_cols(), rows = ui_rows();
-    ui_clear();
+    if (full)
+        ui_clear();
     ui_bg(risk_unlocked() ? C_RED : C_BLUE);
     ui_color(C_WHITE, true);
     ui_field(0, 0, cols - 1, " GodModeWii v%s  -  FTP SERVER", GMW_VERSION);
@@ -1126,8 +1129,8 @@ static void draw(u32 ip)
     ui_color(C_GREEN, true);
     ui_field(2, 1, cols - 2, "Server running");
     ui_color(C_WHITE, true);
-    ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u%s", (ip >> 24) & 255, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
-             g_port == 21 ? "" : ":2121");
+    ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u:%d", (ip >> 24) & 255, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
+             g_port);
     ui_field(5, 1, cols - 2, "User    :  %s", FTP_USER);
     ui_field(6, 1, cols - 2, "Password:  %s", g_pass);
     ui_color(g_rw ? C_YELLOW : C_CYAN, true);
@@ -1145,7 +1148,10 @@ static void draw(u32 ip)
     u64 t = now_ms();
     for (int i = 0; i < MAX_SESS; i++) {
         sess_t *s = &S[i];
-        if (!s->used) continue;
+        if (!s->used) {
+            ui_field(row++, 2, cols - 3, "");
+            continue;
+        }
         char ip_s[24];
         snprintf(ip_s, sizeof(ip_s), "%u.%u.%u.%u", s->peer_ip & 255, (s->peer_ip >> 8) & 255,
                  (s->peer_ip >> 16) & 255, s->peer_ip >> 24);
@@ -1222,9 +1228,9 @@ bool ftp_run(bool read_write, int install_mode)
     for (int i = 0; i < MAX_SESS; i++) { memset(&S[i], 0, sizeof(S[i])); S[i].ctl = S[i].pasv = S[i].ds = -1; }
     ftp_log("Listening on port %d", g_port);
 
-    u64 last_draw = 0;
     bool stop = false;
-    draw(ip);
+    draw(ip, true);
+    u64 last_draw = now_ms();
 
     while (!stop && !g_quit_request) {
         accept_new();
@@ -1256,7 +1262,7 @@ bool ftp_run(bool read_write, int install_mode)
         }
         u64 t = now_ms();
         if (log_dirty || t - last_draw > 400) {
-            draw(ip);
+            draw(ip, last_draw == 0);
             last_draw = t;
             log_dirty = false;
         }
