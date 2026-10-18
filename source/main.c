@@ -10,7 +10,9 @@
 #include <ogc/es.h>
 #include <ogc/ipc.h>
 #include <ogc/wiilaunch.h>
+#include <ogc/lwp_watchdog.h>
 #include <wiiuse/wpad.h>
+#include <wiiupdate.h>
 
 #include "app.h"
 #include "ui.h"
@@ -53,6 +55,27 @@ static bool detect_vwii(void)
     return ret >= 0 && x > 0;
 }
 
+/* Ask GitHub whether a newer release is out. B skips it, and any failure
+ * (no network, no reply) just carries on. */
+static void check_for_update(void)
+{
+    if (WIIUPDATE_Start("quatric", "GodModeWii", GMW_VERSION) < 0)
+        return;
+    ui_splash("Checking for updates...   B  Skip");
+    u64 start = gettime();
+    while (WIIUPDATE_State() == WIIUPDATE_CHECKING) {
+        if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) || ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
+            WIIUPDATE_Cancel();
+            return;
+        }
+    }
+    if (WIIUPDATE_TakeNotice()) {
+        char text[300];
+        snprintf(text, sizeof text, "%s\n\nDownload it from\n%s", WIIUPDATE_Message(), WIIUPDATE_Url());
+        ui_message("UPDATE AVAILABLE", C_GREEN, text);
+    }
+}
+
 int main(int argc, char **argv)
 {
     ui_init();
@@ -70,6 +93,7 @@ int main(int argc, char **argv)
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
+    check_for_update();
     ui_splash("Looking for drives...");
     vfs_init();
 
@@ -77,6 +101,7 @@ int main(int argc, char **argv)
 
     ui_splash("Unmounting...");
     risk_lock();
+    WIIUPDATE_Wait(10000);
     ftp_net_shutdown();
     vfs_shutdown();
     input_shutdown();

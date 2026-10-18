@@ -17,7 +17,9 @@ CXXFLAGS	=	$(CFLAGS)
 LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
 LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
+LIBS	:=	-lwiiupdate $(LIBS)
 LIBDIRS	:=	$(CURDIR)/libinput-wii # headers: <input_wii.h>
+LIBDIRS	+=	$(CURDIR)/libwiiupdate
 # Optional controller support (build the libraries first with
 # scripts/build_controller_portlibs.sh):
 #   make WITH_WIIDRC=1     Wii U GamePad (vWii)
@@ -80,6 +82,11 @@ export OUTPUT	:=	$(CURDIR)/$(TARGET)
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+$(BUILD): libwiiupdate-lib
+.PHONY: libwiiupdate-lib
+libwiiupdate-lib:
+	@$(MAKE) --no-print-directory -C libwiiupdate
 
 clean:
 	@echo clean ...

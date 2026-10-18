@@ -31,6 +31,7 @@
 #include <ogc/lwp_watchdog.h>
 
 #include "ftp.h"
+#include <wiiupdate.h>
 #include "app.h"
 #include "ui.h"
 #include "input.h"
@@ -1194,6 +1195,7 @@ static void gen_password(void)
 bool ftp_run(bool read_write, int install_mode)
 {
     ui_splash("Connecting to the network...");
+    WIIUPDATE_Wait(30000);     /* a skipped update check may still be bringing the network up */
     if (!net_ready) {
         if (net_init() < 0) {
             ui_message("NETWORK", C_RED, "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
