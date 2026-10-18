@@ -8,7 +8,7 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
-SOURCES		:=	source $(UNARR)
+SOURCES		:=	source libinput-wii/source $(UNARR)
 DATA		:=	data
 INCLUDES	:=	source $(UNARR)
 
@@ -17,8 +17,7 @@ CXXFLAGS	=	$(CFLAGS)
 LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
 LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
-LIBDIRS	:=
-
+LIBDIRS	:=	$(CURDIR)/libinput-wii # headers: <input_wii.h>
 # Optional controller support (build the libraries first with
 # scripts/build_controller_portlibs.sh):
 #   make WITH_WIIDRC=1     Wii U GamePad (vWii)

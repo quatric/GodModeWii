@@ -20,6 +20,8 @@ jobs:
     container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build controller libraries
         run: |
