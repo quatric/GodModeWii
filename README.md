@@ -149,7 +149,7 @@ export DEVKITPPC=$DEVKITPRO/devkitPPC
 make
 ```
 
-The result is `GodModeWii.dol`.
+The result is `GodModeWii.dol`. `make` also writes `GodModeWii-xz.dol`, the same program packed into a self-extracting `.dol` a fraction of the size; that is the one to copy as `boot.dol`. The first build downloads and builds [dolxz](https://github.com/FIX94/dolxz), which needs a host C compiler and liblzma (Debian/Ubuntu: `apt-get install liblzma-dev pkg-config`; macOS: `brew install xz`). `make NO_DOLXZ=1` skips this and uses the plain `.dol`.
 
 Optional controller support is off by default. Build the libraries once, then enable what you want:
 
