@@ -56,24 +56,67 @@ static bool detect_vwii(void)
 }
 
 /* Ask GitHub whether a newer release is out. B skips it, and any failure
- * (no network, no reply) just carries on. */
-static void check_for_update(void)
+ * (no network, no reply) just carries on. Returns true when the user chose to
+ * install the update. */
+static bool check_for_update(void)
 {
     if (WIIUPDATE_Start("quatric", "GodModeWii", GMW_VERSION) < 0)
-        return;
+        return false;
     ui_splash("Checking for updates...   B  Skip");
     u64 start = gettime();
     while (WIIUPDATE_State() == WIIUPDATE_CHECKING) {
         if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) || ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
             WIIUPDATE_Cancel();
-            return;
+            return false;
         }
     }
-    if (WIIUPDATE_TakeNotice()) {
-        char text[300];
-        snprintf(text, sizeof text, "%s\n\nDownload it from\n%s", WIIUPDATE_Message(), WIIUPDATE_Url());
-        ui_message("UPDATE AVAILABLE", C_GREEN, text);
+    if (!WIIUPDATE_TakeNotice())
+        return false;
+    char text[300];
+    if (WIIUPDATE_CanInstall()) {
+        snprintf(text, sizeof text, "%s\n\nUpdate now? GodModeWii will download it, install it over this copy and "
+                 "return to the loader.", WIIUPDATE_Message());
+        return ui_confirm("UPDATE AVAILABLE", C_GREEN, text);
     }
+    snprintf(text, sizeof text, "%s\n\nDownload it from\n%s", WIIUPDATE_Message(), WIIUPDATE_Url());
+    ui_message("UPDATE AVAILABLE", C_GREEN, text);
+    return false;
+}
+
+/* Download and install the update found by check_for_update, once the drives
+ * are mounted. B cancels the download. Returns true when it is installed. */
+static bool install_update(void)
+{
+    if (WIIUPDATE_Install() < 0)
+        return false;
+    wiiupdate_install_state st;
+    int shown = -1;
+    while ((st = WIIUPDATE_InstallState()) == WIIUPDATE_INSTALL_DOWNLOADING || st == WIIUPDATE_INSTALL_EXTRACTING) {
+        int pct = WIIUPDATE_Progress();
+        if (pct != shown) {
+            char status[96];
+            snprintf(status, sizeof status, "%s %s...  %d%%%s",
+                     st == WIIUPDATE_INSTALL_DOWNLOADING ? "Downloading" : "Installing", WIIUPDATE_Latest(), pct,
+                     st == WIIUPDATE_INSTALL_DOWNLOADING ? "   B  Cancel" : "");
+            ui_splash(status);
+            ui_bar(ui_rows() / 2 + 3, (ui_cols() - 50) / 2, 50, pct, C_GREEN);
+            shown = pct;
+        }
+        if (DetectInput(IN_DOWN) & WPAD_BUTTON_B)
+            WIIUPDATE_Cancel();
+    }
+    WIIUPDATE_Wait(5000);
+    ui_splash("");
+    char text[200];
+    if (st == WIIUPDATE_INSTALL_DONE) {
+        snprintf(text, sizeof text, "GodModeWii %s is installed. Press A to return to the loader.", WIIUPDATE_Latest());
+        ui_message("UPDATED", C_GREEN, text);
+        return true;
+    }
+    snprintf(text, sizeof text, "The update could not be installed (%s). This copy is unchanged.",
+             WIIUPDATE_InstallError());
+    ui_message("UPDATE FAILED", C_RED, text);
+    return false;
 }
 
 int main(int argc, char **argv)
@@ -93,11 +136,12 @@ int main(int argc, char **argv)
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
-    check_for_update();
+    WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
+    bool update = check_for_update();
     ui_splash("Looking for drives...");
     vfs_init();
 
-    int mode = app_run();
+    int mode = update && install_update() ? EXIT_LOADER : app_run();
 
     ui_splash("Unmounting...");
     risk_lock();
