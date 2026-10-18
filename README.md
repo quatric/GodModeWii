@@ -1,5 +1,7 @@
 # GodModeWii
 
+**Version:** 0.6.0 · **Coder:** quatric
+
 A text-mode, [GodMode9](https://github.com/d0k3/GodMode9)-style file manager for the **Wii** and the **Wii U's vWii mode**.
 No fancy GUI: just a console, a cursor and a lot of power. Copy, cut, paste and delete files between every storage device
 the console can see, watch the free space of each one, and (only if you really mean it) poke around in the NAND.
