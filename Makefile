@@ -8,7 +8,7 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
-SOURCES		:=	source libinput-wii/source $(UNARR)
+SOURCES		:=	source libwiiinput/source $(UNARR)
 DATA		:=	data
 INCLUDES	:=	source $(UNARR)
 
@@ -18,7 +18,7 @@ LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate 
 
 LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)
-LIBDIRS	:=	$(CURDIR)/libinput-wii # headers: <input_wii.h>
+LIBDIRS	:=	$(CURDIR)/libwiiinput # headers: <input_wii.h>
 LIBDIRS	+=	$(CURDIR)/libwiiupdate
 # Optional controller support (build the libraries first with
 # scripts/build_controller_portlibs.sh):
