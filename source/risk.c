@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <ogc/lwp.h>
+#include <ogc/lwp_watchdog.h>
 
 #include "risk.h"
 #include "ui.h"
@@ -8,8 +12,10 @@
 #include "vfs.h"
 
 static bool g_unlocked;
+static bool g_forced;       /* persistent "always unlocked" switch */
 
-bool risk_unlocked(void) { return g_unlocked; }
+bool risk_unlocked(void) { return g_unlocked || g_forced; }
+bool risk_forced(void) { return g_forced; }
 void risk_lock(void) { g_unlocked = false; }
 
 static const u32 KONAMI[10] = {
@@ -77,7 +83,7 @@ static bool konami_gate(const char *title, const char *const *lines, int n)
 /* Asked the first time something tries to change the NAND. */
 bool risk_ensure_unlocked(void)
 {
-    if (g_unlocked)
+    if (g_unlocked || g_forced)
         return true;
     static const char *const lines[] = {
         "You are about to change the Wii NAND.",
@@ -102,4 +108,117 @@ bool risk_authorize(const char *path, const char *what)
         return true;
     /* One Konami code per session is enough; it asks the first time. */
     return risk_ensure_unlocked();
+}
+
+/* ---------------------------------------------------------------- forced mode */
+
+/* The switch lives in a small file on the SD card (or the first Gecko card). */
+static const char *const FORCE_DIRS[] = { "sd:/apps/GodModeWii", "gca:/apps/GodModeWii", "gcb:/apps/GodModeWii" };
+#define FORCE_FILE "force.cfg"
+
+static bool force_path(int i, char *out, size_t n)
+{
+    return snprintf(out, n, "%s/%s", FORCE_DIRS[i], FORCE_FILE) < (int)n;
+}
+
+void risk_load_forced(void)
+{
+    g_forced = false;
+    for (int i = 0; i < 3 && !g_forced; i++) {
+        char p[64];
+        struct stat st;
+        if (force_path(i, p, sizeof(p)) && stat(p, &st) == 0)
+            g_forced = true;
+    }
+}
+
+static bool force_store(bool on)
+{
+    bool wrote = false;
+    for (int i = 0; i < 3; i++) {
+        char p[64];
+        if (!force_path(i, p, sizeof(p)))
+            continue;
+        if (!on) {
+            unlink(p);
+            continue;
+        }
+        if (wrote)
+            continue;
+        mkdir("sd:/apps", 0777);
+        mkdir(FORCE_DIRS[i], 0777);
+        FILE *f = fopen(p, "wb");
+        if (f) {
+            bool ok = fputs("1\n", f) >= 0;
+            wrote = (fclose(f) == 0) && ok;
+        }
+    }
+    if (on)
+        return wrote;
+    /* off: succeeded only if no file is left */
+    for (int i = 0; i < 3; i++) {
+        char p[64];
+        struct stat st;
+        if (force_path(i, p, sizeof(p)) && stat(p, &st) == 0)
+            return false;
+    }
+    return true;
+}
+
+/* The code is read from the pads while the logo is up. A thread does that so
+ * drive detection can carry on in the meantime. */
+static volatile bool poll_run, poll_hit;
+static lwp_t poll_thread = LWP_THREAD_NULL;
+static u8 poll_stack[8192] __attribute__((aligned(32)));
+
+static void *poll_main(void *arg)
+{
+    int progress = 0;
+    const u32 mask = WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT |
+                     WPAD_BUTTON_RIGHT | WPAD_BUTTON_A | WPAD_BUTTON_B;
+    while (poll_run) {
+        u32 p = input_poll_nowait() & mask;
+        if (p) {
+            if (p == KONAMI[progress])
+                progress++;
+            else
+                progress = (p == KONAMI[0]) ? 1 : 0;
+            if (progress == 10) {
+                poll_hit = true;
+                progress = 0;
+            }
+        }
+        usleep(16000);
+    }
+    return NULL;
+}
+
+void risk_startup_poll_begin(void)
+{
+    poll_run = true;
+    poll_hit = false;
+    LWP_CreateThread(&poll_thread, poll_main, NULL, poll_stack, sizeof(poll_stack), 64);
+}
+
+/* Keeps listening until at least `min_ms` after begin, then reports whether the code went in. */
+bool risk_startup_poll_end(u32 min_ms, u64 began_ms)
+{
+    while (ticks_to_millisecs(gettime()) - began_ms < min_ms)
+        usleep(20000);
+    poll_run = false;
+    if (poll_thread != LWP_THREAD_NULL) {
+        LWP_JoinThread(poll_thread, NULL);
+        poll_thread = LWP_THREAD_NULL;
+    }
+    return poll_hit;
+}
+
+/* Flips the persistent switch; returns false if it could not be saved. */
+bool risk_toggle_forced(void)
+{
+    bool want = !g_forced;
+    if (!force_store(want))
+        return false;
+    g_forced = want;
+    return true;
 }

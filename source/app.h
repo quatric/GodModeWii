@@ -5,7 +5,7 @@
 
 #define GMW_VERSION "0.6.0"
 
-enum { EXIT_LOADER, EXIT_MENU, EXIT_POWEROFF };
+enum { EXIT_LOADER, EXIT_MENU, EXIT_POWEROFF, EXIT_RESTART };
 
 extern volatile bool g_quit_request;
 extern volatile bool g_power_request;

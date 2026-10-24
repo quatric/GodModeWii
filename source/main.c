@@ -139,7 +139,25 @@ int main(int argc, char **argv)
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
     bool update = check_for_update();
     ui_splash("Looking for drives...");
+    u64 began = ticks_to_millisecs(gettime());
+    risk_startup_poll_begin();
     vfs_init();
+    bool toggled = risk_startup_poll_end(2500, began);
+    risk_load_forced();
+    if (toggled) {
+        bool saved = risk_toggle_forced();
+        if (!saved)
+            ui_message("RISKY MODE", C_RED, "Could not save the setting. Is the SD card writable?");
+        else if (risk_forced())
+            ui_message("RISKY MODE FORCED ON", C_RED,
+                       "Dangerous permissions are now ALWAYS enabled, and stay that way every time this program starts. "
+                       "Nothing will ask for a warning or code first.");
+        else
+            ui_message("RISKY MODE OFF", C_GREEN, "Dangerous permissions are no longer forced. Risky changes ask for the warning and code again.");
+    } else if (risk_forced()) {
+        ui_message("RISKY MODE FORCED ON", C_RED,
+                   "Dangerous permissions are ALWAYS enabled. Nothing will ask for a warning or code first.");
+    }
 
     int mode = update && install_update() ? EXIT_LOADER : app_run();
 
@@ -153,6 +171,11 @@ int main(int argc, char **argv)
     switch (mode) {
     case EXIT_POWEROFF:
         SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+        break;
+    case EXIT_RESTART:
+        if (g_is_vwii)                  /* the vWii NandLoader hands control back to the Wii U menu */
+            WII_LaunchTitle(0x0000000100000200ll);
+        SYS_ResetSystem(SYS_RESTART, 0, 0);
         break;
     case EXIT_MENU:
         SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
