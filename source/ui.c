@@ -255,6 +255,25 @@ void ui_message(const char *title, int color, const char *text)
     }
 }
 
+void ui_message_pages(const char *title, int color, const char *const *pages, int n)
+{
+    int i = 0;
+    for (;;) {
+        char strip[64], head[96];
+        int left;
+        snprintf(head, sizeof(head), "%s  (%d/%d)", title, i + 1, n);
+        snprintf(strip, sizeof(strip), "L / R  Prev / Next    A  OK");
+        draw_text_box(head, color, pages[i], strip, 0, NULL, &left);
+        for (;;) {
+            u32 p = DetectInput(IN_DOWN);
+            if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
+                return;
+            if (p & WPAD_BUTTON_PLUS) { i = (i + 1) % n; break; }
+            if (p & WPAD_BUTTON_MINUS) { i = (i + n - 1) % n; break; }
+        }
+    }
+}
+
 bool ui_confirm(const char *title, int color, const char *text)
 {
     int left;

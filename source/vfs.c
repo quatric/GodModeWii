@@ -175,6 +175,7 @@ typedef struct {
     u32 sector_size;
     u32 sectors;
     bool ok;
+    bool hidden;    /* USBHide / ustealth: boot signature 55 AB instead of 55 AA */
 } usb_slot;
 
 static usb_slot uslot[USB_SLOTS];
@@ -249,10 +250,14 @@ static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
         if (rbuf) {
             r = USBStorage_Read(s->h, s->lun, sector, cnt, usb_bounce);
             if (r < 0) return false;
+            if (sector == 0 && s->hidden && usb_bounce[510] == 0x55 && usb_bounce[511] == 0xAB)
+                usb_bounce[511] = 0xAA;         /* show the MBR as if the drive were not hidden */
             memcpy(rp, usb_bounce, bytes);
             rp += bytes;
         } else {
             memcpy(usb_bounce, wp, bytes);
+            if (sector == 0 && s->hidden && usb_bounce[510] == 0x55 && usb_bounce[511] == 0xAA)
+                usb_bounce[511] = 0xAB;         /* keep the drive hidden */
             r = USBStorage_Write(s->h, s->lun, sector, cnt, usb_bounce);
             if (r < 0) return false;
             wp += bytes;
@@ -346,6 +351,16 @@ static int usb_scan_once(void)
             uslot[slot].sector_size = ss;
             uslot[slot].sectors = ns;
             uslot[slot].ok = true;
+            uslot[slot].hidden = false;
+            {
+                /* ustealth / USBHide marks a drive by changing the last MBR byte to 0xAB */
+                u8 *mbr = memalign(32, ss > 512 ? ss : 512);
+                if (mbr) {
+                    if (USBStorage_Read(h, l, 0, 1, mbr) >= 0 && mbr[510] == 0x55 && mbr[511] == 0xAB)
+                        uslot[slot].hidden = true;
+                    free(mbr);
+                }
+            }
             slot++;
         }
         if (slot == first)
@@ -442,6 +457,8 @@ static void mount_usb(int tries)
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
             snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
+        } else if (g_devs[DEV_USB0 + i].mounted && uslot[i].hidden) {
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "hidden by ustealth  read / write");
         } else if (!g_devs[DEV_USB0 + i].mounted) {
             /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
             g_devs[DEV_USB0 + i].always_show = true;
@@ -803,7 +820,18 @@ bool vfs_remove(const char *path, bool is_dir)
     arcfs_flush();
     if (dev == DEV_NAND)
         return ISFS_Delete(nand_path(path)) >= 0;
-    return is_dir ? rmdir(path) == 0 : unlink(path) == 0;
+    if (is_dir ? rmdir(path) == 0 : unlink(path) == 0)
+        return true;
+    /* FAT refuses to delete a read-only entry: drop the flag and try again */
+    int attr = FAT_getAttr(path);
+    if (attr < 0 || !(attr & ATTR_READONLY))
+        return false;
+    if (FAT_setAttr(path, attr & ~ATTR_READONLY) < 0)
+        return false;
+    if (is_dir ? rmdir(path) == 0 : unlink(path) == 0)
+        return true;
+    FAT_setAttr(path, attr);
+    return false;
 }
 
 bool vfs_rename(const char *from, const char *to)

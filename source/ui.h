@@ -24,6 +24,8 @@ void ui_fmt_size(char *out, size_t n, u64 bytes);
 
 /* Dialogs. All of them block and leave the screen for the caller to redraw. */
 void ui_message(const char *title, int color, const char *text);
+/* Several pages of text; L / R (or - / +) flip between them, A closes. */
+void ui_message_pages(const char *title, int color, const char *const *pages, int n);
 bool ui_confirm(const char *title, int color, const char *text);
 #define UI_MENU_HOME (-2)      /* HOME pressed inside a menu (B / cancel is -1) */
 int  ui_menu(const char *title, const char **items, const bool *enabled, int n, int start);

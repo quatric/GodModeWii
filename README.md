@@ -37,6 +37,9 @@ the console can see, watch the free space of each one, and (only if you really m
   mailboxes). Archives nest (`sd:/x.wad|/00000001.app|/meta/banner.bin`), **B** goes back out, copy anything out
   with **+** / the actions menu. *Open as archive* is also in the actions menu. WAD, `content.bin` and `data.bin` contents are
   decrypted while copying (contents of a Wii U vWii WAD signed with the vWii common key show as `.app.enc` instead).
+* **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
+* **Restart Wii** in the HOME menu: on a Wii U it leaves vWii and returns to the Wii U menu.
+* Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
 * **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
   `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
   with keys that belong to the Wii U that formatted it, and a Wii or vWii can't read them, so copy them to the SD card first: either the two dumps

@@ -823,12 +823,12 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_ABOUT, M_LOADER, M_WIIMENU, M_POWER };
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_ABOUT, M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
     for (;;) {
-        const char *items[10];
-        int code[10];
+        const char *items[11];
+        int code[11];
         int n = 0;
-        if (risk_unlocked()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
+        if (risk_unlocked() && !risk_forced()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
         items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
         items[n] = "FTP server (read-only)";            code[n++] = M_FTP_RO;
         items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
@@ -837,6 +837,7 @@ static bool system_menu(void)
         items[n] = "About / credits";                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;
         items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
+        items[n] = g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii"; code[n++] = M_RESTART;
         items[n] = "Power off";                         code[n++] = M_POWER;
 
         int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B Back   HOME Exit");
@@ -869,6 +870,7 @@ static bool system_menu(void)
         case M_ABOUT: show_credits(); return false;
         case M_LOADER: exit_req = EXIT_LOADER; return true;
         case M_WIIMENU: exit_req = EXIT_MENU; return true;
+        case M_RESTART: exit_req = EXIT_RESTART; return true;
         default: exit_req = EXIT_POWEROFF; return true;
         }
     }
