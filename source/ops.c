@@ -464,7 +464,7 @@ static void summary_pages(const char *title, const char *msg)
     if (!pages || !more) {
         free(pages);
         free(more);
-        ui_message(title, C_YELLOW, msg);
+        ui_message(title, C_RED, msg);
         return;
     }
     pages[0] = msg;
@@ -473,7 +473,7 @@ static void summary_pages(const char *title, const char *msg)
                  X.fails > shown ? " (only the first ones are kept)" : "", X.errs[i]);
         pages[i + 1] = more[i];
     }
-    ui_message_pages(title, C_YELLOW, pages, shown + 1);
+    ui_message_pages(title, C_RED, pages, shown + 1);
     free(pages);
     free(more);
 }
@@ -502,13 +502,17 @@ static void summary(const char *verb, bool ok)
                  X.disc_err_files, sz);
         strncat(msg, extra, sizeof(msg) - strlen(msg) - 1);
         if (X.fails) {
+            ui_alert_window(true);
             summary_pages("FINISHED WITH ERRORS", msg);
+            ui_alert_window(false);
             return;
         }
         ui_message("DONE - DISC READ ERRORS", C_YELLOW, msg);
-    } else if (X.fails && !X.cancelled)
+    } else if (X.fails && !X.cancelled) {
+        ui_alert_window(true);
         summary_pages("FINISHED WITH ERRORS", msg);
-    else if (!ok || X.cancelled || X.fails)
+        ui_alert_window(false);
+    } else if (!ok || X.cancelled || X.fails)
         ui_message(X.cancelled ? "CANCELLED" : "FINISHED WITH ERRORS", C_YELLOW, msg);
     else
         ui_message("DONE", C_GREEN, msg);

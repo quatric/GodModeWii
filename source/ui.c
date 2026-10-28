@@ -172,6 +172,14 @@ static int wrap_lines(const char *text, int width, char lines[][BOX_W_MAX + 2], 
  * title bar, a blue body and a dark button strip at the bottom. */
 #define WIN_BG C_BLUE
 
+/* A problem summary turns its whole window red so it can't be missed. */
+static int win_body = WIN_BG;
+
+void ui_alert_window(bool on)
+{
+    win_body = on ? C_RED : WIN_BG;
+}
+
 static int title_fg(int bar)
 {
     return (bar == C_RED || bar == C_BLUE || bar == C_MAGENTA) ? C_WHITE : C_BLACK;
@@ -188,7 +196,7 @@ static void win_blank(int row, int left, int w, int bg)
 /* Body text inside the window, padded to the window width. */
 static void win_text(int row, int left, int w, int fg, bool bold, const char *s)
 {
-    ui_bg(WIN_BG);
+    ui_bg(win_body);
     ui_color(fg, bold);
     ui_field(row, left + 2, w - 4, "%s", s);
 }
@@ -215,7 +223,7 @@ static int draw_window(const char *title, int color, int content_rows, int w,
     ui_color(title_fg(color), true);
     ui_field(top, left + 2, w - 4, "%s", title ? title : "");
     for (int r = 1; r < h - 1; r++)
-        win_blank(top + r, left, w, WIN_BG);
+        win_blank(top + r, left, w, win_body);
     win_strip(top + h - 1, left, w, strip);
     ui_reset();
     *out_left = left;
