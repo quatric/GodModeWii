@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -230,6 +231,15 @@ static bool write_error_log(const char *src, const char *dst, u64 size)
     return vfs_close_checked(&lf) && ok;
 }
 
+/* Where in the file and why, so a report tells a failing card from a filesystem problem. */
+static const char *io_error(const char *what, u64 at)
+{
+    static char msg[128];
+    int err = errno;
+    snprintf(msg, sizeof(msg), "%s at byte %llu (%s)", what, (unsigned long long)at, err ? strerror(err) : "no error code");
+    return msg;
+}
+
 static bool copy_file(const char *src, const char *dst)
 {
     vfs_file in, out;
@@ -259,19 +269,21 @@ static bool copy_file(const char *src, const char *dst)
     if (disc_src)
         virt_disc_tolerate(true, input_cancel_held);
     for (;;) {
+        errno = 0;
         s32 r = vfs_read(&in, X.buf, CHUNK);
         if (r < 0) {
             if (disc_src && input_cancel_held())
                 X.cancelled = true;
             else
-                fail("Read error", src);
+                fail(io_error("Read error", X.file_done), src);
             ok = false;
             break;
         }
         if (r == 0)
             break;
+        errno = 0;
         if (vfs_write(&out, X.buf, r) != r) {
-            fail(g_write_err ? g_write_err : "Write error (disk full?)", dst);
+            fail(g_write_err ? g_write_err : io_error("Write error (disk full?)", X.file_done), dst);
             ok = false;
             break;
         }

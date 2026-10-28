@@ -984,7 +984,8 @@ s32 vfs_read(vfs_file *f, void *buf, u32 len)
     if (f->dev == DEV_NAND)
         return ISFS_Read(f->fd, buf, len);
     size_t n = fread(buf, 1, len, f->fp);
-    if (n == 0 && ferror(f->fp))
+    /* A short read can carry the error; failing now keeps errno from the read that failed. */
+    if (ferror(f->fp))
         return -1;
     return (s32)n;
 }
