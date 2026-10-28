@@ -23,7 +23,7 @@ static const u32 KONAMI[10] = {
     WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT, WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT,
     WPAD_BUTTON_B, WPAD_BUTTON_A,
 };
-static const char *const KONAMI_GLYPH[10] = { "UP", "UP", "DN", "DN", "LT", "RT", "LT", "RT", " B", " A" };
+static const char *const KONAMI_GLYPH[10] = { "UP", "UP", "DOWN", "DOWN", "LEFT", "RIGHT", "LEFT", "RIGHT", "B", "A" };
 
 /* Full-screen warning followed by the Konami code. `lines` are the warning
  * text, `title` the red banner. HOME cancels. */
@@ -46,8 +46,10 @@ static void draw_gate(const char *title, const char *const *lines, int n, int pr
     ui_field(r++, 1, cols - 2, "If you understand and accept this, enter the code:");
     r++;
 
-    int left = (cols - 10 * 5) / 2;
-    ui_goto(r, left);
+    int width = -1;
+    for (int i = 0; i < 10; i++)
+        width += (int)strlen(KONAMI_GLYPH[i]) + 3;
+    ui_goto(r, (cols - width) / 2);
     for (int i = 0; i < 10; i++) {
         ui_color(i < progress ? C_GREEN : C_WHITE, i < progress);
         printf("[%s] ", KONAMI_GLYPH[i]);
