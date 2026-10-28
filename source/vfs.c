@@ -435,29 +435,56 @@ static bool is_fat_vbr(const u8 *s)
     return s[510] == 0x55 && s[511] == 0xAA && (!memcmp(s + 0x36, "FAT", 3) || !memcmp(s + 0x52, "FAT32", 5));
 }
 
-/* Finds the volume the way FatFs does: a boot sector at sector 0, or else the
- * first MBR partition that holds a FAT or exFAT one. */
+static u32 rd32le(const u8 *p)
+{
+    return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24;
+}
+
+/* Finds the volume the way FatFs does: a boot sector at sector 0, or else the first
+ * MBR or GPT basic data partition that holds a FAT or exFAT one. libdvm treats these
+ * discs as 512-byte sectors, so this does too. */
+static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
+{
+    static const u8 gpt_basic_data[16] = { 0xA2, 0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44,
+                                           0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 };
+    u32 start[128];
+    int n = 0;
+    if (!io->readSectors(0, 1, buf))
+        return false;
+    if (!memcmp(buf + 3, "EXFAT   ", 8))
+        return true;
+    if (is_fat_vbr(buf))
+        return false;
+    if (buf[0x1C2] == 0xEE) {
+        if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
+            return false;
+        u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
+        for (u32 i = 0; i < count && i < 128; i++) {
+            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, buf))
+                break;
+            const u8 *e = buf + i % 4 * 128;
+            if (!memcmp(e, gpt_basic_data, 16))
+                start[n++] = rd32le(e + 32);
+        }
+    } else {
+        for (int i = 0; i < 4; i++)
+            start[n++] = rd32le(buf + 0x1C6 + i * 16);
+    }
+    for (int i = 0; i < n; i++) {
+        if (!start[i] || !io->readSectors(start[i], 1, buf))
+            continue;
+        if (!memcmp(buf + 3, "EXFAT   ", 8))
+            return true;
+        if (is_fat_vbr(buf))
+            return false;
+    }
+    return false;
+}
+
 static bool disc_is_exfat(const DISC_INTERFACE *io)
 {
     u8 *buf = memalign(32, 4096);
-    bool exfat = false;
-    if (buf && io->readSectors(0, 1, buf)) {
-        exfat = !memcmp(buf + 3, "EXFAT   ", 8);
-        if (!exfat && !is_fat_vbr(buf)) {
-            u32 start[4];
-            for (int i = 0; i < 4; i++) {
-                const u8 *e = buf + 0x1C6 + i * 16;
-                start[i] = e[0] | e[1] << 8 | e[2] << 16 | (u32)e[3] << 24;
-            }
-            for (int i = 0; i < 4; i++) {
-                if (!start[i] || !io->readSectors(start[i], 1, buf))
-                    continue;
-                exfat = !memcmp(buf + 3, "EXFAT   ", 8);
-                if (exfat || is_fat_vbr(buf))
-                    break;
-            }
-        }
-    }
+    bool exfat = buf && scan_exfat(io, buf);
     free(buf);
     return exfat;
 }

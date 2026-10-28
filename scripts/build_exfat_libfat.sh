@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build devkitPro's libfat (libdvm + FatFs) with exFAT turned on into ./portlibs/exfat.
-# The packaged libfat-ogc has FF_FS_EXFAT off; this is the same release with that one switch flipped.
+# Build devkitPro's libfat (libdvm + FatFs) with exFAT and GPT turned on into ./portlibs/exfat.
+# The packaged libfat-ogc has FF_FS_EXFAT and FF_LBA64 off; this is the same release with both flipped.
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,9 +21,12 @@ python3 - "$WORK/libdvm/fatfs/source/ffconf.h" <<'PY'
 import re, sys
 from pathlib import Path
 p = Path(sys.argv[1])
-s, n = re.subn(r"^(#define FF_FS_EXFAT\s+)0$", r"\g<1>1", p.read_text(), flags=re.M)
-if n != 1:
-    sys.exit("FF_FS_EXFAT not found in ffconf.h")
+s = p.read_text()
+# FF_LBA64 is what lets FatFs follow GPT, which macOS uses for external drives.
+for opt in ("FF_FS_EXFAT", "FF_LBA64"):
+    s, n = re.subn(rf"^(#define {opt}\s+)0$", r"\g<1>1", s, flags=re.M)
+    if n != 1:
+        sys.exit(f"{opt} not found in ffconf.h")
 p.write_text(s)
 PY
 
