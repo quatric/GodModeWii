@@ -80,7 +80,7 @@ Grab the latest build from the [latest release](../../releases/latest): `GodMode
 | **2** | Actions menu (paste, clear clipboard, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
-| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. **Press HOME again to quit straight back to the Homebrew Channel.** |
+| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. HOME or B closes it again. |
 
 Copy or cut something, browse to the destination and press **A** on the green `Paste` row at the top of the list
 (or use *Paste* in the actions menu). A copy stays in the clipboard so you can paste it in several places. To empty the

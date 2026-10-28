@@ -842,11 +842,8 @@ static bool system_menu(void)
         items[n] = g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii"; code[n++] = M_RESTART;
         items[n] = "Power off";                         code[n++] = M_POWER;
 
-        int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B Back   HOME Exit");
-        if (r == UI_MENU_HOME) {            /* HOME, HOME: back to the Homebrew Channel */
-            exit_req = EXIT_LOADER;
-            return true;
-        }
+        /* HOME closes the menu like the Wii's own HOME Menu; leaving is always an explicit choice. */
+        int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B / HOME Back");
         if (r < 0)
             return false;
         switch (code[r]) {
