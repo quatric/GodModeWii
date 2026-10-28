@@ -430,6 +430,44 @@ static int usb_device_count(void)
 /* Drives behind a hub spin up and enumerate one after another, so first wait
  * until the device count stops changing, then open every drive exactly once
  * (IOS does not like a drive being closed and re-opened straight away). */
+static bool is_fat_vbr(const u8 *s)
+{
+    return s[510] == 0x55 && s[511] == 0xAA && (!memcmp(s + 0x36, "FAT", 3) || !memcmp(s + 0x52, "FAT32", 5));
+}
+
+/* Finds the volume the way FatFs does: a boot sector at sector 0, or else the
+ * first MBR partition that holds a FAT or exFAT one. */
+static bool disc_is_exfat(const DISC_INTERFACE *io)
+{
+    u8 *buf = memalign(32, 4096);
+    bool exfat = false;
+    if (buf && io->readSectors(0, 1, buf)) {
+        exfat = !memcmp(buf + 3, "EXFAT   ", 8);
+        if (!exfat && !is_fat_vbr(buf)) {
+            u32 start[4];
+            for (int i = 0; i < 4; i++) {
+                const u8 *e = buf + 0x1C6 + i * 16;
+                start[i] = e[0] | e[1] << 8 | e[2] << 16 | (u32)e[3] << 24;
+            }
+            for (int i = 0; i < 4; i++) {
+                if (!start[i] || !io->readSectors(start[i], 1, buf))
+                    continue;
+                exfat = !memcmp(buf + 3, "EXFAT   ", 8);
+                if (exfat || is_fat_vbr(buf))
+                    break;
+            }
+        }
+    }
+    free(buf);
+    return exfat;
+}
+
+static void mount_fat(int dev, const char *name, const DISC_INTERFACE *io)
+{
+    g_devs[dev].mounted = fatMountSimple(name, io);
+    g_devs[dev].exfat = g_devs[dev].mounted && disc_is_exfat(io);
+}
+
 static void mount_usb(int tries)
 {
     int last = -1, stable = 0;
@@ -452,7 +490,7 @@ static void mount_usb(int tries)
             continue;
         char name[8];
         snprintf(name, sizeof(name), "usb%d", i + 1);
-        g_devs[DEV_USB0 + i].mounted = fatMountSimple(name, &usb_iface[i]);
+        mount_fat(DEV_USB0 + i, name, &usb_iface[i]);
         if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
@@ -486,7 +524,7 @@ static void mount_usb(int tries)
 
 static void mount_sd(void)
 {
-    g_devs[DEV_SD].mounted = fatMountSimple("sd", &__io_wiisd);
+    mount_fat(DEV_SD, "sd", &__io_wiisd);
 }
 
 static void mount_gecko(void)
@@ -494,8 +532,8 @@ static void mount_gecko(void)
     /* The Wii U has no GameCube memory card slots to probe. */
     if (g_is_vwii)
         return;
-    g_devs[DEV_GCA].mounted = fatMountSimple("gca", &__io_gcsda);
-    g_devs[DEV_GCB].mounted = fatMountSimple("gcb", &__io_gcsdb);
+    mount_fat(DEV_GCA, "gca", &__io_gcsda);
+    mount_fat(DEV_GCB, "gcb", &__io_gcsdb);
 }
 
 static void unmount_fat(void)

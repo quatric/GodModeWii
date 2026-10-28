@@ -351,6 +351,8 @@ static void draw_home(void)
             snprintf(note, sizeof(note), "not detected");
         else if (vfs_is_virtual(devs[idx]))
             snprintf(note, sizeof(note), "%s", d->note);
+        else if (d->exfat)
+            snprintf(note, sizeof(note), "exFAT");
         ui_field(row, 0, cols - 1, " [%-4s]  %-20s %-10s %s", d->tag, d->name, d->root, note);
         ui_reset();
     }

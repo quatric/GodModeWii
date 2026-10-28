@@ -221,7 +221,7 @@ static bool copy_file(const char *src, const char *dst)
         return false;
     }
     X.file_total = in.size;
-    if (vfs_dev_of(dst) < DEV_NAND && in.size > 0xFFFFFFFFULL) {
+    if (vfs_dev_of(dst) < DEV_NAND && !g_devs[vfs_dev_of(dst)].exfat && in.size > 0xFFFFFFFFULL) {
         vfs_close(&in);
         fail("Too big for FAT (4 GiB file limit)", dst);
         return false;

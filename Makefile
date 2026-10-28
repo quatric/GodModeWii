@@ -25,9 +25,16 @@ LIBDIRS	+=	$(CURDIR)/libwiiupdate
 #   make WITH_WIIDRC=1     Wii U GamePad (vWii)
 #   make WITH_WUPC=1       Wii U Pro Controller (vWii)
 #   make WITH_SICKSAXIS=1  PS3 SIXAXIS / DualShock 3
+# exFAT on SD and USB (build libfat first with scripts/build_exfat_libfat.sh):
+#   make WITH_EXFAT=1
 WITH_WIIDRC ?= 0
 WITH_WUPC ?= 0
 WITH_SICKSAXIS ?= 0
+WITH_EXFAT ?= 0
+
+ifeq ($(WITH_EXFAT),1)
+EXFAT_LIB	:=	$(CURDIR)/portlibs/exfat/lib
+endif
 
 ifneq ($(filter 1,$(WITH_WIIDRC) $(WITH_WUPC) $(WITH_SICKSAXIS)),)
 LIBDIRS	+=	$(CURDIR)/portlibs/ppc
@@ -74,7 +81,13 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES), -iquote $(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 					-I$(CURDIR)/$(BUILD) \
 					-I$(LIBOGC_INC)
-export LIBPATHS	:=	-L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+ifneq ($(EXFAT_LIB),)
+ifeq ($(wildcard $(EXFAT_LIB)/libfat.a),)
+$(error WITH_EXFAT=1 needs scripts/build_exfat_libfat.sh to be run first)
+endif
+endif
+# The exFAT libfat has to come before libogc's own.
+export LIBPATHS	:=	$(addprefix -L,$(EXFAT_LIB)) -L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 
 .PHONY: $(BUILD) clean run

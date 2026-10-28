@@ -49,6 +49,7 @@ Grab the latest build from the [latest release](../../releases/latest): `GodMode
   with **+** / the actions menu. *Open as archive* is also in the actions menu. WAD, `content.bin` and `data.bin` contents are
   decrypted while copying (contents of a Wii U vWii WAD signed with the vWii common key show as `.app.enc` instead).
 * **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
+* **exFAT** SD cards and USB drives (release builds): they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
 * **Restart Wii** in the HOME menu: on a Wii U it leaves vWii and returns to the Wii U menu.
 * Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
 * **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
@@ -172,7 +173,17 @@ Optional controller support is off by default. Build the libraries once, then en
 make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1
 ```
 
-`WITH_WIIDRC` = Wii U GamePad, `WITH_WUPC` = Wii U Pro Controller, `WITH_SICKSAXIS` = PS3 SIXAXIS / DualShock 3. The CI and release builds enable all three. GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
+`WITH_WIIDRC` = Wii U GamePad, `WITH_WUPC` = Wii U Pro Controller, `WITH_SICKSAXIS` = PS3 SIXAXIS / DualShock 3. The CI and release builds enable all three.
+
+exFAT support is off by default too. The packaged libfat (devkitPro's libdvm with FatFs) is built with exFAT turned off, so the script
+rebuilds the same libdvm release with `FF_FS_EXFAT` on, into `portlibs/exfat`:
+
+```sh
+./scripts/build_exfat_libfat.sh             # needs git, python3, cmake, network
+make WITH_EXFAT=1
+```
+
+The CI and release builds enable it. GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
 
 ## Status / honesty section
 
@@ -184,8 +195,8 @@ hardware** and may need fixes — please report what you see:
 * browsing the disc (GameCube file table, or the Wii data partition opened through IOS; needs a readable disc),
 * running inside vWii.
 
-Known limitations: only FAT / FAT32 is supported (libfat), and only the first FAT partition of a drive is mounted.
-Files over 4 GiB can't be written to FAT.
+Known limitations: only FAT / FAT32 and exFAT are supported (libfat), and only the first FAT or exFAT partition of a drive is mounted.
+Files over 4 GiB can't be written to FAT / FAT32 (exFAT has no such limit).
 Memory cards: each save shows as `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry followed by the save data, the
 format GCMM and Dolphin import and export). Copy them to SD or USB for a backup. To restore, copy `.gci` files onto the card (only `.gci`, not `.gcs` / `.sav`): you are asked to
 confirm first, a save that is already on the card is never replaced (delete it first), and a file is only written once it is complete and valid.

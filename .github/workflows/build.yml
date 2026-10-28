@@ -30,8 +30,13 @@ jobs:
           apt-get update -qq && apt-get install -y -qq python3 git ca-certificates >/dev/null
           ./scripts/build_controller_portlibs.sh
 
+      - name: Build libfat with exFAT
+        run: |
+          apt-get update -qq && apt-get install -y -qq cmake >/dev/null
+          ./scripts/build_exfat_libfat.sh
+
       - name: Build
-        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1
+        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1
 
       - name: Package for the Homebrew Channel
         run: |
