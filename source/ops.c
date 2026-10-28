@@ -47,6 +47,24 @@ static void fail(const char *what, const char *path)
 
 /* ---------------------------------------------------------------- progress */
 
+/* From the average so far; byte counts when there are any, else file counts (deletes). */
+static void time_left(char *out, size_t n, u64 el_ms)
+{
+    u64 done = X.total_bytes ? X.done_bytes : X.files_done;
+    u64 total = X.total_bytes ? X.total_bytes : X.files_total;
+    out[0] = '\0';
+    if (el_ms < 2000 || !done || done >= total)
+        return;
+    u64 rate = done * 1000 / el_ms;
+    if (!rate)
+        return;
+    u64 sec = (total - done) / rate;
+    if (sec >= 3600)
+        snprintf(out, n, "Time left: %u:%02u:%02u", (unsigned)(sec / 3600), (unsigned)(sec / 60 % 60), (unsigned)(sec % 60));
+    else
+        snprintf(out, n, "Time left: %u:%02u", (unsigned)(sec / 60), (unsigned)(sec % 60));
+}
+
 static void prog_paint(bool full)
 {
     int cols = ui_cols();
@@ -96,6 +114,9 @@ static void prog_paint(bool full)
     ui_color(C_WHITE, false);
     ui_field(12, 1, w, "%s", line);
     ui_field(13, 1, w, "Files: %u / %u", (unsigned)X.files_done, (unsigned)X.files_total);
+    char eta[32];
+    time_left(eta, sizeof(eta), el);
+    ui_field(14, 1, w, "%s", eta);
     ui_reset();
 }
 
