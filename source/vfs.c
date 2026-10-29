@@ -529,7 +529,7 @@ static void mount_usb(int tries)
             /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
             g_devs[DEV_USB0 + i].always_show = true;
             g_devs[DEV_USB0 + i].maybe_wiiu = true;
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "unreadable - Wii U drive? press A");
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "unreadable - A for help");
         }
     }
 
