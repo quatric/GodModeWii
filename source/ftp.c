@@ -32,7 +32,6 @@
 #include <ogc/lwp_watchdog.h>
 
 #include "ftp.h"
-#include <wiiupdate.h>
 #include "app.h"
 #include "ui.h"
 #include "input.h"
@@ -1209,17 +1208,38 @@ static void gen_password(void)
     g_pass[8] = '\0';
 }
 
-bool ftp_run(bool read_write, int install_mode)
+/* libogc's net_init() sleeps forever if a start-up is already running (the update check's),
+ * so start it asynchronously and let B leave; the start-up carries on in the background. */
+static bool net_bring_up(void)
 {
-    ui_splash("Connecting to the network...");
-    WIIUPDATE_Wait(30000);     /* a skipped update check may still be bringing the network up */
-    if (!net_ready) {
-        if (net_init() < 0) {
+    if (net_gethostip())
+        return true;
+    ui_splash("Connecting to the network...   B  Cancel");
+    bool started = false;
+    u64 quiet_since = now_ms();
+    for (;;) {
+        if (DetectInput(IN_DOWN) & (WPAD_BUTTON_B | WPAD_BUTTON_HOME))
+            return false;
+        s32 st = net_get_status();
+        if (st == -EBUSY) {
+            quiet_since = now_ms();
+        } else if (st == 0 && net_gethostip()) {
+            return true;
+        } else if (started) {
             ui_message("NETWORK", C_RED, "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
             return false;
+        } else if (now_ms() - quiet_since >= 500) {     /* the update check retries with 50 ms gaps */
+            net_init_async(NULL, NULL);
+            started = true;
         }
-        net_ready = true;
     }
+}
+
+bool ftp_run(bool read_write, int install_mode)
+{
+    if (!net_bring_up())
+        return false;
+    net_ready = true;
     u32 ip = net_gethostip();
     if (!ip) {
         ui_message("NETWORK", C_RED, "The console has no IP address.");
