@@ -90,7 +90,6 @@ typedef struct {
     bool f_open;
     u8 *buf;
     u32 blen, bpos;
-    u32 sendsz;            /* how much to hand net_send at once (adapts, see pump_transfer) */
     bool eof;
     vfs_entry *ents;
     int nent, eidx;
@@ -412,11 +411,15 @@ static void begin_data(sess_t *s, int op, const char *real)
 
 static void start_stream(sess_t *s)
 {
-    s->sendsz = 8192;
     s->t_last = now_ms();
-    if (s->op == OP_RETR) s->ts = T_SEND_FILE;
-    else if (s->op == OP_STOR) s->ts = T_RECV_FILE;
-    else s->ts = T_SEND_LIST;
+    if (s->op == OP_STOR) {
+        s->ts = T_RECV_FILE;
+        return;
+    }
+    /* libogc's net_send drops the count of a partly sent slice when IOS then says EAGAIN,
+     * so we'd resend those bytes; blocking sends, only once poll says writable, avoid it. */
+    net_fcntl(s->ds, F_SETFL, 0);
+    s->ts = s->op == OP_RETR ? T_SEND_FILE : T_SEND_LIST;
 }
 
 static int fill_list(sess_t *s)
@@ -447,6 +450,7 @@ static int fill_list(sess_t *s)
 
 static void start_linger(sess_t *s, u64 t)
 {
+    set_nonblock(s->ds);
     net_shutdown(s->ds, 1);         /* send FIN after the data, keep reading */
     s->t_last = t;
     s->ts = T_LINGER;
@@ -508,26 +512,19 @@ static bool pump_transfer(sess_t *s)
                 return true;
             }
         }
-        /* IOS can refuse a non-blocking write that is bigger than its free send
-         * buffer instead of taking part of it, and then never accepts it. So send in
-         * slices: halve the slice on EAGAIN, grow it again while writes succeed. */
+        struct pollsd sd = { s->ds, POLLOUT, 0 };
+        if (net_poll(&sd, 1, 0) <= 0 || !(sd.revents & (POLLOUT | POLLERR | POLLHUP))) {
+            if (t - s->t_last > DATA_IDLE_MS) transfer_end(s, false, "426 Data connection timed out");
+            return false;
+        }
         u32 want = s->blen - s->bpos;
-        if (want > s->sendsz) want = s->sendsz;
+        if (want > 8192) want = 8192;
         s32 n = net_send(s->ds, s->buf + s->bpos, want, 0);
-        if (n > 0) {
-            s->bpos += n;
-            s->t_bytes += n;
-            s->t_last = t;
-            if ((u32)n == want && s->sendsz < 8192) s->sendsz *= 2;
-            return true;
-        }
-        if (would_block(n) && s->sendsz > 512) {
-            s->sendsz /= 2;
-            return true;
-        }
-        if (n == 0 || !would_block(n)) { transfer_end(s, false, "426 Connection closed"); return true; }
-        if (t - s->t_last > DATA_IDLE_MS) transfer_end(s, false, "426 Data connection timed out");
-        return false;
+        if (n <= 0) { transfer_end(s, false, "426 Connection closed"); return true; }
+        s->bpos += n;
+        s->t_bytes += n;
+        s->t_last = t;
+        return true;
     }
     case T_LINGER: {
         /* Everything is sent and our side is shut down: wait for the client to
