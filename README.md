@@ -118,7 +118,8 @@ fresh random password. Connect with any FTP client; every mounted drive shows up
 
 It is meant to be harder to break and harder to abuse than the original ftpii:
 
-* **Login is always required**; the password is random per run. Failed logins are throttled and a burst of them locks the server for a minute.
+* **Login is required by default**; the password is random per run. Failed logins are throttled and a burst of them locks the server for a minute.
+  **1** on the server screen switches login off for that run (no user name or password; anyone on your network can connect) and back on.
 * **LAN only**: peers outside private / link-local ranges are refused.
 * **No FTP bounce / hijack**: `PORT` must point back at the client (port >= 1024) and passive data connections must come from the client's IP.
 * **Sandboxed paths**: every path is canonicalised inside the virtual root, so `..` tricks, odd characters and unmounted drives go nowhere.

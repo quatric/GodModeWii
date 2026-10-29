@@ -4,8 +4,9 @@
  * Inspired by ftpii (Joseph Jordan and contributors), rewritten around a
  * single-threaded, non-blocking state machine with a lot of guard rails:
  *
- *  - login is always required; the password is random per run and shown on
- *    the console screen, failed logins are throttled and lock the door
+ *  - login is required by default; the password is random per run and shown on
+ *    the console screen, failed logins are throttled and lock the door. It can
+ *    be switched off on the server screen, for that run only
  *  - only private-network / link-local peers are accepted
  *  - PORT / PASV data connections must come from / go to the control peer
  *    (no FTP bounce, no data-connection hijacking)
@@ -104,6 +105,7 @@ static bool g_rw;
 static int g_install;                 /* FTP_INSTALL_*: unpack uploaded archives */
 static char g_pend[VFS_PATH_MAX];     /* archive waiting to be installed */
 static char g_pass[10];
+static bool g_open_login;             /* no user name or password needed (switched on the screen) */
 static bool net_ready;
 
 static int g_fail_count;
@@ -792,6 +794,10 @@ static void run_command(sess_t *s, char *line)
         return;
     }
 
+    if (g_open_login && (!strcmp(cmd, "USER") || !strcmp(cmd, "PASS"))) {
+        reply(s, "230 Logged in, no login needed. %s", g_rw ? "Read/write." : "Read-only.");
+        return;
+    }
     if (!strcmp(cmd, "USER")) {
         s->authed = false;
         s->user_ok = !strcmp(arg, FTP_USER);
@@ -815,7 +821,7 @@ static void run_command(sess_t *s, char *line)
         }
         return;
     }
-    if (!s->authed) { reply(s, "530 Please log in with USER and PASS"); return; }
+    if (!s->authed && !g_open_login) { reply(s, "530 Please log in with USER and PASS"); return; }
 
     char v[VFS_PATH_MAX], real[VFS_PATH_MAX];
     int dev;
@@ -968,7 +974,10 @@ static void sess_open(sess_t *s, s32 c, u32 ip)
     s->peer_ip = ip;
     s->last = now_ms();
     snprintf(s->cwd, sizeof(s->cwd), "/");
-    reply(s, "220 GodModeWii FTP ready. Log in with USER %s and the password shown on the Wii.", FTP_USER);
+    if (g_open_login)
+        reply(s, "220 GodModeWii FTP ready. No user name or password needed.");
+    else
+        reply(s, "220 GodModeWii FTP ready. Log in with USER %s and the password shown on the Wii.", FTP_USER);
 }
 
 static void accept_new(void)
@@ -1132,8 +1141,14 @@ static void draw(u32 ip, bool full)
     ui_color(C_WHITE, true);
     ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u:%d", (ip >> 24) & 255, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
              g_port);
-    ui_field(5, 1, cols - 2, "User    :  %s", FTP_USER);
-    ui_field(6, 1, cols - 2, "Password:  %s", g_pass);
+    if (g_open_login) {
+        ui_color(C_YELLOW, true);
+        ui_field(5, 1, cols - 2, "Login   :  OFF - no user name or password needed");
+        ui_field(6, 1, cols - 2, "           anyone on your network can connect");
+    } else {
+        ui_field(5, 1, cols - 2, "User    :  %s", FTP_USER);
+        ui_field(6, 1, cols - 2, "Password:  %s", g_pass);
+    }
     ui_color(g_rw ? C_YELLOW : C_CYAN, true);
     ui_field(7, 1, cols - 2, "Mode    :  %s", g_rw ? "READ / WRITE (NAND still needs the Konami unlock)" : "READ-ONLY");
     ui_color(C_WHITE, false);
@@ -1163,8 +1178,10 @@ static void draw(u32 ip, bool full)
             ui_fmt_size(sz, sizeof(sz), s->t_bytes * 1000 / el);
             snprintf(tr, sizeof(tr), "%s %s/s", s->op == OP_STOR ? "up" : "down", sz);
         }
-        ui_color(s->authed ? C_WHITE : C_YELLOW, s->authed);
-        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s, s->authed ? "logged in" : "login...", tr, s->ts >= T_SEND_FILE ? s->t_name : "");
+        bool in = s->authed || g_open_login;
+        ui_color(in ? C_WHITE : C_YELLOW, in);
+        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s, s->authed ? "logged in" : in ? "open" : "login...", tr,
+                 s->ts >= T_SEND_FILE ? s->t_name : "");
         ui_reset();
     }
     int logrow = rows - 3 - LOG_LINES;
@@ -1177,7 +1194,7 @@ static void draw(u32 ip, bool full)
             ui_field(logrow + i, 2, cols - 3, "%s", logbuf[idx % LOG_LINES]);
     }
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "B / HOME: stop the server");
+    ui_field(rows - 2, 1, cols - 2, "1: login on/off    B / HOME: stop the server");
     ui_reset();
 }
 
@@ -1221,6 +1238,7 @@ bool ftp_run(bool read_write, int install_mode)
     }
 
     g_rw = read_write || install_mode;
+    g_open_login = false;
     g_install = install_mode;
     g_pend[0] = '\0';
     gen_password();
@@ -1253,6 +1271,11 @@ bool ftp_run(bool read_write, int install_mode)
         }
 
         u32 btn = progress ? input_poll_nowait() : DetectInput(IN_DOWN);
+        if (btn & WPAD_BUTTON_1) {
+            g_open_login = !g_open_login;
+            ftp_log(g_open_login ? "Login off: anyone on the network can connect" : "Login required again");
+            last_draw = 0;
+        }
         if (btn & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) {
             bool busy = false;
             for (int i = 0; i < MAX_SESS; i++)
