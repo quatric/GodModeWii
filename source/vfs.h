@@ -55,6 +55,7 @@ typedef struct {
     u64 free;
     char note[48];
     bool exfat;          /* no 4 GiB file limit */
+    bool maybe_wiiu;     /* found but unreadable: possibly a Wii U drive without its keys */
 } vfs_dev;
 
 extern vfs_dev g_devs[DEV_COUNT];

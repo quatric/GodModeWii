@@ -289,6 +289,7 @@ static void usb_close_all(void)
         uslot[i].ok = false;
         g_devs[DEV_USB0 + i].mounted = false;
         g_devs[DEV_USB0 + i].always_show = false;
+        g_devs[DEV_USB0 + i].maybe_wiiu = false;
         g_devs[DEV_USB0 + i].note[0] = '\0';
     }
     usb_seen = 0;
@@ -527,7 +528,8 @@ static void mount_usb(int tries)
         } else if (!g_devs[DEV_USB0 + i].mounted) {
             /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
             g_devs[DEV_USB0 + i].always_show = true;
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "not FAT32 (Wii U WFS needs keys in sd:/wfs)");
+            g_devs[DEV_USB0 + i].maybe_wiiu = true;
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "unreadable - Wii U drive? press A");
         }
     }
 

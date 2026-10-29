@@ -56,6 +56,7 @@ Grab the latest build from the [latest release](../../releases/latest): `GodMode
   `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
   with keys that belong to the Wii U that formatted it, and a Wii or vWii can't read them, so copy them to the SD card first: either the two dumps
   `otp.bin` and `seeprom.bin` of that Wii U, or the finished keys as 16 byte files `usb.key` / `mlc.key`, in `sd:/wfs/` (or the root of the card).
+  The easiest way is GodModeU on that Wii U: SYSTEM → *Save Wii U keys for GodModeWii* writes `usb.key` and `mlc.key` to `sd:/wfs/`.
   Decrypted ("plain") images need no key. Remount drives (HOME menu) after changing the key files.
 * Copy from a disc keeps going on **read errors**: unreadable sectors are written as zeros and a `<file>.errors.txt` next to the copy lists every
   byte range that could not be read.

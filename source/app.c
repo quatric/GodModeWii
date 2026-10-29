@@ -894,6 +894,14 @@ static void open_drive(int dev)
         if (d->mounted)
             ui_message("PRIVATE KEYS", C_YELLOW, "These keys are unique to your console. Copy them out for your own backups and keep them private - never share them.");
     }
+    if (!d->mounted && d->maybe_wiiu) {
+        ui_message("NOT AVAILABLE", C_YELLOW,
+                   "This drive isn't FAT32 or exFAT.\n\n"
+                   "If a Wii U formatted it, GodModeWii can read it (read-only) with that console's keys: in GodModeU "
+                   "on the Wii U side, pick SYSTEM > \"Save Wii U keys for GodModeWii\", or copy otp.bin + seeprom.bin "
+                   "to sd:/wfs/. Then use \"Remount drives\" in the HOME menu.");
+        return;
+    }
     if (!d->mounted) {
         char why[160];
         snprintf(why, sizeof(why), "%s%s%s", d->name, d->note[0] ? ": " : " is not available.", d->note);
