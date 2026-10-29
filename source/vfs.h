@@ -57,7 +57,7 @@ typedef struct {
     bool exfat;          /* no 4 GiB file limit */
     bool maybe_wiiu;     /* found but unreadable: possibly a Wii U drive without its keys */
     bool ntfs;           /* mounted with libntfs: no 4 GiB file limit */
-    bool ext;            /* ext2/3/4, mounted read-only */
+    u8 ext;              /* 2, 3 or 4 for an ext volume, mounted read-only */
 } vfs_dev;
 
 extern vfs_dev g_devs[DEV_COUNT];

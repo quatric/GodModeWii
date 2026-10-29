@@ -523,9 +523,17 @@ static bool ext_super(const DISC_INTERFACE *io, sec_t start, u8 *buf)
     return io->readSectors(start + 2, 1, buf) && buf[0x38] == 0x53 && buf[0x39] == 0xEF;
 }
 
+/* Like blkid: ext4 if it uses anything ext3 can't read, ext3 if it has a journal. */
+static int ext_version(const u8 *sb)
+{
+    if ((rd32le(sb + 0x60) & ~0x16u) || (rd32le(sb + 0x64) & ~0x7u))
+        return 4;
+    return rd32le(sb + 0x5C) & 0x4 ? 3 : 2;
+}
+
 /* The first sector of an ext2/3/4 volume: at sector 0, an MBR type 0x83 partition, or a GPT
- * "Linux filesystem" partition. */
-static bool find_ext(const DISC_INTERFACE *io, sec_t *start)
+ * "Linux filesystem" partition. Returns its version, or 0 if there is none. */
+static int find_ext(const DISC_INTERFACE *io, sec_t *start)
 {
     static const u8 gpt_linux[16] = { 0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47,
                                       0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4 };
@@ -559,10 +567,11 @@ static bool find_ext(const DISC_INTERFACE *io, sec_t *start)
             found = true;
         }
     }
-done:
+done:;
+    int version = found ? ext_version(buf) : 0;
     free(buf);
     free(mbr);
-    return found;
+    return version;
 }
 #endif
 
@@ -572,7 +581,8 @@ static void mount_ext(int dev, const char *name, const DISC_INTERFACE *io)
 #ifdef HAVE_EXT4
     static bool registered;
     sec_t start;
-    if (!find_ext(io, &start))
+    int version = find_ext(io, &start);
+    if (!version)
         return;
     if (!registered)
         registered = dvmRegisterFsDriver(&g_ext2FsDriver);
@@ -582,7 +592,8 @@ static void mount_ext(int dev, const char *name, const DISC_INTERFACE *io)
     disc->features &= ~FEATURE_MEDIUM_CANWRITE;
     disc = dvmDiscCacheCreate(disc, 8, 64);
     if (dvmMountVolume(name, disc, start, "ext2")) {
-        g_devs[dev].ext = g_devs[dev].mounted = true;
+        g_devs[dev].ext = version;
+        g_devs[dev].mounted = true;
     } else {
         disc->vt->destroy(disc);
         snprintf(g_devs[dev].note, sizeof(g_devs[dev].note), "ext: can't mount");
@@ -682,7 +693,7 @@ static void unmount_one(int dev, const char *name)
 #ifdef HAVE_EXT4
     if (g_devs[dev].ext) {
         dvmUnmountVolume(name);
-        g_devs[dev].ext = false;
+        g_devs[dev].ext = 0;
         return;
     }
 #endif
