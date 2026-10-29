@@ -427,9 +427,9 @@ static bool check_key(const uint8_t head[0x40], const uint8_t *key, uint8_t plai
         aes128_cbc_decrypt(&k, head, head + 0x10, plain, 0x30);
         memset(&k, 0, sizeof(k));
     }
-    /* plain = bytes 0x10..0x3F: version at 0x1C, device type at 0x20 */
-    uint16_t dt = be16(plain + 0x10);
-    return be32(plain + 0x0C) == WFS_VERSION && (dt == 0x16A2 || dt == 0x136A);
+    /* plain = bytes 0x10..0x3F: version at 0x1C. Only the version is checked, as wfslib does: the
+     * device type at 0x20 isn't always 0x16A2 / 0x136A (0x1EA7 on a real Wii U USB drive). */
+    return be32(plain + 0x0C) == WFS_VERSION;
 }
 
 bool arc_wfs_probe(const src_t *file, const char *name)
