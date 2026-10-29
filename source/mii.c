@@ -228,11 +228,15 @@ void mii_export(void)
         return;
     }
     int cursor = 0, top = 0, rows = ui_rows() - 6;
+    bool dirty = true;
     for (;;) {
         if (cursor < top) top = cursor;
         if (cursor >= top + rows) top = cursor - rows + 1;
-        draw(cursor, top, rows);
+        /* Redrawing the console every frame flickers, so only after a button press. */
+        if (dirty)
+            draw(cursor, top, rows);
         u32 p = input_pressed();
+        dirty = p != 0;
         if (p & WPAD_BUTTON_UP)    cursor = cursor ? cursor - 1 : nmiis - 1;
         if (p & WPAD_BUTTON_DOWN)  cursor = (cursor + 1) % nmiis;
         if (p & WPAD_BUTTON_LEFT)  cursor = cursor > rows ? cursor - rows : 0;
