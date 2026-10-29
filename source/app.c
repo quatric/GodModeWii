@@ -835,6 +835,7 @@ static bool system_menu(void)
 {
     enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_ABOUT, M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
     for (;;) {
+        if (cwd[0]) draw_browser(); else draw_home();
         const char *items[12];
         int code[12];
         int n = 0;
@@ -875,11 +876,11 @@ static bool system_menu(void)
             ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD ? FTP_INSTALL_SD : code[r] == M_FTP_USB ? FTP_INSTALL_USB : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
-        /* These only show something, so B comes back to the SYSTEM menu. */
         case M_MIIS:
             mii_export();
-            continue;
-        case M_ABOUT: show_credits(); continue;
+            return false;
+        /* Only shows a box, so B comes back to the SYSTEM menu, redrawn over the browser. */
+        case M_ABOUT: show_credits(); break;
         case M_LOADER: exit_req = EXIT_LOADER; return true;
         case M_WIIMENU: exit_req = EXIT_MENU; return true;
         case M_RESTART: exit_req = EXIT_RESTART; return true;
