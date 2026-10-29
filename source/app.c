@@ -245,7 +245,9 @@ static void draw_browser(void)
         char sz[24];
         if (en->is_dir) snprintf(sz, sizeof(sz), "<DIR>");
         else ui_fmt_size(sz, sizeof(sz), en->size);
-        ui_field(row, 0, cols - 1, "%c %-*.*s %11s", marks[e] ? '*' : ' ', nw, nw, en->name, sz);
+        char shown[256];
+        ui_ascii(shown, sizeof(shown), en->name);
+        ui_field(row, 0, cols - 1, "%c %-*.*s %11s", marks[e] ? '*' : ' ', nw, nw, shown, sz);
         ui_reset();
     }
 
@@ -458,7 +460,7 @@ static void hexview(const char *path)
 }
 
 /* Plain text viewer: loads the first MiB, wraps it to the screen width and
- * scrolls by line. Tabs are expanded; anything that isn't ASCII shows as '?'. */
+ * scrolls by line. Tabs are expanded; ui_field folds UTF-8 to ASCII. */
 #define TEXT_MAX_BYTES (1024 * 1024)
 #define TEXT_MAX_LINES 200000
 
@@ -554,8 +556,9 @@ static void textview(const char *path)
                         int w = 4 - (cc % 4);
                         while (w-- && k < (int)sizeof(row_text) - 5) { row_text[k++] = ' '; cc++; }
                     } else {
-                        row_text[k++] = (c >= 32 && c < 127) ? (char)c : (c >= 128 ? '?' : '.');
-                        cc++;
+                        row_text[k++] = (c >= 32 && c != 127) ? (char)c : '.';
+                        if ((c & 0xC0) != 0x80)
+                            cc++;
                     }
                 }
                 row_text[k] = '\0';

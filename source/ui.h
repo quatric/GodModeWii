@@ -17,6 +17,7 @@ void ui_bg(int bg);
 void ui_reset(void);
 
 /* Prints exactly `width` columns at row/col (truncated or padded). */
+void ui_ascii(char *dst, size_t n, const char *src);
 void ui_field(int row, int col, int width, const char *fmt, ...);
 void ui_fill(int row, int col, int width, char c);
 void ui_bar(int row, int col, int width, int pct, int color);

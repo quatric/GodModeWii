@@ -70,6 +70,57 @@ void ui_reset(void)
     printf("\x1b[0m\x1b[37;0m\x1b[40m");
 }
 
+/* The console font is ASCII only: accented Latin letters lose their accents, curly quotes and
+ * dashes go plain, and anything else is one '?'. Never longer than src, so dst may be src. */
+static const char *fold(u32 cp, char *one)
+{
+    static const char latin1[] = "AAAAAA?CEEEEIIII" "DNOOOOOxOUUUUY??" "aaaaaa?ceeeeiiii" "dnooooo/ouuuuy?y";
+    static const char ext_a[] = "AaAaAaCcCcCcCcDd" "DdEeEeEeEeEeGgGg" "GgGgHhHhIiIiIiIi" "Ii??JjKkkLlLlLlL"
+                                "lLlNnNnNnnNnOoOo" "Oo??RrRrRrSsSsSs" "SsTtTtTtUuUuUuUu" "UuUuWwYyYZzZzZzs";
+    switch (cp) {
+    case 0xA0: return " ";
+    case 0xC6: return "AE";
+    case 0xDE: return "Th";
+    case 0xDF: return "ss";
+    case 0xE6: return "ae";
+    case 0xFE: return "th";
+    case 0x132: return "IJ";
+    case 0x133: return "ij";
+    case 0x152: return "OE";
+    case 0x153: return "oe";
+    case 0x2013: case 0x2014: return "-";
+    case 0x2018: case 0x2019: return "'";
+    case 0x201C: case 0x201D: return "\"";
+    case 0x2026: return "...";
+    }
+    one[0] = cp >= 0xC0 && cp <= 0xFF ? latin1[cp - 0xC0] : cp >= 0x100 && cp <= 0x17F ? ext_a[cp - 0x100] : '?';
+    one[1] = '\0';
+    return one;
+}
+
+void ui_ascii(char *dst, size_t n, const char *src)
+{
+    const u8 *s = (const u8 *)src;
+    size_t k = 0;
+    while (*s && k + 1 < n) {
+        char one[2] = { (char)*s, '\0' };
+        const char *out = one;
+        u32 cp = *s++;
+        if (cp >= 0x80) {
+            int more = cp >= 0xF0 ? 3 : cp >= 0xE0 ? 2 : cp >= 0xC0 ? 1 : 0;
+            bool bad = cp < 0xC0;
+            cp &= 0x3F >> more;
+            for (; more && (*s & 0xC0) == 0x80; more--)
+                cp = cp << 6 | (*s++ & 0x3F);
+            out = bad || more ? "?" : fold(cp, one);
+        }
+        for (; *out && k + 1 < n; out++)
+            dst[k++] = *out;
+    }
+    if (n)
+        dst[k] = '\0';
+}
+
 void ui_field(int row, int col, int width, const char *fmt, ...)
 {
     char buf[256];
@@ -77,6 +128,7 @@ void ui_field(int row, int col, int width, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    ui_ascii(buf, sizeof(buf), buf);
 
     if (width >= (int)sizeof(buf))
         width = sizeof(buf) - 1;
