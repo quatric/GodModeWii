@@ -751,8 +751,8 @@ static void note_login_failure(sess_t *s)
         g_block_until = t + GLOBAL_LOCK;
         ftp_log("Too many bad logins - refusing clients for 60s");
     }
-    ftp_log("Bad login from %u.%u.%u.%u", s->peer_ip & 255, (s->peer_ip >> 8) & 255,
-            (s->peer_ip >> 16) & 255, s->peer_ip >> 24);
+    ftp_log("Bad login from %u.%u.%u.%u", s->peer_ip >> 24, (s->peer_ip >> 16) & 255,
+            (s->peer_ip >> 8) & 255, s->peer_ip & 255);
 }
 
 static void run_command(sess_t *s, char *line)
@@ -1001,8 +1001,8 @@ static void accept_new(void)
             continue;
         }
         sess_open(slot, c, a.sin_addr.s_addr);
-        ftp_log("Client connected: %u.%u.%u.%u", a.sin_addr.s_addr & 255, (a.sin_addr.s_addr >> 8) & 255,
-                (a.sin_addr.s_addr >> 16) & 255, a.sin_addr.s_addr >> 24);
+        ftp_log("Client connected: %u.%u.%u.%u", a.sin_addr.s_addr >> 24, (a.sin_addr.s_addr >> 16) & 255,
+                (a.sin_addr.s_addr >> 8) & 255, a.sin_addr.s_addr & 255);
     }
 }
 
@@ -1165,8 +1165,8 @@ static void draw(u32 ip, bool full)
             continue;
         }
         char ip_s[24];
-        snprintf(ip_s, sizeof(ip_s), "%u.%u.%u.%u", s->peer_ip & 255, (s->peer_ip >> 8) & 255,
-                 (s->peer_ip >> 16) & 255, s->peer_ip >> 24);
+        snprintf(ip_s, sizeof(ip_s), "%u.%u.%u.%u", s->peer_ip >> 24, (s->peer_ip >> 16) & 255,
+                 (s->peer_ip >> 8) & 255, s->peer_ip & 255);
         char tr[48] = "";
         if (s->ts >= T_SEND_FILE) {
             char sz[24];
