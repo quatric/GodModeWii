@@ -17,6 +17,9 @@
 #ifdef HAVE_NTFS
 #include <ntfs.h>
 #endif
+#ifdef HAVE_EXT4
+#include <ext2.h>
+#endif
 
 #include "vfs.h"
 #include "virt.h"
@@ -77,7 +80,7 @@ bool vfs_is_readonly(const char *path)
     if (arcfs_is_path(path))
         return true;
     int d = vfs_dev_of(path);
-    return d >= 0 && vfs_is_virtual(d) && !vfs_is_card(d);
+    return d >= 0 && ((vfs_is_virtual(d) && !vfs_is_card(d)) || g_devs[d].ext);
 }
 
 /* "seeprom:/name" -> "name" ("" for the root) */
@@ -514,6 +517,81 @@ static void mount_ntfs(int dev, const char *name, const DISC_INTERFACE *io)
 #endif
 }
 
+#ifdef HAVE_EXT4
+static bool ext_super(const DISC_INTERFACE *io, sec_t start, u8 *buf)
+{
+    return io->readSectors(start + 2, 1, buf) && buf[0x38] == 0x53 && buf[0x39] == 0xEF;
+}
+
+/* The first sector of an ext2/3/4 volume: at sector 0, an MBR type 0x83 partition, or a GPT
+ * "Linux filesystem" partition. */
+static bool find_ext(const DISC_INTERFACE *io, sec_t *start)
+{
+    static const u8 gpt_linux[16] = { 0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47,
+                                      0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4 };
+    u8 *buf = memalign(32, 512), *mbr = memalign(32, 512);
+    bool found = false;
+    if (!buf || !mbr || !io->readSectors(0, 1, mbr))
+        goto done;
+    if ((found = ext_super(io, 0, buf))) {
+        *start = 0;
+        goto done;
+    }
+    if (mbr[510] != 0x55 || mbr[511] != 0xAA)
+        goto done;
+    if (mbr[0x1C2] == 0xEE && io->readSectors(1, 1, buf) && !memcmp(buf, "EFI PART", 8)) {
+        u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
+        for (u32 i = 0; i < count && i < 128 && !found; i++) {
+            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, mbr))
+                break;
+            const u8 *e = mbr + i % 4 * 128;
+            if (!memcmp(e, gpt_linux, 16) && ext_super(io, rd32le(e + 32), buf)) {
+                *start = rd32le(e + 32);
+                found = true;
+            }
+        }
+        goto done;
+    }
+    for (int i = 0; i < 4 && !found; i++) {
+        sec_t s = rd32le(mbr + 0x1C6 + i * 16);
+        if (mbr[0x1C2 + i * 16] == 0x83 && s && ext_super(io, s, buf)) {
+            *start = s;
+            found = true;
+        }
+    }
+done:
+    free(buf);
+    free(mbr);
+    return found;
+}
+#endif
+
+/* Read-only: the disc refuses writes and the driver mounts without journal replay. */
+static void mount_ext(int dev, const char *name, const DISC_INTERFACE *io)
+{
+#ifdef HAVE_EXT4
+    static bool registered;
+    sec_t start;
+    if (!find_ext(io, &start))
+        return;
+    if (!registered)
+        registered = dvmRegisterFsDriver(&g_ext2FsDriver);
+    DvmDisc *disc = dvmDiscCreate(io);
+    if (!disc)
+        return;
+    disc->features &= ~FEATURE_MEDIUM_CANWRITE;
+    disc = dvmDiscCacheCreate(disc, 8, 64);
+    if (dvmMountVolume(name, disc, start, "ext2")) {
+        g_devs[dev].ext = g_devs[dev].mounted = true;
+    } else {
+        disc->vt->destroy(disc);
+        snprintf(g_devs[dev].note, sizeof(g_devs[dev].note), "ext: can't mount");
+    }
+#else
+    (void)dev; (void)name; (void)io;
+#endif
+}
+
 static void mount_fat(int dev, const char *name, const DISC_INTERFACE *io)
 {
     g_devs[dev].mounted = fatMountSimple(name, io);
@@ -545,6 +623,8 @@ static void mount_usb(int tries)
         mount_fat(DEV_USB0 + i, name, &usb_iface[i]);
         if (!g_devs[DEV_USB0 + i].mounted)
             mount_ntfs(DEV_USB0 + i, name, &usb_iface[i]);
+        if (!g_devs[DEV_USB0 + i].mounted && !g_devs[DEV_USB0 + i].note[0])
+            mount_ext(DEV_USB0 + i, name, &usb_iface[i]);
         if (g_devs[DEV_USB0 + i].note[0] && !g_devs[DEV_USB0 + i].mounted) {
             g_devs[DEV_USB0 + i].always_show = true;     /* NTFS that refused to mount: its note says why */
         } else if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
@@ -584,6 +664,8 @@ static void mount_sd(void)
     mount_fat(DEV_SD, "sd", &__io_wiisd);
     if (!g_devs[DEV_SD].mounted)
         mount_ntfs(DEV_SD, "sd", &__io_wiisd);
+    if (!g_devs[DEV_SD].mounted && !g_devs[DEV_SD].note[0])
+        mount_ext(DEV_SD, "sd", &__io_wiisd);
 }
 
 static void mount_gecko(void)
@@ -597,6 +679,13 @@ static void mount_gecko(void)
 
 static void unmount_one(int dev, const char *name)
 {
+#ifdef HAVE_EXT4
+    if (g_devs[dev].ext) {
+        dvmUnmountVolume(name);
+        g_devs[dev].ext = false;
+        return;
+    }
+#endif
 #ifdef HAVE_NTFS
     if (g_devs[dev].ntfs) {
         ntfsUnmount(name, true);

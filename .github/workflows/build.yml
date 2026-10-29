@@ -38,8 +38,11 @@ jobs:
       - name: Build libntfs
         run: ./scripts/build_libntfs.sh
 
+      - name: Build libext4
+        run: ./scripts/build_libext4.sh
+
       - name: Build
-        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1
+        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
 
       - name: Package for the Homebrew Channel
         run: |

@@ -1,0 +1,154 @@
+diff --git a/source/ext4_driver.c b/source/ext4_driver.c
+index fd8a4ff..f1b3f3b 100644
+--- source/ext4_driver.c
++++ source/ext4_driver.c
+@@ -10,7 +10,7 @@
+ #include "ext4_driver.h"
+ #include "dvm_debug.h"
+ 
+-static bool _ext4_mount(devoptab_t* dotab, DvmDisc* disc, DvmPartInfo* part);
++static bool _ext4_mount(devoptab_t* dotab, DvmDisc* disc, sec_t start_sector);
+ static void _ext4_umount(void* device_data);
+ 
+ static void _ext4_lock(struct ext4_lock*);
+@@ -102,38 +102,54 @@ static const struct ext4_blockdev_iface _ext4_blockdev_iface = {
+ 	.close  = _ext4_dev_close,
+ };
+ 
+-bool _ext4_mount(devoptab_t* dotab, DvmDisc* disc, DvmPartInfo* part)
++// devkitPro's libdvm passes no partition size: take it from the superblock (blocks << (10 + log_block_size)).
++static bool _ext4_part_size(DvmDisc* disc, sec_t start_sector, uint64_t* size)
++{
++	unsigned sector_sz = 1U << disc->sector_shift;
++	unsigned count = sector_sz >= 2048 ? 1 : 2048 / sector_sz;
++	uint8_t* buf = aligned_alloc(LIBDVM_BUFFER_ALIGN, count * sector_sz);
++	if (!buf || !disc->vt->read_sectors(disc, buf, start_sector, count)) {
++		free(buf);
++		return false;
++	}
++	const uint8_t* sb = buf + 1024;
++	bool ok = (sb[0x38] | sb[0x39] << 8) == 0xEF53;
++	uint64_t blocks = (uint32_t)(sb[4] | sb[5] << 8 | sb[6] << 16 | (uint32_t)sb[7] << 24);
++	if (sb[0x60] & 0x80) // INCOMPAT_64BIT: the high half of the block count
++		blocks |= (uint64_t)(uint32_t)(sb[0x150] | sb[0x151] << 8 | sb[0x152] << 16 | (uint32_t)sb[0x153] << 24) << 32;
++	uint32_t log = (uint32_t)(sb[0x18] | sb[0x19] << 8 | sb[0x1A] << 16 | (uint32_t)sb[0x1B] << 24);
++	free(buf);
++	if (!ok || log > 6)
++		return false;
++	*size = blocks << (10 + log);
++	return true;
++}
++
++bool _ext4_mount(devoptab_t* dotab, DvmDisc* disc, sec_t start_sector)
+ {
+ 	Ext4Volume* vol = (Ext4Volume*)dotab->deviceData;
+ 	vol->disc       = disc;
++	unsigned sector_sz = 1U << disc->sector_shift;
++	uint64_t part_size;
++	if (!_ext4_part_size(disc, start_sector, &part_size))
++		return false;
+ 
+ 	memcpy(&vol->locks, &_ext4_locks, sizeof(vol->locks));
+ 	memcpy(&vol->bdif, &_ext4_blockdev_iface, sizeof(vol->bdif));
+ 	vol->locks.p_user     = vol;
+-	vol->bdif.ph_bsize    = disc->sector_sz;
+-	vol->bdif.ph_bcnt     = disc->num_sectors;
++	vol->bdif.ph_bsize    = sector_sz;
++	vol->bdif.ph_bcnt     = start_sector + part_size / sector_sz;
+ 	vol->bdif.p_user      = disc;
+ 	vol->bdev.bdif        = &vol->bdif;
+-	vol->bdev.part_offset = (uint64_t)part->start_sector * disc->sector_sz;
+-	vol->bdev.part_size   = (uint64_t)part->num_sectors * disc->sector_sz;
++	vol->bdev.part_offset = (uint64_t)start_sector * sector_sz;
++	vol->bdev.part_size   = part_size;
+ 
+-	int rc = ext4_mount(&vol->bdev, &vol->mp, !(disc->features & FEATURE_MEDIUM_CANWRITE));
++	// Read-only, and without journal replay or a journal, which would both write.
++	int rc = ext4_mount(&vol->bdev, &vol->mp, true);
+ 	if (rc != EOK) {
+ 		return false;
+ 	}
+ 
+-	rc = ext4_recover(&vol->mp);
+-	if (rc != EOK && rc != ENOTSUP) {
+-		ext4_umount(&vol->mp);
+-		return false;
+-	}
+-
+-	rc = ext4_journal_start(&vol->mp);
+-	if (rc != EOK) {
+-		ext4_umount(&vol->mp);
+-		return false;
+-	}
+-
+ 	__lock_init(vol->lock);
+ 	ext4_mount_setup_locks(&vol->mp, &vol->locks);
+ 	dvmDiscAddUser(disc);
+@@ -144,7 +160,6 @@ void _ext4_umount(void* device_data)
+ {
+ 	Ext4Volume* vol = (Ext4Volume*)device_data;
+ 
+-	ext4_journal_stop(&vol->mp);
+ 	ext4_umount(&vol->mp);
+ 	dvmDiscRemoveUser(vol->disc);
+ 	__lock_close(vol->lock);
+@@ -473,13 +488,13 @@ long _ext4_fpathconf_r(struct _reent* r, void* fd, int name)
+ 			return ext4_sb_get_block_size(&vol->mp.fs.sb);
+ 
+ 		case _PC_REC_INCR_XFER_SIZE:
+-			return disc->sector_sz;
++			return 1U << disc->sector_shift;
+ 
+ 		case _PC_REC_MAX_XFER_SIZE:
+-			return disc->sector_sz * UINT16_MAX;
++			return (1U << disc->sector_shift) * UINT16_MAX;
+ 
+ 		case _PC_REC_MIN_XFER_SIZE:
+-			return disc->block_sz ? disc->block_sz * disc->sector_sz : disc->sector_sz;
++			return 1U << disc->sector_shift;
+ 
+ 		case _PC_REC_XFER_ALIGN:
+ 			return LIBDVM_BUFFER_ALIGN;
+@@ -543,7 +558,7 @@ int _ext4_dev_bread(struct ext4_blockdev* bdev, void* buf, uint64_t blk_id, uint
+ 	struct ext4_blockdev_iface* bdif = bdev->bdif;
+ 	DvmDisc* disc = (DvmDisc*)bdif->p_user;
+ 
+-	return disc->vt->read_sectors(disc, buf, blk_id, blk_cnt, bdif->ph_bbuf == buf) ? EOK : EIO;
++	return disc->vt->read_sectors(disc, buf, blk_id, blk_cnt) ? EOK : EIO;
+ }
+ 
+ int _ext4_dev_bwrite(struct ext4_blockdev* bdev, const void* buf, uint64_t blk_id, uint32_t blk_cnt)
+@@ -551,7 +566,8 @@ int _ext4_dev_bwrite(struct ext4_blockdev* bdev, const void* buf, uint64_t blk_i
+ 	struct ext4_blockdev_iface* bdif = bdev->bdif;
+ 	DvmDisc* disc = (DvmDisc*)bdif->p_user;
+ 
+-	return disc->vt->write_sectors(disc, buf, blk_id, blk_cnt, bdif->ph_bbuf == buf) ? EOK : EIO;
++	(void)bdif; (void)disc; (void)buf; (void)blk_id; (void)blk_cnt;
++	return EROFS;
+ }
+ 
+ int _ext4_dev_flush(struct ext4_blockdev* bdev)
+@@ -559,7 +575,8 @@ int _ext4_dev_flush(struct ext4_blockdev* bdev)
+ 	struct ext4_blockdev_iface* bdif = bdev->bdif;
+ 	DvmDisc* disc = (DvmDisc*)bdif->p_user;
+ 
+-	return disc->vt->flush(disc) ? EOK : EIO;
++	disc->vt->flush(disc);
++	return EOK;
+ }
+ 
+ int _ext4_dev_close(struct ext4_blockdev* bdev)
+diff --git a/include/ext2.h b/include/ext2.h
+index e65f7d0..c24a6b6 100644
+--- include/ext2.h
++++ include/ext2.h
+@@ -14,7 +14,8 @@ extern const DvmFsDriver g_ext2FsDriver;
+ bool ext2Mount(const char* name, DISC_INTERFACE* iface, sec_t start_sector, unsigned cache_pages, unsigned sectors_per_page);
+ 
+ static inline bool ext2Unmount(const char* name) {
+-	return dvmUnmountVolume(name);
++	dvmUnmountVolume(name);
++	return true;
+ }
+ 
+ #ifdef __cplusplus

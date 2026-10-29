@@ -54,6 +54,9 @@ Grab the latest build from the [latest release](../../releases/latest): `GodMode
 * **Export Miis** in the HOME menu: pick Miis by name and save them to the SD card or a USB drive as
   `/savemiis/<Name>.miigx`, the same files SaveGame Manager GX writes (and can install again). The Mii database is only read.
 * Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
+* **NTFS** SD cards and USB drives, read and write (NTFS-3G through extremscorner's libntfs). A drive Windows didn't shut
+  down fully (Fast Startup, hibernation) is left alone: shut Windows down fully, then remount.
+* **ext2 / ext3 / ext4** (Linux) SD cards and USB drives, **read-only**: copy files off, nothing is written to them.
 * **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
   `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
   with keys that belong to the Wii U that formatted it, and a Wii or vWii can't read them, so copy them to the SD card first: either the two dumps

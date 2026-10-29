@@ -363,6 +363,8 @@ static void draw_home(void)
             snprintf(note, sizeof(note), "exFAT");
         else if (d->ntfs)
             snprintf(note, sizeof(note), "NTFS");
+        else if (d->ext)
+            snprintf(note, sizeof(note), "ext  read-only");
         ui_field(row, 0, cols - 1, " [%-4s]  %-20s %-10s %s", d->tag, d->name, d->root, note);
         ui_reset();
     }
