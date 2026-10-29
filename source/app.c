@@ -141,14 +141,21 @@ static void reload_keep(void)
 
 /* ---------------------------------------------------------------- drawing */
 
+/* The drive list warns while the NAND is unlocked; inside a drive, only the NAND itself does. */
+static bool here_risky(void)
+{
+    return risk_unlocked() && (!cwd[0] || vfs_dev_of(cwd) == DEV_NAND);
+}
+
 static void draw_header(void)
 {
     int cols = ui_cols();
     char left[64], right[48];
+    bool risky = here_risky();
     snprintf(left, sizeof(left), " GodModeWii v%s", GMW_VERSION);
     snprintf(right, sizeof(right), "%s%s ", g_is_vwii ? "vWii  " : "",
-             risk_unlocked() ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]");
-    ui_bg(risk_unlocked() ? C_RED : C_BLUE);
+             risky ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]");
+    ui_bg(risky ? C_RED : C_BLUE);
     ui_color(C_WHITE, true);
     int gap = cols - 1 - (int)strlen(left) - (int)strlen(right);
     if (gap < 1) gap = 1;
