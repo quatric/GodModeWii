@@ -505,7 +505,8 @@ static void mount_ntfs(int dev, const char *name, const DISC_INTERFACE *io)
     int n = ntfsFindPartitions((DISC_INTERFACE *)io, &parts);
     if (n > 0) {
         errno = 0;
-        g_devs[dev].ntfs = ntfsMount(name, (DISC_INTERFACE *)io, parts[0], 8, 64, NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
+        g_devs[dev].ntfs = ntfsMount(name, (DISC_INTERFACE *)io, parts[0], 8, 64,
+                                     NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
         g_devs[dev].mounted = g_devs[dev].ntfs;
         if (!g_devs[dev].ntfs)
             snprintf(g_devs[dev].note, sizeof(g_devs[dev].note), "%s",

@@ -1176,7 +1176,8 @@ static void draw(u32 ip, bool full)
         }
         bool in = s->authed || g_open_login;
         ui_color(in ? C_WHITE : C_YELLOW, in);
-        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s, s->authed ? "logged in" : in ? "open" : "login...", tr,
+        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s,
+                 s->authed ? "logged in" : in ? "open" : "login...", tr,
                  s->ts >= T_SEND_FILE ? s->t_name : "");
         ui_reset();
     }

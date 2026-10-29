@@ -840,7 +840,8 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_ABOUT, M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_ABOUT,
+           M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
     for (;;) {
         if (cwd[0]) draw_browser(); else draw_home();
         const char *items[12];

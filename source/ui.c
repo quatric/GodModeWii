@@ -93,7 +93,9 @@ static const char *fold(u32 cp, char *one)
     case 0x201C: case 0x201D: return "\"";
     case 0x2026: return "...";
     }
-    one[0] = cp >= 0xC0 && cp <= 0xFF ? latin1[cp - 0xC0] : cp >= 0x100 && cp <= 0x17F ? ext_a[cp - 0x100] : '?';
+    one[0] = cp >= 0xC0 && cp <= 0xFF ? latin1[cp - 0xC0]
+             : cp >= 0x100 && cp <= 0x17F ? ext_a[cp - 0x100]
+             : '?';
     one[1] = '\0';
     return one;
 }
