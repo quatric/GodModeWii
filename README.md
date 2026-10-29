@@ -51,6 +51,8 @@ Grab the latest build from the [latest release](../../releases/latest): `GodMode
 * **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
 * **exFAT** SD cards and USB drives (release builds), partitioned MBR or GPT (as macOS formats them) or not at all: they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
 * **Restart Wii** in the HOME menu: on a Wii U it leaves vWii and returns to the Wii U menu.
+* **Export Miis** in the HOME menu: pick Miis by name and save them to the SD card or a USB drive as
+  `/savemiis/<Name>.miigx`, the same files SaveGame Manager GX writes (and can install again). The Mii database is only read.
 * Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
 * **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
   `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
