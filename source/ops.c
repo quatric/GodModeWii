@@ -262,6 +262,8 @@ static bool copy_file(const char *src, const char *dst)
         fail("Cannot create", dst);
         return false;
     }
+    vfs_unbuffered(&in);
+    vfs_unbuffered(&out);
 
     bool ok = true;
     /* Discs: a bad sector doesn't stop the copy; it is zero-filled and written to a log. */

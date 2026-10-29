@@ -975,6 +975,13 @@ bool vfs_open_write(vfs_file *f, const char *path)
     return f->fp != NULL;
 }
 
+/* newlib's stdio refills 1 KiB at a time; unbuffered, a 128 KiB chunk reaches FAT in one call. */
+void vfs_unbuffered(vfs_file *f)
+{
+    if (f->fp)
+        setvbuf(f->fp, NULL, _IONBF, 0);
+}
+
 s32 vfs_read(vfs_file *f, void *buf, u32 len)
 {
     if (f->arc)

@@ -95,6 +95,7 @@ u64  vfs_usb_raw_size(int slot);
 
 bool vfs_open_read(vfs_file *f, const char *path);
 bool vfs_open_write(vfs_file *f, const char *path);   /* create / truncate */
+void vfs_unbuffered(vfs_file *f);                     /* for big sequential copies */
 s32  vfs_read(vfs_file *f, void *buf, u32 len);       /* buf 32-byte aligned */
 s32  vfs_write(vfs_file *f, const void *buf, u32 len);
 bool vfs_seek(vfs_file *f, u64 off);
