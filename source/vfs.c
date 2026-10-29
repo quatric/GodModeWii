@@ -14,6 +14,9 @@
 #include <ogc/usbstorage.h>
 #include <ogc/lwp_heap.h>
 #include <ogc/isfs.h>
+#ifdef HAVE_NTFS
+#include <ntfs.h>
+#endif
 
 #include "vfs.h"
 #include "virt.h"
@@ -490,6 +493,27 @@ static bool disc_is_exfat(const DISC_INTERFACE *io)
     return exfat;
 }
 
+/* Tried after FAT. NTFS-3G refuses a volume Windows left dirty or hibernated (Fast Startup) and
+ * it's never forced, since resetting the journal can lose what Windows hadn't written yet. */
+static void mount_ntfs(int dev, const char *name, const DISC_INTERFACE *io)
+{
+#ifdef HAVE_NTFS
+    sec_t *parts = NULL;
+    int n = ntfsFindPartitions((DISC_INTERFACE *)io, &parts);
+    if (n > 0) {
+        errno = 0;
+        g_devs[dev].ntfs = ntfsMount(name, (DISC_INTERFACE *)io, parts[0], 8, 64, NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
+        g_devs[dev].mounted = g_devs[dev].ntfs;
+        if (!g_devs[dev].ntfs)
+            snprintf(g_devs[dev].note, sizeof(g_devs[dev].note), "%s",
+                     errno == EDIRTY ? "NTFS: shut Windows down fully" : "NTFS: can't mount");
+    }
+    free(parts);
+#else
+    (void)dev; (void)name; (void)io;
+#endif
+}
+
 static void mount_fat(int dev, const char *name, const DISC_INTERFACE *io)
 {
     g_devs[dev].mounted = fatMountSimple(name, io);
@@ -519,7 +543,11 @@ static void mount_usb(int tries)
         char name[8];
         snprintf(name, sizeof(name), "usb%d", i + 1);
         mount_fat(DEV_USB0 + i, name, &usb_iface[i]);
-        if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
+        if (!g_devs[DEV_USB0 + i].mounted)
+            mount_ntfs(DEV_USB0 + i, name, &usb_iface[i]);
+        if (g_devs[DEV_USB0 + i].note[0] && !g_devs[DEV_USB0 + i].mounted) {
+            g_devs[DEV_USB0 + i].always_show = true;     /* NTFS that refused to mount: its note says why */
+        } else if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
             snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
@@ -554,6 +582,8 @@ static void mount_usb(int tries)
 static void mount_sd(void)
 {
     mount_fat(DEV_SD, "sd", &__io_wiisd);
+    if (!g_devs[DEV_SD].mounted)
+        mount_ntfs(DEV_SD, "sd", &__io_wiisd);
 }
 
 static void mount_gecko(void)
@@ -565,15 +595,27 @@ static void mount_gecko(void)
     mount_fat(DEV_GCB, "gcb", &__io_gcsdb);
 }
 
+static void unmount_one(int dev, const char *name)
+{
+#ifdef HAVE_NTFS
+    if (g_devs[dev].ntfs) {
+        ntfsUnmount(name, true);
+        g_devs[dev].ntfs = false;
+        return;
+    }
+#endif
+    fatUnmount(name);
+}
+
 static void unmount_fat(void)
 {
-    fatUnmount("sd");
+    unmount_one(DEV_SD, "sd");
     fatUnmount("gca");
     fatUnmount("gcb");
     for (int i = 0; i < USB_SLOTS; i++) {
         char name[8];
         snprintf(name, sizeof(name), "usb%d", i + 1);
-        fatUnmount(name);
+        unmount_one(DEV_USB0 + i, name);
     }
     for (int i = 0; i < DEV_NAND; i++)
         g_devs[i].mounted = false;

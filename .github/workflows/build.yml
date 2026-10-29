@@ -35,8 +35,11 @@ jobs:
           apt-get update -qq && apt-get install -y -qq cmake >/dev/null
           ./scripts/build_exfat_libfat.sh
 
+      - name: Build libntfs
+        run: ./scripts/build_libntfs.sh
+
       - name: Build
-        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1
+        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1
 
       - name: Package for the Homebrew Channel
         run: |

@@ -27,13 +27,22 @@ LIBDIRS	+=	$(CURDIR)/libwiiupdate
 #   make WITH_SICKSAXIS=1  PS3 SIXAXIS / DualShock 3
 # exFAT on SD and USB (build libfat first with scripts/build_exfat_libfat.sh):
 #   make WITH_EXFAT=1
+# NTFS on SD and USB (build libntfs first with scripts/build_libntfs.sh):
+#   make WITH_NTFS=1
 WITH_WIIDRC ?= 0
 WITH_WUPC ?= 0
 WITH_SICKSAXIS ?= 0
 WITH_EXFAT ?= 0
+WITH_NTFS ?= 0
 
 ifeq ($(WITH_EXFAT),1)
 EXFAT_LIB	:=	$(CURDIR)/portlibs/exfat/lib
+endif
+
+ifeq ($(WITH_NTFS),1)
+CFLAGS	+=	-DHAVE_NTFS
+LIBDIRS	+=	$(CURDIR)/portlibs/ntfs
+LIBS	:=	-lntfs $(LIBS)
 endif
 
 ifneq ($(filter 1,$(WITH_WIIDRC) $(WITH_WUPC) $(WITH_SICKSAXIS)),)
@@ -84,6 +93,11 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES), -iquote $(CURDIR)/$(dir)) \
 ifneq ($(EXFAT_LIB),)
 ifeq ($(wildcard $(EXFAT_LIB)/libfat.a),)
 $(error WITH_EXFAT=1 needs scripts/build_exfat_libfat.sh to be run first)
+endif
+endif
+ifeq ($(WITH_NTFS),1)
+ifeq ($(wildcard $(CURDIR)/portlibs/ntfs/lib/libntfs.a),)
+$(error WITH_NTFS=1 needs scripts/build_libntfs.sh to be run first)
 endif
 endif
 # The exFAT libfat has to come before libogc's own.
