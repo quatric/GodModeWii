@@ -401,7 +401,7 @@ static const char CHARSET[] =
     " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     ".-_()[]+,!#&'@~";
 
-bool ui_text_input(const char *title, char *buf, int maxlen)
+static bool text_input(const char *title, char *buf, int maxlen, const char *charset, bool allow_empty)
 {
     int w = box_width();
     int len = strlen(buf);
@@ -427,7 +427,7 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
         ui_reset();
 
         u32 p = input_pressed();
-        int cs = sizeof(CHARSET) - 1;
+        int cs = (int)strlen(charset);
         int step = 0;
         if (p & WPAD_BUTTON_UP) step = 1;
         if (p & WPAD_BUTTON_DOWN) step = -1;
@@ -439,10 +439,10 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
                 buf[len++] = 'a';
                 buf[len] = '\0';
             }
-            const char *f = strchr(CHARSET, buf[pos]);
+            const char *f = strchr(charset, buf[pos]);
             int idx = f ? (int)(f - CHARSET) : 0;
             idx = ((idx + step) % cs + cs) % cs;
-            buf[pos] = CHARSET[idx];
+            buf[pos] = charset[idx];
         }
         if (p & WPAD_BUTTON_RIGHT) {
             if (pos < len - 1) pos++;
@@ -464,12 +464,27 @@ bool ui_text_input(const char *title, char *buf, int maxlen)
             }
         }
         if (p & WPAD_BUTTON_A) {
-            while (len > 0 && buf[len - 1] == ' ') buf[--len] = '\0';
-            return len > 0;
+            while (!allow_empty && len > 0 && buf[len - 1] == ' ') buf[--len] = '\0';
+            return allow_empty || len > 0;
         }
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME))
             return false;
     }
+}
+
+bool ui_text_input(const char *title, char *buf, int maxlen)
+{
+    return text_input(title, buf, maxlen, CHARSET, false);
+}
+
+/* For file contents: every printable ASCII character, and an empty result is fine. */
+static const char EDIT_CHARSET[] =
+    " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    ".-_()[]+,!#&'@~:/\\;=<>?*\"$%^{}|`";
+
+bool ui_text_edit(const char *title, char *buf, int maxlen)
+{
+    return text_input(title, buf, maxlen, EDIT_CHARSET, true);
 }
 
 /* ---------------------------------------------------------------- splash */
