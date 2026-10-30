@@ -34,6 +34,8 @@ bool ui_confirm(const char *title, int color, const char *text);
 int  ui_menu(const char *title, const char **items, const bool *enabled, int n, int start);
 int  ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start, const char *strip);
 bool ui_text_input(const char *title, char *buf, int maxlen);
+/* Like ui_text_input, but any printable ASCII and an empty result is allowed (editing file lines). */
+bool ui_text_edit(const char *title, char *buf, int maxlen);
 
 void ui_splash(const char *status);
 

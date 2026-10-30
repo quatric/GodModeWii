@@ -10,6 +10,7 @@
 #include "input.h"
 #include "vfs.h"
 #include "ops.h"
+#include "editor.h"
 #include "risk.h"
 #include "mii.h"
 #include "virt.h"
@@ -613,6 +614,7 @@ static void show_credits(void)
 {
     ui_message("ABOUT / CREDITS", C_CYAN,
         "GodModeWii " GMW_VERSION " - a GodMode9-style file manager for Wii and Wii U (vWii).\n"
+        "By quatric & cmyksoda.\n"
         "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
         "NAND access + IOS patching: FSToolBox (nickasa), the Lupo96 mod, the WiiDatabase FSToolBox-Mod "
         "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).\n"
@@ -743,7 +745,7 @@ static void invert_marks(void)
     }
 }
 
-enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
 
 static bool open_archive(const vfs_entry *en)
 {
@@ -786,6 +788,8 @@ static void actions_menu(void)
     items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
     items[n] = "Text viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_TEXT;
     items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;
+    items[n] = "Edit as text"; en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir; code[n++] = A_EDIT_TEXT;
+    items[n] = "Edit as hex"; en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir; code[n++] = A_EDIT_HEX;
     items[n] = "Select all"; en[n] = nents > 0; code[n++] = A_ALL;
     items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
     items[n] = "Invert selection"; en[n] = nents > 0; code[n++] = A_INVERT;
@@ -820,6 +824,14 @@ static void actions_menu(void)
     case A_TEXT:
         tp = targets(&t);
         if (t) { textview(tp[0]); free_paths(tp, t); }
+        break;
+    case A_EDIT_TEXT:
+        tp = targets(&t);
+        if (t) { editor_text(tp[0]); free_paths(tp, t); reload_keep(); }
+        break;
+    case A_EDIT_HEX:
+        tp = targets(&t);
+        if (t) { editor_hex(tp[0]); free_paths(tp, t); reload_keep(); }
         break;
     case A_ALL:     select_all(true); break;
     case A_NONE:    select_all(false); break;

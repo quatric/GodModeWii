@@ -1,6 +1,6 @@
 # GodModeWii
 
-**Version:** 0.8.0 · **Coder:** quatric
+**Version:** 0.8.0 · **By:** quatric & cmyksoda
 
 A text-mode, [GodMode9](https://github.com/d0k3/GodMode9)-style file manager for the **Wii** and the **Wii U's vWii mode**.
 No fancy GUI: just a console, a cursor and a lot of power. Copy, cut, paste and delete files between every storage device
@@ -68,7 +68,7 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   byte range that could not be read.
 * Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
   transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
-* Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer.
+* Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer, plus in-app editors (Actions menu, Edit as text / Edit as hex) for files on writable drives: change bytes in place, or edit text a line at a time with the character roller. Files are edited in memory and only written when you save.
 * Konami-code gate (asked once, at the moment you try something risky) and brick warnings for NAND changes.
 * Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard; release builds also support the Wii U GamePad, Wii U Pro Controller and PS3 SIXAXIS / DualShock 3 (untested on hardware).
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
@@ -84,7 +84,7 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 | **A** | Open folder or archive / actions menu on any other file / paste on the green `Paste` row |
 | **B** | Go up one folder (back to the drive list at the top) |
 | **1** | Mark / unmark the item and move down / clear the clipboard on the green `Paste` row |
-| **2** | Actions menu (paste, clear clipboard, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, selection tools) |
+| **2** | Actions menu (paste, clear clipboard, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, edit as text, edit as hex, selection tools) |
 | **+** | Copy the marked items (or the item under the cursor) |
 | **-** | Cut the marked items |
 | **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. HOME or B closes it again. |
