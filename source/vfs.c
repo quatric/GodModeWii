@@ -803,13 +803,29 @@ static void mount_usb(int tries)
 
 /* ---------------------------------------------------------------- mounting */
 
+/* An aging SD card fails some reads that work when asked again (a tester's old card stopped a big copy at a
+ * different byte each time), and libogc's driver doesn't ask again. */
+static bool sd_read(sec_t sector, sec_t n, void *buf)
+{
+    for (int i = 0; i < 3; i++) {
+        if (i)
+            usleep(10000);
+        if (__io_wiisd.readSectors(sector, n, buf))
+            return true;
+    }
+    return false;
+}
+
 static void mount_sd(void)
 {
-    mount_fat(DEV_SD, "sd", &__io_wiisd);
+    static DISC_INTERFACE sd_iface;
+    sd_iface = __io_wiisd;
+    sd_iface.readSectors = sd_read;
+    mount_fat(DEV_SD, "sd", &sd_iface);
     if (!g_devs[DEV_SD].mounted)
-        mount_ntfs(DEV_SD, "sd", &__io_wiisd);
+        mount_ntfs(DEV_SD, "sd", &sd_iface);
     if (!g_devs[DEV_SD].mounted && !g_devs[DEV_SD].note[0])
-        mount_ext(DEV_SD, "sd", &__io_wiisd);
+        mount_ext(DEV_SD, "sd", &sd_iface);
 }
 
 static void mount_gecko(void)
