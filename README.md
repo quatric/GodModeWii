@@ -21,7 +21,7 @@ the console can see, watch the free space of each one, and (only if you really m
 
 ## Download
 
-Grab the latest build from the [latest release](../../releases/latest): `GodModeWii.zip`. Every push to the main branch refreshes it, and tagged versions get their own entry on the [releases page](../../releases).
+Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older versions are on the [releases page](../../releases).
 
 1. Extract `GodModeWii.zip` to the root of your SD card (or USB drive).
 2. Open GodModeWii from the Homebrew Channel.
