@@ -57,6 +57,20 @@ static bool detect_vwii(void)
     return ret >= 0 && x > 0;
 }
 
+/* exit() returns through the stub HBC leaves behind. A forwarder channel leaves none, so HBC is then started by
+ * title ID, newest first, as USB Loader GX does. */
+static void exit_to_loader(void)
+{
+    static const u64 hbc[] = { 0x000100014F484243ll, 0x000100014C554C5All, 0x00010001AF1BF516ll,
+                               0x000100014A4F4449ll, 0x0001000148415858ll };
+    if (!memcmp((const void *)0x80001804, "STUBHAXX", 8))
+        exit(0);
+    WII_Initialize();
+    for (size_t i = 0; i < sizeof(hbc) / sizeof(hbc[0]); i++)
+        WII_LaunchTitle(hbc[i]);
+    SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
+}
+
 /* Ask GitHub whether a newer release is out. B skips it, and any failure
  * (no network, no reply) just carries on. Returns true when the user chose to
  * install the update. */
@@ -239,7 +253,7 @@ int main(int argc, char **argv)
         exit(0);
         break;
     default:
-        exit(0);
+        exit_to_loader();
     }
     return 0;
 }
