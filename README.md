@@ -55,7 +55,8 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   `/savemiis/<Name>.miigx`, the same files SaveGame Manager GX writes (and can install again). The Mii database is only read.
 * Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
 * **NTFS** SD cards and USB drives, read and write (NTFS-3G through extremscorner's libntfs). A drive Windows didn't shut
-  down fully (Fast Startup, hibernation) is left alone: shut Windows down fully, then remount.
+  down fully (Fast Startup, hibernation) is left alone: shut Windows down fully, then remount. Further NTFS partitions on a
+  USB drive are mounted too, each on its own `usbN:` entry.
 * **ext2 / ext3 / ext4** (Linux) SD cards and USB drives, **read-only**: copy files off, nothing is written to them.
 * **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
   `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
@@ -214,7 +215,7 @@ hardware** and may need fixes — please report what you see:
 Running inside vWii has been tried on a Wii U: the SD card, FAT32, NTFS (read / write) and ext4 (read-only) USB drives, a Wii U USB
 drive read with GodModeU's saved keys, the FTP server and Export Miis.
 
-Known limitations: only the first FAT / exFAT, NTFS or ext2/3/4 partition of a drive (MBR or GPT) is mounted, and ext2/3/4 is read-only.
+Known limitations: on a USB drive with several partitions (MBR or GPT primary partitions), the first one is the drive itself and every further FAT / exFAT / NTFS partition takes the next free `usbN:` slot (listed as "USB Drive 1, part. 2"); logical partitions in an extended partition, extra ext2/3/4 partitions and extra partitions on the SD card aren't mounted, and ext2/3/4 is read-only.
 The console font is ASCII only, so accented letters show without their accents and other characters as `?`; the files keep their real names.
 Files over 4 GiB can't be written to FAT / FAT32 (exFAT has no such limit).
 Memory cards: each save shows as `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry followed by the save data, the

@@ -185,6 +185,7 @@ typedef struct {
 } usb_slot;
 
 static usb_slot uslot[USB_SLOTS];
+static char usb_dev_name[USB_SLOTS][32];     /* "USB Drive N", or which drive a further partition is on */
 static usbstorage_handle uhandle[USB_SLOTS];
 static int uhandles_open;
 static bool usb_inited;
@@ -297,6 +298,10 @@ static void usb_close_all(void)
         g_devs[DEV_USB0 + i].always_show = false;
         g_devs[DEV_USB0 + i].maybe_wiiu = false;
         g_devs[DEV_USB0 + i].note[0] = '\0';
+        g_devs[DEV_USB0 + i].exfat = false;
+        g_devs[DEV_USB0 + i].ntfs = false;
+        snprintf(usb_dev_name[i], sizeof(usb_dev_name[i]), "USB Drive %d", i + 1);
+        g_devs[DEV_USB0 + i].name = usb_dev_name[i];
     }
     usb_seen = 0;
     usb_diag[0] = '\0';
@@ -610,6 +615,131 @@ static void mount_fat(int dev, const char *name, const DISC_INTERFACE *io)
     g_devs[dev].exfat = g_devs[dev].mounted && disc_is_exfat(io);
 }
 
+/* ---------------------------------------------------------------- more partitions */
+
+/* libfat, libntfs and libdvm each mount one partition of a drive by default. Every other
+ * FAT, exFAT or NTFS primary / GPT partition is mounted on a free usbN: name after the
+ * drives. (Logical partitions inside an extended partition are not followed.) */
+enum { PK_FAT, PK_EXFAT, PK_NTFS };
+#define MAX_PARTS 16
+
+typedef struct {
+    sec_t start;
+    int kind;
+} part_info;
+
+static int part_kind(const DISC_INTERFACE *io, sec_t start, u8 *buf)
+{
+    if (!start || !io->readSectors(start, 1, buf))
+        return -1;
+    if (!memcmp(buf + 3, "NTFS    ", 8))
+        return PK_NTFS;
+    if (!memcmp(buf + 3, "EXFAT   ", 8))
+        return PK_EXFAT;
+    if (is_fat_vbr(buf))
+        return PK_FAT;
+    return -1;
+}
+
+static int list_parts(const DISC_INTERFACE *io, part_info *out, int max)
+{
+    static const u8 gpt_basic_data[16] = { 0xA2, 0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44,
+                                           0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 };
+    u8 *buf = memalign(32, 512), *tab = memalign(32, 512);
+    int n = 0;
+    if (!buf || !tab || !io->readSectors(0, 1, tab) || tab[510] != 0x55 || tab[511] != 0xAA)
+        goto done;
+    if (part_kind(io, 0, buf) >= 0 || !memcmp(tab + 3, "NTFS    ", 8) || !memcmp(tab + 3, "EXFAT   ", 8))
+        goto done;                                   /* no partition table: one volume */
+    if (tab[0x1C2] == 0xEE) {
+        if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
+            goto done;
+        u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
+        for (u32 i = 0; i < count && i < 128 && n < max; i++) {
+            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, tab))
+                break;
+            const u8 *e = tab + i % 4 * 128;
+            if (memcmp(e, gpt_basic_data, 16))
+                continue;
+            sec_t start = rd32le(e + 32);
+            int kind = part_kind(io, start, buf);
+            if (kind >= 0) {
+                out[n].start = start;
+                out[n++].kind = kind;
+            }
+        }
+    } else {
+        for (int i = 0; i < 4 && n < max; i++) {
+            u8 type = tab[0x1BE + i * 16 + 4];
+            if (!type || type == 0x05 || type == 0x0F || type == 0x85)
+                continue;
+            sec_t start = rd32le(tab + 0x1C6 + i * 16);
+            int kind = part_kind(io, start, buf);
+            if (kind >= 0) {
+                out[n].start = start;
+                out[n++].kind = kind;
+            }
+        }
+    }
+done:
+    free(buf);
+    free(tab);
+    return n;
+}
+
+static bool mount_extra(int dev, const char *name, const DISC_INTERFACE *io, const part_info *pi)
+{
+    vfs_dev *d = &g_devs[dev];
+    if (pi->kind == PK_NTFS) {
+#ifdef HAVE_NTFS
+        d->ntfs = ntfsMount(name, (DISC_INTERFACE *)io, pi->start, 8, 64, NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
+        d->mounted = d->ntfs;
+#endif
+    } else {
+        d->mounted = fatMount(name, io, pi->start, 4, 64);
+        d->exfat = d->mounted && pi->kind == PK_EXFAT;
+    }
+    return d->mounted;
+}
+
+/* Called once the first volume of every drive is mounted. */
+static void mount_usb_extras(void)
+{
+    for (int i = 0; i < USB_SLOTS; i++) {
+        vfs_dev *main = &g_devs[DEV_USB0 + i];
+        if (!uslot[i].ok || !main->mounted || main->ext || strstr(main->note, "WFS"))
+            continue;
+        part_info parts[MAX_PARTS];
+        int n = list_parts(&usb_iface[i], parts, MAX_PARTS);
+        bool main_ntfs = main->ntfs, skipped = false;
+        for (int p = 0; p < n; p++) {
+            /* the first partition of the main volume's kind is the one already mounted */
+            if (!skipped && (parts[p].kind == PK_NTFS) == main_ntfs) {
+                skipped = true;
+                continue;
+            }
+            int k = -1;
+            for (int j = i + 1; j < USB_SLOTS; j++) {
+                vfs_dev *c = &g_devs[DEV_USB0 + j];
+                if (!uslot[j].ok && !c->mounted && !c->always_show && !c->note[0]) {
+                    k = j;
+                    break;
+                }
+            }
+            if (k < 0)
+                return;
+            char name[8];
+            snprintf(name, sizeof(name), "usb%d", k + 1);
+            if (!mount_extra(DEV_USB0 + k, name, &usb_iface[i], &parts[p]))
+                continue;
+            vfs_dev *d = &g_devs[DEV_USB0 + k];
+            snprintf(usb_dev_name[k], sizeof(usb_dev_name[k]), "USB Drive %d, part. %d", i + 1, p + 1);
+            d->name = usb_dev_name[k];
+            snprintf(d->note, sizeof(d->note), "another partition of usb%d:/", i + 1);
+        }
+    }
+}
+
 static void mount_usb(int tries)
 {
     int last = -1, stable = 0;
@@ -667,6 +797,7 @@ static void mount_usb(int tries)
             snprintf(d->note, sizeof(d->note), "%s", usb_diag[0] ? usb_diag : "device found but unreadable");
         }
     }
+    mount_usb_extras();
 }
 
 /* ---------------------------------------------------------------- mounting */
