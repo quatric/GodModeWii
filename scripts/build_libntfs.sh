@@ -25,6 +25,10 @@ sed -i -E 's/[a-z]+->(interface|disc)->flush\([a-z]+->(interface|disc)\)/true/' 
 # Its lock is taken again inside locked sections (stat closes its entry under the lock), so it must be recursive.
 sed -i 's/LWP_MutexInit(&vd->lock, false)/LWP_MutexInit(\&vd->lock, true)/' "$SRC"/ntfsinternal.c
 grep -q 'LWP_MutexInit(&vd->lock, true)' "$SRC"/ntfsinternal.c || { echo "volume lock not made recursive" >&2; exit 1; }
+# statvfs read the whole cluster bitmap every time (64 MB on a 2 TB drive). Like NTFS-3G's own statfs, count it once
+# and then trust the running counts it keeps, unless an I/O error left them impossible.
+sed -i 's/if (ntfs_volume_get_free_space(vd->vol)) {/if ((!NVolFreeSpaceKnown(vd->vol) || vd->vol->free_clusters < 0 || vd->vol->free_clusters > vd->vol->nr_clusters) \&\& ntfs_volume_get_free_space(vd->vol)) {/' "$SRC"/ntfsdir.c
+grep -q 'NVolFreeSpaceKnown(vd->vol) ||' "$SRC"/ntfsdir.c || { echo "statvfs free space patch failed" >&2; exit 1; }
 if grep -nE '->(readSectors|writeSectors|startup|isInserted|shutdown|flush)\(((fd|cache)->)?(interface|disc) ?[,)]|->flush\(' "$SRC"/*.c; then
     echo "libogc2-style disc calls left over" >&2
     exit 1
