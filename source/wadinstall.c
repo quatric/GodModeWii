@@ -62,11 +62,6 @@
 
 /* ---------------------------------------------------------------- helpers */
 
-bool wad_is_name(const char *name)
-{
-    return arc_name_has_ext(name, ".wad");
-}
-
 static const char *wad_strerror(int ec)
 {
     switch (ec) {

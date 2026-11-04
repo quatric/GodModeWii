@@ -1225,12 +1225,6 @@ static void open_drive(int dev)
         return;
     }
 
-    if (0) {
-        ui_message("NOT AVAILABLE", C_YELLOW,
-                   "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
-        return;
-    }
-
     if (dev == DEV_NAND && !nand_warned) {
         nand_warned = true;
         if (!g_nand_full)

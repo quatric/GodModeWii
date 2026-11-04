@@ -15,7 +15,6 @@
  * word address, then 16 data bits) follows the 93Cxx Microwire protocol as
  * used by BootMii.
  */
-#include <string.h>
 #include <unistd.h>
 #include <ogcsys.h>
 #include <ogc/lwp_watchdog.h>

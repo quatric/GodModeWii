@@ -9,8 +9,6 @@
  * app booter (appboot/) copies it into place and jumps to it. Arguments from
  * a meta.xml next to it are passed on, after the program's own path. */
 
-bool launch_is_name(const char *name);
-
 /* Reads the program and its arguments. False (after showing why) if it can't
  * be started. On success the caller leaves the main loop with EXIT_LAUNCH. */
 bool launch_prepare(const char *path);

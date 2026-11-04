@@ -23,7 +23,6 @@ static void mlog(const char *m)
 }
 #define TML_WARN(m) mlog(m)
 #define TML_ERROR(m) mlog(m)
-#define TSF_WARN(m) mlog(m)
 #endif
 #define TSF_IMPLEMENTATION
 #define TML_IMPLEMENTATION

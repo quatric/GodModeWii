@@ -156,10 +156,6 @@ archive_t *arc_yaz0_open(const src_t *f, const char *name)
 
 /* ---------------------------------------------------------------- RARC */
 
-typedef struct {
-    uint64_t base;
-} rawpriv;
-
 static int32_t raw_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)
 {
     if (off >= n->size) return 0;

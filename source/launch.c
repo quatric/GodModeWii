@@ -37,11 +37,6 @@ static u32 app_size;
 static char args[ARGS_MAX];             /* in .bss (MEM1), clear of the copy at APP_ADDR */
 static u32 args_len;
 
-bool launch_is_name(const char *name)
-{
-    return arc_name_has_ext(name, ".dol") || arc_name_has_ext(name, ".elf");
-}
-
 static bool looks_runnable(const u8 *b, u32 size)
 {
     if (size >= 0x34 && !memcmp(b, "\x7F" "ELF", 4))

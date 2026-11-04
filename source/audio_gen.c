@@ -319,13 +319,3 @@ void gen_close(gen_t *g)
     bio_close(&g->io);
     free(g);
 }
-
-bool gen_is_name(const char *name)
-{
-    static const char *const ext[] = { ".wav", ".wave", ".aif", ".aiff", ".aifc", ".mp3",
-                                       ".mp2", ".flac", ".ogg", ".oga",  NULL };
-    for (int i = 0; ext[i]; i++)
-        if (arc_name_has_ext(name, ext[i]))
-            return true;
-    return false;
-}

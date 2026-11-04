@@ -1393,13 +1393,6 @@ static bool play_seq(const char *path)
 #define MIDI_RATE 32000                     /* the synth's rate; the output resamples to 48 kHz */
 #define MIDI_MAX  (8u << 20)
 
-static bool midi_is_name(const char *n)
-{
-    return arc_name_has_ext(n, ".mid") || arc_name_has_ext(n, ".midi") ||
-           arc_name_has_ext(n, ".rmi") || arc_name_has_ext(n, ".smf") ||
-           arc_name_has_ext(n, ".kar");
-}
-
 static u8 *slurp(const char *path, u32 max, u32 *len)
 {
     vfs_file f;
@@ -1715,18 +1708,6 @@ static bool play_midi(const char *path)
     tsf_close(m.f);
     tml_free(m.song);
     return true;
-}
-
-bool audio_is_name(const char *name)
-{
-    if (gen_is_name(name) || arc_name_has_ext(name, ".seq") || midi_is_name(name)) return true;
-    static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav",
-                                       ".bcwav", ".cwav",  ".bfwav", ".fwav",  ".bns",
-                                       ".dsp",   ".ast",   ".btsnd", NULL };
-    for (int i = 0; ext[i]; i++)
-        if (arc_name_has_ext(name, ext[i]))
-            return true;
-    return false;
 }
 
 bool audio_play(const char *path)

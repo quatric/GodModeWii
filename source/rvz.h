@@ -18,8 +18,6 @@ rvz_t *rvz_open(const src_t *file, const char **err);
 void rvz_close(rvz_t *r);
 
 uint64_t rvz_iso_size(const rvz_t *r);
-int rvz_disc_type(const rvz_t *r);                  /* 1 GameCube, 2 Wii */
-const char *rvz_describe(const rvz_t *r);            /* "RVZ, Zstandard, 128 KiB chunks" */
 
 /* The disc outside Wii partition data, by disc offset (a GameCube disc is all of it). Partition
  * data is not stored in its encrypted form and reads as zeros here. */

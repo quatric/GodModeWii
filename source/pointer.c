@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <string.h>
 #include <wiiuse/wpad.h>
 #include <input_wii.h>
 

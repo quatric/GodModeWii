@@ -3,7 +3,6 @@
  * Hollywood OTP registers, as done by libOTP (joedj) and xyzzy-mod
  * (DarkMatterCore).
  */
-#include <string.h>
 #include "otp.h"
 
 #define HW_OTP_COMMAND (*(vu32 *)0xCD8001EC)

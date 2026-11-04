@@ -922,8 +922,6 @@ static const int ZOOMS[] = { 32, 64, 128, 256, 512, 1024, 2048 };
 
 /* The next (dir 1) or previous (-1) image file in the folder that holds `path`, in the browser's
  * order, wrapping around. False when there's no other one. */
-bool image_is_name(const char *name);
-
 static bool neighbour(const char *path, int dir, char *out, size_t outsz)
 {
     char parent[VFS_PATH_MAX];
@@ -1204,24 +1202,6 @@ static bool view(const char *start_path)
     free(s);
     ui_wipe();
     return true;
-}
-
-bool image_is_name(const char *name)
-{
-    char inner[256];
-    if (arc_lz_name(name, inner, sizeof(inner))) name = inner;
-    if (arc_name_has_ext(name, ".dkz")) {                     /* Donkey Konga "x.tpl.dkz" */
-        snprintf(inner, sizeof(inner), "%s", name);
-        inner[strlen(inner) - 4] = 0;
-        name = inner;
-    }
-    static const char *const ext[] = { ".tpl",   ".bti", ".tex0",      ".brtex", ".brfnt", ".brfna",
-                                       ".breft", ".bmd", ".bdl",       ".png",   ".jpg",   ".jpeg",
-                                       ".webp",  ".bnr", "banner.bin", ".txtr",  NULL };
-    for (int i = 0; ext[i]; i++)
-        if (arc_name_has_ext(name, ext[i]))
-            return true;
-    return false;
 }
 
 bool image_view(const char *path)

@@ -422,8 +422,6 @@ bool rvz_probe(const uint8_t h[4])
 }
 
 uint64_t rvz_iso_size(const rvz_t *r) { return r->iso_size; }
-int rvz_disc_type(const rvz_t *r) { return r->disc_type; }
-const char *rvz_describe(const rvz_t *r) { return r->desc; }
 
 void rvz_close(rvz_t *r)
 {

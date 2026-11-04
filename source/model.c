@@ -1319,14 +1319,6 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
 
 #define MAX_MODELS 64
 
-bool model_is_name(const char *name)
-{
-    char inner[256];
-    if (arc_lz_name(name, inner, sizeof(inner))) name = inner;
-    return arc_name_has_ext(name, ".brres") || arc_name_has_ext(name, ".mdl0") ||
-           arc_name_has_ext(name, ".bmd") || arc_name_has_ext(name, ".bdl");
-}
-
 bool model_view(const char *path)
 {
     u32 len;
