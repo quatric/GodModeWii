@@ -133,6 +133,7 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 * Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard; release builds also support the Wii U GamePad, Wii U Pro Controller and PS3 SIXAXIS / DualShock 3 (untested on hardware).
 * Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
 * A built-in **FTP server** (HOME → *FTP server*), a sturdier take on ftpii's — see below.
+* **Wiiload** (HOME → *Wiiload*): send apps from your computer with the usual `wiiload` client and they're installed — see below.
 * No scripts and no WAD installation, on purpose. It's a handy little tool.
 
 ## Controls
@@ -210,6 +211,20 @@ the archive; hold **B** to cancel. Big 7z / RAR dictionaries need RAM, so an arc
 
 It speaks plain FTP (no TLS): only use it on a network you trust. Supported commands include `LIST`, `NLST`, `MLSD`, `RETR`
 (with `REST`), `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` / `RNTO`, `SIZE`, `PASV`, `EPSV`, `PORT`.
+
+### Wiiload
+
+HOME → *Wiiload (install apps over the network)* listens on TCP port **4299**, the Homebrew Channel's, so the `wiiload`
+client from devkitPro (or any other that speaks wiiload 0.4 / 0.5) works as it is:
+
+    WIILOAD=tcp:192.168.1.23 wiiload MyApp.zip
+
+A **`.zip`, `.7z` or `.rar`** is installed exactly like the FTP install server does it (`apps/MyApp/...` lands in `apps`, a
+lone program folder goes to `apps/<folder>`, and so on) onto the SD card, or the USB drive after **1** switches to it. A
+**`.dol` / `.elf`** is kept in `GodModeWii/wiiload/` and GodModeWii offers to start it at once. Anything else is kept in
+`GodModeWii/wiiload/` too. What a file is goes by its contents, not the name it was sent with. Compressed uploads are
+unpacked as they arrive, so a file can be as large as the drive's free space (up to 512 MiB); only peers on the local network
+are accepted, and hold **B** to cancel a transfer.
 
 ## Installation
 

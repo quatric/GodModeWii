@@ -21,6 +21,7 @@
 #include "saves.h"
 #include "media.h"
 #include "ftype.h"
+#include "wiiload.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -934,12 +935,12 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_SAVES, M_ABOUT,
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_WIILOAD, M_MIIS, M_SAVES, M_ABOUT,
            M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
     for (;;) {
         if (cwd[0]) draw_browser(); else draw_home();
-        const char *items[13];
-        int code[13];
+        const char *items[14];
+        int code[14];
         int n = 0;
         if (risk_unlocked() && !risk_forced()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
         items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
@@ -947,6 +948,7 @@ static bool system_menu(void)
         items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
         items[n] = "FTP install server (archives to SD)";  code[n++] = M_FTP_SD;
         items[n] = "FTP install server (archives to USB)"; code[n++] = M_FTP_USB;
+        items[n] = "Wiiload (install apps over the network)"; code[n++] = M_WIILOAD;
         items[n] = "Export Miis";                       code[n++] = M_MIIS;
         items[n] = "Export all saves";                  code[n++] = M_SAVES;
         items[n] = "About / credits";                   code[n++] = M_ABOUT;
@@ -979,6 +981,16 @@ static bool system_menu(void)
             ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD ? FTP_INSTALL_SD : code[r] == M_FTP_USB ? FTP_INSTALL_USB : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
+        case M_WIILOAD: {
+            char prog[VFS_PATH_MAX];
+            if (wiiload_run(prog, sizeof(prog)) && launch_prepare(prog)) {
+                launch_requested = true;
+                exit_req = EXIT_LAUNCH;
+                return true;
+            }
+            reload_keep_safe();
+            return false;
+        }
         case M_MIIS:
             mii_export();
             return false;

@@ -12,6 +12,7 @@
 # mtools (mformat, mcopy) and Dolphin. DOLPHIN=/path/to/Dolphin overrides where Dolphin is.
 # The 3D model viewer draws with the GPU: run it with GFX=Vulkan (or OGL / Metal) so Dolphin renders,
 # and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
+# @wiiload waits for one wiiload upload (send it to tcp:127.0.0.1 while this runs).
 # AUDIO=True also saves what was played as OUTDIR/dspdump.wav.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -28,6 +29,7 @@ dd if=/dev/zero of="$sd" bs=1m count=0 seek="${SDSIZE:-256}" 2>/dev/null
 mformat -i "$sd" -F ::
 : > "$work/gmwtest.txt"
 for arg in "$@"; do
+    case "$arg" in @*) echo "$arg" >> "$work/gmwtest.txt"; continue ;; esac   # a command, e.g. @wiiload
     f=${arg%%::*}
     inner=
     case "$arg" in *::*) inner="|/${arg#*::}" ;; esac

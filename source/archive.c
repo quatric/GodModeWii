@@ -787,7 +787,10 @@ static archive_t *open_u8(const src_t *file, const char *name)
         if (!name[0]) snprintf(name, sizeof(name), "node_%u", (unsigned)i);
         if (is_dir) {
             if (y <= i || y > count || sp >= 63) { ok = false; break; }
-            int idx = tree_add(&a->tree, stack[sp].idx, name, true, 0, 0, 0, 0);
+            /* a folder named "." (many channel contents keep everything in one): its contents go
+             * straight into the folder holding it, so opening the archive shows them at once */
+            int idx = !strcmp(name, ".") || !strcmp(name, "..") ? stack[sp].idx
+                                                                : tree_add(&a->tree, stack[sp].idx, name, true, 0, 0, 0, 0);
             if (idx < 0) { ok = false; break; }
             sp++;
             stack[sp].end = y;

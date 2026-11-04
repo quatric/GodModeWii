@@ -16,4 +16,8 @@ bool ftp_run(bool read_write, int install_mode);
 
 void ftp_net_shutdown(void);
 
+/* Brings the network up (with a "Connecting..." screen B can leave); shut down by
+ * ftp_net_shutdown() on exit. False if it couldn't connect. */
+bool ftp_net_start(void);
+
 #endif

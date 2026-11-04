@@ -1233,6 +1233,14 @@ static bool net_bring_up(void)
     }
 }
 
+bool ftp_net_start(void)
+{
+    if (!net_bring_up())
+        return false;
+    net_ready = true;
+    return true;
+}
+
 bool ftp_run(bool read_write, int install_mode)
 {
     if (!net_bring_up())
