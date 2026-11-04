@@ -25,6 +25,7 @@
 #include "vfs.h"
 #include "ui.h"
 #include "input.h"
+#include <input_wii.h>
 #include "archive.h"
 #include "arcfs.h"
 
@@ -556,10 +557,10 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
     int fw, fh;
     u8 *fb = ui_framebuffer(&fw, &fh);
     if (!fb) return;
-    int top = 40, bottom = fh - 40;                 /* leave room for the text lines */
+    int top = 48, bottom = fh - 32;                 /* between the two top text lines and the bottom one */
     int vw = fw, vh = bottom - top;
     int cx = w / 2 + panx, cy = h / 2 + pany;
-    for (int y = 0; y < fh; y++) {
+    for (int y = top; y < bottom; y++) {        /* the text lines above and below are left alone */
         /* The framebuffer is uncached: a byte store there writes the whole 32-bit word (the other three
          * bytes become zero, which shows as green), so each pair of pixels goes out as one word. */
         u32 *row = (u32 *)(fb + y * fw * 2);
@@ -593,26 +594,68 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
     }
 }
 
+/* The picture area, empty. */
+static void blit_clear(void)
+{
+    int fw, fh;
+    u8 *fb = ui_framebuffer(&fw, &fh);
+    if (!fb) return;
+    for (int y = 48; y < fh - 32; y++) {
+        u32 *row = (u32 *)(fb + y * fw * 2);
+        for (int x = 0; x < fw / 2; x++) row[x] = 0x10801080u;     /* black: Y 16, U / V 128 */
+    }
+}
+
 /* Zoom steps in 1/256ths; index ZOOM_NATIVE is 1:1. */
 static const int ZOOMS[] = { 32, 64, 128, 256, 512, 1024, 2048 };
 #define ZOOM_COUNT  ((int)(sizeof(ZOOMS) / sizeof(ZOOMS[0])))
 #define ZOOM_NATIVE 3
 
-static bool view(const char *path)
+/* The next (dir 1) or previous (-1) image file in the folder that holds `path`, in the browser's
+ * order, wrapping around. False when there's no other one. */
+bool image_is_name(const char *name);
+
+static bool neighbour(const char *path, int dir, char *out, size_t outsz)
 {
+    char parent[VFS_PATH_MAX];
+    if (!vfs_parent(path, parent, sizeof(parent))) return false;
+    vfs_entry *e = NULL;
+    int n = 0;
+    if (!vfs_list_visible(parent, &e, &n)) return false;
+    const char *me = vfs_basename(path);
+    int at = -1;
+    for (int i = 0; i < n; i++)
+        if (!strcmp(e[i].name, me)) { at = i; break; }
+    bool ok = false;
+    for (int k = 1; at >= 0 && k < n && !ok; k++) {
+        int i = ((at + dir * k) % n + n) % n;
+        if (!e[i].is_dir && image_is_name(e[i].name) && vfs_join(out, outsz, parent, e[i].name)) ok = true;
+    }
+    free(e);
+    return ok;
+}
+
+#define TAP_FRAMES 12        /* Left / Right held longer than this pans a big image instead of flipping */
+
+static bool view(const char *start_path)
+{
+    char path[VFS_PATH_MAX];
+    snprintf(path, sizeof(path), "%s", start_path);
     set_t *s = calloc(1, sizeof(set_t));
     if (!s) return false;
     ui_splash("Loading image...");
     if (!load_set(s, path)) { free_set(s); free(s); return false; }
 
     int cur = 0, zoom = ZOOM_NATIVE, panx = 0, pany = 0, bg = BG_CHECK;
-    bool info = true, redraw = true, fit = false;
+    bool info = true, redraw = true, fit = false, full = true;
     u8 *rgba = NULL;
     bool owned = false;                         /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
     int shown = -1;
     const char *err = NULL;
     int fw_all, fh_all;
     ui_framebuffer(&fw_all, &fh_all);
+    int lr_held = 0, lr_dir = 0;                /* Left / Right: frames held, which one */
+    bool lr_panned = false;
     for (;;) {
         img_t *im = &s->img[cur];
         if (shown != cur) {
@@ -642,31 +685,84 @@ static bool view(const char *path)
                 if (scale < 1) scale = 1;
             }
             int pct = (scale * 100 + 128) / 256;
-            ui_clear();
+            /* Only the first time: clearing the screen before every redraw made it flash. The picture
+             * area is redrawn whole and the text lines are overwritten in place. */
+            if (full) ui_clear();
+            full = false;
             if (rgba) blit(rgba, im->w, im->h, scale, panx, pany, bg);
+            else blit_clear();
             ui_color(C_WHITE, true);
             ui_field(0, 0, ui_cols() - 1, " %s  %s  [%d/%d] %s", s->kind ? s->kind : "IMAGE", vfs_basename(path), cur + 1, s->n, im->label);
             if (info)
                 ui_field(1, 0, ui_cols() - 1, " %dx%d %s%s  %s %d%%", im->w, im->h, fmt_name(im->fmt),
                          im->pal ? " +palette" : "", fit ? "fit" : "zoom", pct);
+            else
+                ui_field(1, 0, ui_cols() - 1, "%s", "");
             if (err) { ui_color(C_RED, true); ui_field(3, 2, ui_cols() - 4, "%s", err); }
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next  +/- Zoom  1 Fit/1:1  D-Pad Pan  A Bg  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next (hold: pan)  +/- Zoom  1 Fit/1:1  A Bg  2 Info  B Close");
             ui_reset();
             redraw = false;
             UI_TEST_SHOT();
         }
         u32 p = input_pressed();
+        u32 held = INPUT_ButtonsHeld();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         int step = im->w / 8 > 8 ? im->w / 8 : 8;
-        /* All of the image on screen: Left / Right go to the previous / next one. Bigger: the D-Pad pans. */
         bool whole = fit || !rgba || ((im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80);
-        if (!whole && (p & WPAD_BUTTON_LEFT))  { panx -= step; redraw = true; }
-        if (!whole && (p & WPAD_BUTTON_RIGHT)) { panx += step; redraw = true; }
         if (!whole && (p & WPAD_BUTTON_UP))    { pany -= step; redraw = true; }
         if (!whole && (p & WPAD_BUTTON_DOWN))  { pany += step; redraw = true; }
-        if (whole && s->n > 1 && (p & WPAD_BUTTON_LEFT))  cur = (cur + s->n - 1) % s->n;
-        if (whole && s->n > 1 && (p & WPAD_BUTTON_RIGHT)) cur = (cur + 1) % s->n;
+
+        /* Left / Right: a press flips to the previous / next image (in the file, then the folder's
+         * next image file). On a picture bigger than the screen, holding the button pans instead. */
+        int flip = 0;
+        if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) {
+            if (!lr_held) { lr_dir = p & WPAD_BUTTON_LEFT ? -1 : 1; lr_held = 1; lr_panned = false; }
+        } else if (lr_held && (held & (lr_dir < 0 ? WPAD_BUTTON_LEFT : WPAD_BUTTON_RIGHT))) {
+            lr_held++;
+            if (!whole && lr_held > TAP_FRAMES) {
+                panx += lr_dir * (step / 4 > 2 ? step / 4 : 2);
+                lr_panned = true;
+                redraw = true;
+            }
+        } else if (lr_held) {                       /* released */
+            if (!lr_panned) flip = lr_dir;
+            lr_held = 0;
+        }
+        if (whole && lr_held == 1) { flip = lr_dir; lr_held = -1000; }   /* whole picture: flip at once, no hold */
+        if (lr_held < 0 && !(held & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT))) lr_held = 0;
+
+        if (flip) {
+            int next = cur + flip;
+            if (next >= 0 && next < s->n) {
+                cur = next;
+            } else {
+                char np[VFS_PATH_MAX], cand[VFS_PATH_MAX];
+                snprintf(cand, sizeof(cand), "%s", path);
+                set_t *ns = calloc(1, sizeof(set_t));
+                bool moved = false;
+                /* the next image file that loads, skipping ones that don't */
+                for (int tries = 0; ns && tries < 64 && neighbour(cand, flip, np, sizeof(np)); tries++) {
+                    if (!strcmp(np, path)) break;
+                    snprintf(cand, sizeof(cand), "%s", np);
+                    if (load_set(ns, cand)) { moved = true; snprintf(path, sizeof(path), "%s", cand); break; }
+                    free_set(ns);
+                }
+                if (moved) {
+                    if (owned) free(rgba);
+                    rgba = NULL;
+                    owned = false;
+                    free_set(s);
+                    free(s);
+                    s = ns;
+                    cur = flip > 0 ? 0 : s->n - 1;
+                    shown = -1;
+                } else {
+                    free(ns);
+                    if (s->n > 1) cur = (cur + s->n + flip) % s->n;
+                }
+            }
+        }
         if ((p & WPAD_BUTTON_PLUS) && (fit || zoom < ZOOM_COUNT - 1))  { if (!fit) zoom++; fit = false; redraw = true; }
         if ((p & WPAD_BUTTON_MINUS) && (fit || zoom > 0)) { if (!fit) zoom--; fit = false; redraw = true; }
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && rgba &&
