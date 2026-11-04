@@ -1038,11 +1038,256 @@ typedef struct {
     archive_t *(*open)(const src_t *, const char *);
 } more_t;
 
+/* ---------------------------------------------------------------- Mario Party .bin (Hudson) */
+
+/* Mario Party 4 - 8: u32 count, then a u32 offset per member; each member is {u32 size, u32 type}
+ * and its data, type 0 stored, 1 LZSS (1 KiB window), 2 / 3 / 4 "slide" (32 flag bits at a time),
+ * 5 run length, 7 zlib. After nintoolbox's lib-mpbin.c (GPL-2.0+). */
+#define MPB_MAX_FILES 4000u
+#define MPB_MAX_SIZE  0x4000000u
+
+typedef struct {
+    uint8_t *cache;
+    int cached;
+} mpb_t;
+
+static void mpb_destroy(archive_t *a)
+{
+    mpb_t *p = a->priv;
+    if (!p) return;
+    free(p->cache);
+    free(p);
+}
+
+static uint32_t mpb_lzss(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    uint8_t win[1024] = { 0 };
+    uint32_t w = 958, sp = 0, dp = 0, code = 0;
+    while (dp < dn) {
+        if (!(code & 0x100)) {
+            if (sp >= sn) break;
+            code = src[sp++] | 0xFF00;
+        }
+        if (code & 1) {
+            if (sp >= sn) break;
+            dst[dp++] = win[w] = src[sp++];
+            w = (w + 1) & 1023;
+        } else {
+            if (sp + 2 > sn) break;
+            uint32_t b1 = src[sp++], b2 = src[sp++];
+            uint32_t o = ((b2 & 0xC0) << 2) | b1, l = (b2 & 0x3F) + 3;
+            for (uint32_t i = 0; i < l && dp < dn; i++) {
+                uint8_t v = win[(o + i) & 1023];
+                win[w] = v;
+                w = (w + 1) & 1023;
+                dst[dp++] = v;
+            }
+        }
+        code >>= 1;
+    }
+    return dp;
+}
+
+static uint32_t mpb_slide(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    uint32_t sp = 4, dp = 0, code = 0;             /* skips a copy of the size */
+    int bits = 0;
+    while (dp < dn) {
+        if (!bits) {
+            if (sp + 4 > sn) break;
+            code = be32(src + sp);
+            sp += 4;
+            bits = 32;
+        }
+        if (code & 0x80000000u) {
+            if (sp >= sn) break;
+            dst[dp++] = src[sp++];
+        } else {
+            if (sp + 2 > sn) break;
+            uint32_t b1 = src[sp++], b2 = src[sp++];
+            uint32_t back = (((b1 & 15) << 8) | b2) + 1, l = (b1 >> 4) + 2;
+            if (l == 2) {
+                if (sp >= sn) break;
+                l = src[sp++] + 18u;
+            }
+            for (uint32_t i = 0; i < l && dp < dn; i++, dp++) dst[dp] = back > dp ? 0 : dst[dp - back];
+        }
+        code <<= 1;
+        bits--;
+    }
+    return dp;
+}
+
+static uint32_t mpb_rle(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    uint32_t sp = 0, dp = 0;
+    while (dp < dn && sp < sn) {
+        uint8_t c = src[sp++];
+        uint32_t l = c & 0x7F;
+        if (c & 0x80)
+            for (uint32_t i = 0; i < l && dp < dn && sp < sn; i++) dst[dp++] = src[sp++];
+        else {
+            if (sp >= sn) break;
+            uint8_t v = src[sp++];
+            for (uint32_t i = 0; i < l && dp < dn; i++) dst[dp++] = v;
+        }
+    }
+    return dp;
+}
+
+static uint32_t mpb_inflate(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    if (sn < 8) return 0;
+    uint32_t cs = be32(src + 4), in = cs && cs <= sn - 8 ? cs : sn - 8;
+    z_stream z;
+    memset(&z, 0, sizeof(z));
+    if (inflateInit2(&z, 15 + 32) != Z_OK) return 0;
+    z.next_in = (Bytef *)(src + 8);
+    z.avail_in = in;
+    z.next_out = dst;
+    z.avail_out = dn;
+    inflate(&z, Z_FINISH);
+    uint32_t got = (uint32_t)z.total_out;
+    inflateEnd(&z);
+    return got;
+}
+
+/* Up to dn bytes of a member (fewer to just peek at its start); how many came out. */
+static uint32_t mpb_unpack(uint32_t type, uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    switch (type) {
+    case 0: {
+        uint32_t n = dn < sn ? dn : sn;
+        memcpy(dst, src, n);
+        return n;
+    }
+    case 1: return mpb_lzss(dst, dn, src, sn);
+    case 2:
+    case 3:
+    case 4: return mpb_slide(dst, dn, src, sn);
+    case 5: return mpb_rle(dst, dn, src, sn);
+    case 7: return mpb_inflate(dst, dn, src, sn);
+    default: return 0;
+    }
+}
+
+/* member i: offset of its header and the end of its data */
+static bool mpb_member(const uint8_t *tab, uint32_t n, uint64_t fsize, uint32_t i, uint32_t *off, uint32_t *end)
+{
+    *off = be32(tab + 4 + i * 4);
+    uint64_t e = i + 1 < n ? be32(tab + 8 + i * 4) : fsize;
+    *end = (uint32_t)e;
+    return *off >= 4 + n * 4 && e <= fsize && (uint64_t)*off + 8 <= e;
+}
+
+static bool mpb_probe(const src_t *f, const char *name)
+{
+    if (!arc_name_has_ext(name, ".bin") || f->size < 16 || f->size > 0xFFFFFFFFu) return false;
+    uint8_t h[4];
+    if (!src_read_full(f, 0, h, 4)) return false;
+    uint32_t n = be32(h);
+    if (!n || n > MPB_MAX_FILES || 4 + (uint64_t)n * 4 > f->size) return false;
+    uint8_t *tab = malloc(4 + n * 4);
+    bool ok = tab && src_read_full(f, 0, tab, 4 + n * 4);
+    for (uint32_t i = 0; ok && i < n; i++) {
+        uint32_t off, end;
+        uint8_t m[8];
+        ok = mpb_member(tab, n, f->size, i, &off, &end) && src_read_full(f, off, m, 8);
+        if (!ok) break;
+        uint32_t size = be32(m), type = be32(m + 4);
+        ok = type <= 7 && type != 6 && size <= MPB_MAX_SIZE && (type || (uint64_t)off + 8 + size <= end);
+    }
+    free(tab);
+    return ok;
+}
+
+static int32_t mpb_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, uint32_t len)
+{
+    mpb_t *p = a->priv;
+    if (off >= nd->size) return 0;
+    if (len > nd->size - off) len = (uint32_t)(nd->size - off);
+    if (!nd->c) return a->base.read(a->base.ctx, nd->a + off, buf, len);       /* stored */
+    int idx = (int)(nd - a->tree.n);
+    if (p->cached != idx) {                         /* the whole member, kept until another is read */
+        free(p->cache);
+        p->cache = NULL;
+        p->cached = -1;
+        uint32_t zs = (uint32_t)nd->b;
+        uint8_t *z = malloc(zs ? zs : 1), *u = malloc(nd->size ? nd->size : 1);
+        bool ok = z && u && src_read_full(&a->base, nd->a, z, zs) &&
+                  mpb_unpack((uint32_t)nd->c, u, (uint32_t)nd->size, z, zs) == nd->size;
+        free(z);
+        if (!ok) {
+            free(u);
+            g_archive_err = "This member couldn't be unpacked";
+            return -1;
+        }
+        p->cache = u;
+        p->cached = idx;
+    }
+    memcpy(buf, p->cache + off, len);
+    return (int32_t)len;
+}
+
+static archive_t *mpb_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[4];
+    if (!src_read_full(f, 0, h, 4)) return NULL;
+    uint32_t n = be32(h);
+    uint8_t *tab = malloc(4 + n * 4);
+    mpb_t *p = calloc(1, sizeof(*p));
+    archive_t *a = archive_alloc("Mario Party BIN");
+    if (!tab || !p || !a || !src_read_full(f, 0, tab, 4 + n * 4)) {
+        free(tab);
+        free(p);
+        if (a) archive_close(a);
+        return NULL;
+    }
+    p->cached = -1;
+    a->priv = p;
+    a->read = mpb_read;
+    a->destroy = mpb_destroy;
+    a->base = *f;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t off, end;
+        uint8_t m[8];
+        if (!mpb_member(tab, n, f->size, i, &off, &end) || !src_read_full(f, off, m, 8)) continue;
+        uint32_t size = be32(m), type = be32(m + 4), zs = end - off - 8;
+        /* name it after what it holds: unpack its first bytes */
+        const char *ext = "dat";
+        uint8_t peek[16] = { 0 }, zp[64];
+        uint32_t pn = zs < sizeof(zp) ? zs : (uint32_t)sizeof(zp);
+        if (size >= 4 && src_read_full(f, off + 8, zp, pn) &&
+            mpb_unpack(type, peek, size < 16 ? size : 16, zp, pn) >= 4) {
+            if (!memcmp(peek, "HSFV", 4)) ext = "hsf";
+            else if (be32(peek) == 0x0020AF30u) ext = "tpl";
+            else if (!memcmp(peek, "HBDF", 4) || !memcmp(peek, "HSDF", 4)) ext = "hbdf";
+            else if (!memcmp(peek, "RIFF", 4)) ext = "wav";
+            else if (!memcmp(peek, "Yaz0", 4)) ext = "szs";
+            else if (!memcmp(peek, "\x55\xAA\x38\x2D", 4)) ext = "arc";
+        }
+        char nm[32];
+        snprintf(nm, sizeof(nm), "file%03u.%s", (unsigned)i, ext);
+        /* a = where the data starts; b = its packed size; c = the packing (0 = stored) */
+        tree_add_path(&a->tree, nm, false, size, off + 8, zs, type);
+    }
+    free(tab);
+    if (a->tree.count <= 1) {
+        g_archive_err = "No members found";
+        a->base.close = NULL;
+        archive_close(a);
+        return NULL;
+    }
+    return a;
+}
+
 static const more_t more[] = {
     { vcra_probe, vcra_open }, { sszl_probe, sszl_open }, { blpkg_probe, blpkg_open },
     { gpak_probe, gpak_open }, { gpkg_probe, gpkg_open }, { rfl_probe, rfl_open },
     { fsys_probe, fsys_open }, { ptd_probe, ptd_open }, { pres_probe, pres_open },
     { arika_probe, arika_open }, { rf2_probe, rf2_open }, { sbn_probe, sbn_open },
+    { mpb_probe, mpb_open },
 };
 
 bool arc_more_probe(const src_t *f, const char *name)
