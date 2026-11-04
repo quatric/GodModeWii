@@ -13,6 +13,7 @@
 #include <ogc/lwp_watchdog.h>
 #include <wiiuse/wpad.h>
 #include <wiiupdate.h>
+#include <network.h>
 
 #include "app.h"
 #include "ui.h"
@@ -78,9 +79,18 @@ static bool check_for_update(void)
 {
     if (WIIUPDATE_Start("quatric", "GodModeWii", GMW_VERSION) < 0)
         return false;
-    ui_splash("Checking for updates...   B  Skip");
-    u64 start = gettime();
+    ui_splash("Initializing network...   B  Skip");
+    u64 start = gettime(), polled = 0;
+    bool online = false;
     while (WIIUPDATE_State() == WIIUPDATE_CHECKING) {
+        /* Each poll is an IOS call, so the network start-up isn't asked about more than every 100 ms. */
+        if (!online && ticks_to_millisecs(diff_ticks(polled, gettime())) >= 100) {
+            polled = gettime();
+            if (net_gethostip()) {
+                online = true;
+                ui_splash("Checking for updates...   B  Skip");
+            }
+        }
         if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) || ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
             WIIUPDATE_Cancel();
             return false;
