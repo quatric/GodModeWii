@@ -289,11 +289,12 @@ static void draw_browser(void)
         ui_field(rows - 4, 0, cols - 1, "");
         ui_color(C_CYAN, true);
         bool wfs = arcfs_dev_pinned(dev);
-        ui_field(rows - 4, 1, 6, "%s", wfs ? "WFS" : "ARC");
+        bool wiiu = wfs && !strcmp(arcfs_pin_kind(dev), "WFS");
+        ui_field(rows - 4, 1, 6, "%s", wiiu ? "WFS" : wfs ? "DISK" : "ARC");
         ui_color(C_WHITE, false);
-        ui_field(rows - 4, 8, cols - 10,
-                 wfs ? "Wii U WFS volume (read-only) - copy files out to SD/USB"
-                     : "inside an archive (read-only) - copy files out to SD/USB");
+        ui_field(rows - 4, 8, cols - 10, wiiu ? "Wii U WFS volume (read-only) - copy files out to SD/USB"
+                                              : wfs ? "drive read as a disk (read-only) - copy files out to SD/USB"
+                                                    : "inside an archive (read-only) - copy files out to SD/USB");
         ui_reset();
     } else if (dev >= 0 && vfs_is_virtual(dev)) {
         ui_reset();

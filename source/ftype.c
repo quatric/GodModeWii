@@ -31,7 +31,7 @@ static ftype_t by_name(const char *name)
 /* "x.brres.lz": what is inside goes by the inner name (the viewers unwrap it when loading). */
 static ftype_t lz_inner(const char *inner)
 {
-    static const char *const model[] = { ".brres", ".mdl0", ".bmd", ".bdl", NULL };
+    static const char *const model[] = { ".brres", ".mdl0", ".bmd", ".bdl", ".hsf", NULL };
     static const char *const image[] = { ".tpl",   ".bti",   ".tex0",  ".brtex",
                                          ".brfnt", ".brfna", ".breft", NULL };
     if (ext_any(inner, model)) return FT_MODEL;
@@ -91,6 +91,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;
 
         if (M("bres") || M("MDL0")) return FT_MODEL;
+        if (M("HSFV037")) return FT_MODEL;                                            /* Mario Party HSF */
         if (n >= 8 && (M("J3D2") || M("J3D1")) &&
             (!memcmp(h + 4, "bmd", 3) || !memcmp(h + 4, "bdl", 3))) return FT_MODEL;
 

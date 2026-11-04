@@ -140,9 +140,9 @@ static bool is_pow2(int v) { return v > 0 && !(v & (v - 1)); }
 /* A GX texture from data in the file. GX formats other than the palette ones are used as they are;
  * palette textures are decoded and handed to GX as RGBA8. Returns the index into m->tex, or -1. */
 static int add_texture(model_t *m, const u8 *file, u32 flen, u32 at, int fmt, int w, int h,
-                       const u8 *pal, int palfmt, int palcount, int wrap_s, int wrap_t)
+                       const u8 *pal, int palfmt, int palcount, int wrap_s, int wrap_t, u32 keybase)
 {
-    u32 key = at;
+    u32 key = at | keybase;
     for (int i = 0; i < m->ntex; i++)
         if (m->tex[i].key == key) return i;
     if (m->ntex >= MAX_TEX || w <= 0 || h <= 0 || w > 1024 || h > 1024 || at >= flen) return -1;
@@ -541,6 +541,90 @@ static u32 brres_find(const u8 *f, u32 flen, const char *folder, const char *nam
     return 0;
 }
 
+/* Textures that are not in the MDL0's own BRRES: a bare .mdl0 keeps them in files next to it, either
+ * "<texture>.tex0" (+ ".plt0") or inside some .brres of the same folder. The loaded files stay in memory
+ * while the model is open. */
+#define EXT_MAX 16
+#define EXT_FILE_MAX (12u * 1024 * 1024)
+typedef struct { u8 *buf; u32 len; char path[VFS_PATH_MAX]; } extbuf_t;
+static extbuf_t g_ext[EXT_MAX];
+static int g_next;
+static char g_ext_dir[VFS_PATH_MAX];
+static u8 *load_file(const char *path, u32 *len);
+
+static void ext_reset(const char *dir)
+{
+    for (int i = 0; i < g_next; i++) free(g_ext[i].buf);
+    g_next = 0;
+    snprintf(g_ext_dir, sizeof(g_ext_dir), "%s", dir ? dir : "");
+}
+
+/* index into g_ext, or -1 (the file is loaded once; a failed load is remembered with buf == NULL) */
+static int ext_get(const char *path)
+{
+    for (int i = 0; i < g_next; i++)
+        if (!strcmp(g_ext[i].path, path)) return g_ext[i].buf ? i : -1;
+    if (g_next >= EXT_MAX) return -1;
+    bool st_dir = false; u64 sz = 0;
+    u8 *b = NULL; u32 n = 0;
+    if (vfs_stat(path, &st_dir, &sz) && !st_dir && sz <= EXT_FILE_MAX) b = load_file(path, &n);
+    extbuf_t *e = &g_ext[g_next];
+    snprintf(e->path, sizeof(e->path), "%s", path);
+    e->buf = b;
+    e->len = n;
+    g_next++;
+    return b ? g_next - 1 : -1;
+}
+
+static bool name_is(const char *a, const char *want, u32 wlen, const char *ext)
+{
+    size_t al = strlen(a), el = strlen(ext);
+    return al == wlen + el && !strncasecmp(a, want, wlen) && !strcasecmp(a + wlen, ext);
+}
+
+/* Looks for the TEX0 called `name` outside the model's own file. On success: the buffer holding it, its
+ * offset in there, a palette (pointer into some buffer, or NULL), and a number that tells buffers apart. */
+static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u32 *tex, const u8 **pal, u32 *pallen, int *id)
+{
+    *pal = NULL; *pallen = 0;
+    if (!g_ext_dir[0]) return false;
+    vfs_entry *list; int n;
+    if (!vfs_list(g_ext_dir, &list, &n)) return false;
+    bool found = false;
+    char p[VFS_PATH_MAX];
+    /* 1: <name>.tex0 */
+    for (int i = 0; i < n && !found; i++) {
+        if (list[i].is_dir || !name_is(list[i].name, name, nlen, ".tex0")) continue;
+        if (!vfs_join(p, sizeof(p), g_ext_dir, list[i].name)) continue;
+        int k = ext_get(p);
+        if (k < 0 || g_ext[k].len < 0x40 || memcmp(g_ext[k].buf, "TEX0", 4)) continue;
+        *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = 0; *id = k + 1; found = true;
+        for (int j = 0; j < n; j++) {
+            if (list[j].is_dir || !name_is(list[j].name, name, nlen, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[j].name)) continue;
+            int pk = ext_get(p);
+            if (pk >= 0 && g_ext[pk].len >= 0x20 && !memcmp(g_ext[pk].buf, "PLT0", 4)) {
+                *pal = g_ext[pk].buf; *pallen = g_ext[pk].len;
+            }
+            break;
+        }
+    }
+    /* 2: a BRRES in the folder that has it in "Textures(NW4R)" */
+    int tried = 0;
+    for (int i = 0; i < n && !found && tried < 12; i++) {
+        if (list[i].is_dir || !arc_name_has_ext(list[i].name, ".brres") || list[i].size > EXT_FILE_MAX || !vfs_join(p, sizeof(p), g_ext_dir, list[i].name)) continue;
+        tried++;
+        int k = ext_get(p);
+        if (k < 0 || g_ext[k].len < 0x20 || memcmp(g_ext[k].buf, "bres", 4)) continue;
+        u32 t = brres_find(g_ext[k].buf, g_ext[k].len, "Textures(NW4R)", name, nlen);
+        if (!t || memcmp(g_ext[k].buf + t, "TEX0", 4)) continue;
+        *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = t; *id = k + 1; found = true;
+        u32 pl = brres_find(g_ext[k].buf, g_ext[k].len, "Palettes(NW4R)", name, nlen);
+        if (pl && !memcmp(g_ext[k].buf + pl, "PLT0", 4)) { *pal = g_ext[k].buf + pl; *pallen = g_ext[k].len - pl; }
+    }
+    free(list);
+    return found;
+}
+
 /* Texture layer 0 of an MDL0 material -> m->tex index, or -1. */
 static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
 {
@@ -552,34 +636,32 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
     const u8 *ref = d->b + mat + refs;
     s32 rel = (s32)be32(ref);                   /* self-relative, to the name's characters */
     const u8 *nm = ref + rel;
-    if (!rel || nm - 4 < f || nm >= f + d->flen) return -1;
-
+    if (!rel || nm - 4 < d->b || nm >= d->b + d->len) return -1;
     u32 nlen = be32(nm - 4);
-    if (!nlen || nlen > 255 || nm + nlen > f + d->flen) return -1;
+    if (!nlen || nlen > 255 || nm + nlen > d->b + d->len) return -1;
 
-    u32 tex = brres_find(f, d->flen, "Textures(NW4R)", (const char *)nm, nlen);
-    if (!tex || memcmp(f + tex, "TEX0", 4)) return -1;
-
-    const u8 *t = f + tex;
-    int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
-    const u8 *pal = NULL;
-    int palfmt = 0, palcount = 0;
-
-    if (fmt >= 8 && fmt <= 10) {
+    const u8 *tf = f;                           /* the buffer the texture is in */
+    u32 tflen = d->flen, tex = brres_find(f, d->flen, "Textures(NW4R)", (const char *)nm, nlen);
+    int id = 0;
+    const u8 *pal = NULL; int palfmt = 0, palcount = 0;
+    const u8 *palbuf = NULL; u32 pallen = 0;
+    if (tex && !memcmp(f + tex, "TEX0", 4)) {
         u32 pl = brres_find(f, d->flen, "Palettes(NW4R)", (const char *)nm, nlen);
-        if (pl && !memcmp(f + pl, "PLT0", 4)) {
-            u32 plen = be32(f + pl + 4), doff = be32(f + pl + 0x10);
-            palcount = be16(f + pl + 0x1C);
-            if (pl + doff + palcount * 2u <= d->flen && doff + palcount * 2u <= plen) {
-                pal = f + pl + doff;
-                palfmt = be32(f + pl + 0x18);
-            } else
-                palcount = 0;
-        }
+        if (pl && !memcmp(f + pl, "PLT0", 4)) { palbuf = f + pl; pallen = d->flen - pl; }
+    } else if (!ext_texture((const char *)nm, nlen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
+        return -1;
+    const u8 *t = tf + tex;
+    int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
+    if (fmt >= 8 && fmt <= 10 && palbuf) {
+        u32 plen = be32(palbuf + 4), doff = be32(palbuf + 0x10);
+        palcount = be16(palbuf + 0x1C);
+        if (doff + palcount * 2u <= pallen && doff + palcount * 2u <= plen) { pal = palbuf + doff; palfmt = be32(palbuf + 0x18); }
+        else palcount = 0;
     }
-
-    return add_texture(m, f, d->flen, tex + be32(t + 0x10), fmt, w, h, pal, palfmt, palcount,
-                       (int)be32(ref + 0x18), (int)be32(ref + 0x1C));
+    /* the textures of a model are told apart by where they are; another file gets its own range */
+    int idx = add_texture(m, tf, tflen, tex + be32(t + 0x10), fmt, w, h, pal, palfmt, palcount,
+                          (int)be32(ref + 0x18), (int)be32(ref + 0x1C), (u32)id << 26);
+    return idx;
 }
 
 /* An MDL0 material's blend mode, from the pixel-engine part of its display list
@@ -737,6 +819,140 @@ static int brres_models(const u8 *b, u32 len, u32 *offs, char names[][64], int m
     }
 
     return found;
+}
+
+/* ---------------------------------------------------------------- HSF */
+
+/* HAL Laboratory "HSFV037" (Mario Party 4-8 models, after nintoolbox's lib-hsf.c): a table of 20
+ * { offset, count } entries; positions, normals, UVs and primitives (index 4 - 7) are arrays of
+ * 12-byte { name, count, data offset } headers, one per mesh part. Geometry only; materials are
+ * shown in a flat colour per part. */
+typedef struct { u32 name, count, off; } hsfh_t;
+
+static bool hsf_hdrs(const u8 *b, u32 len, u32 off, u32 cnt, hsfh_t *o)
+{
+    if (!cnt || cnt > 512 || (u64)off + (u64)cnt * 12 > len) return false;
+    for (u32 i = 0; i < cnt; i++) {
+        o[i].name = be32(b + off + i * 12);
+        o[i].count = be32(b + off + i * 12 + 4);
+        o[i].off = be32(b + off + i * 12 + 8);
+    }
+    return true;
+}
+
+static const char *hsf_str(const u8 *b, u32 len, u32 strs, u32 rel)
+{
+    u64 at = (u64)strs + rel;
+    return at < len && memchr(b + at, 0, len - at) ? (const char *)b + at : "";
+}
+
+static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
+{
+    if (len < 0xB0 || memcmp(b, "HSFV037", 7)) return false;
+    u32 eo[20], ec[20];
+    for (int i = 0; i < 20; i++) { eo[i] = be32(b + 8 + i * 8); ec[i] = be32(b + 12 + i * 8); }
+    u32 strs = be32(b + 0xA8);
+    u32 np = ec[4], nn = ec[5], nu = ec[6], nf = ec[7];
+    if (!np || !nf || strs >= len || np > 512 || nn > 512 || nu > 512 || nf > 512) return false;
+    hsfh_t ph[512], nh[512], uh[512], fh[512];
+    if (!hsf_hdrs(b, len, eo[4], np, ph) || !hsf_hdrs(b, len, eo[7], nf, fh)) return false;
+    bool have_n = nn && hsf_hdrs(b, len, eo[5], nn, nh);
+    bool have_u = nu && hsf_hdrs(b, len, eo[6], nu, uh);
+    u32 pbase = eo[4] + np * 12, nbase = eo[5] + nn * 12, ubase = eo[6] + nu * 12, fbase = eo[7] + nf * 12;
+    u64 ext = fbase;
+    for (u32 i = 0; i < nf; i++) ext += (u64)fh[i].count * 48;
+
+    /* normals are 3 x f32, or 3 signed bytes (0x20 aligned) in some files */
+    bool packed = false;
+    if (have_n && nn >= 2) {
+        u64 end = (u64)nbase + nh[0].off + (u64)nh[0].count * 3;
+        if (end % 0x20) end += 0x20 - end % 0x20;
+        packed = nh[1].off == end - nbase;
+    }
+    u32 nstride = packed ? 3 : 12;
+    m->bones = 0;
+
+    for (u32 mi = 0; mi < nf; mi++) {
+        const char *mname = hsf_str(b, len, strs, fh[mi].name);
+        bool dup = false;
+        for (u32 j = 0; j < mi && !dup; j++) dup = !strcmp(hsf_str(b, len, strs, fh[j].name), mname);
+        if (dup) continue;
+        int pi = -1, ni = -1, ui = -1;
+        for (u32 j = 0; j < np; j++) if (!strcmp(hsf_str(b, len, strs, ph[j].name), mname)) { pi = j; break; }
+        if (pi < 0 && mi < np) pi = mi;
+        if (pi < 0) continue;
+        if (have_n) for (u32 j = 0; j < nn; j++) if (!strcmp(hsf_str(b, len, strs, nh[j].name), mname)) { ni = j; break; }
+        if (have_u) for (u32 j = 0; j < nu; j++) if (!strcmp(hsf_str(b, len, strs, uh[j].name), mname)) { ui = j; break; }
+        u32 pc = ph[pi].count;
+        u64 pdata = (u64)pbase + ph[pi].off;
+        if (!pc || pdata + (u64)pc * 12 > len) continue;
+        u32 ncnt = 0, ucnt = 0;
+        u64 ndata = 0, udata = 0;
+        if (ni >= 0) { ncnt = nh[ni].count; ndata = (u64)nbase + nh[ni].off; if (ndata + (u64)ncnt * nstride > len) ncnt = 0; }
+        if (ui >= 0) { ucnt = uh[ui].count; udata = (u64)ubase + uh[ui].off; if (udata + (u64)ucnt * 8 > len) ucnt = 0; }
+        u32 nprim = fh[mi].count;
+        u64 fdata = (u64)fbase + fh[mi].off;
+        if (!nprim || fdata + (u64)nprim * 48 > len) continue;
+
+        u32 start = m->n;
+        const u8 *rp = b + fdata;
+        for (u32 i = 0; i < nprim; i++, rp += 48) {
+            s16 type = (s16)be16(rp);
+            if (type < 2 || type > 4) continue;
+            s16 pidx[64], nidx[64], uidx[64];
+            int ng = type == 4 ? 3 : 4, tot = ng;
+            const u8 *gp = rp + 4;
+            for (int g = 0; g < ng; g++, gp += 8) { pidx[g] = (s16)be16(gp); nidx[g] = (s16)be16(gp + 2); uidx[g] = (s16)be16(gp + 6); }
+            if (type == 4) {
+                s32 ecount = (s32)be32(gp);
+                u32 eoff = be32(gp + 4);
+                pidx[3] = pidx[1]; nidx[3] = nidx[1]; uidx[3] = uidx[1];
+                tot = 4;
+                if (ecount > 0 && ecount <= 60 && ext + (u64)eoff * 8 + (u64)ecount * 8 <= len) {
+                    const u8 *ep = b + ext + (u64)eoff * 8;
+                    for (int g = 0; g < ecount; g++, ep += 8) { pidx[4 + g] = (s16)be16(ep); nidx[4 + g] = (s16)be16(ep + 2); uidx[4 + g] = (s16)be16(ep + 6); }
+                    tot = 4 + ecount;
+                }
+            }
+            int seq[3 * 64], ns = 0;
+            if (type == 2) { seq[0] = 0; seq[1] = 1; seq[2] = 2; ns = 3; }
+            else if (type == 3) { int q[6] = { 0, 1, 2, 1, 3, 2 }; for (int k = 0; k < 6; k++) seq[k] = q[k]; ns = 6; }
+            else for (int c = 2; c < tot; c++) {
+                int i0 = (c & 1) ? c - 1 : c - 2, i1 = (c & 1) ? c - 2 : c - 1;
+                if (pidx[i0] == pidx[i1] || pidx[i1] == pidx[c] || pidx[i0] == pidx[c]) continue;
+                seq[ns++] = i0; seq[ns++] = i1; seq[ns++] = c;
+            }
+            for (int k = 0; k + 2 < ns + 0 && ns; k += 3) {
+                vert_t v[3];
+                for (int q = 0; q < 3; q++) {
+                    int g = seq[k + q];
+                    u32 pidv = pidx[g] >= 0 && (u32)pidx[g] < pc ? (u32)pidx[g] : 0;
+                    const u8 *pp = b + pdata + (u64)pidv * 12;
+                    v[q].p[0] = bef(pp); v[q].p[1] = bef(pp + 4); v[q].p[2] = bef(pp + 8);
+                    v[q].n[0] = 0; v[q].n[1] = 1; v[q].n[2] = 0;
+                    if (ncnt) {
+                        u32 nv = nidx[g] >= 0 && (u32)nidx[g] < ncnt ? (u32)nidx[g] : 0;
+                        const u8 *np_ = b + ndata + (u64)nv * nstride;
+                        if (packed) { v[q].n[0] = (s8)np_[0] / 127.f; v[q].n[1] = (s8)np_[1] / 127.f; v[q].n[2] = (s8)np_[2] / 127.f; }
+                        else { v[q].n[0] = bef(np_); v[q].n[1] = bef(np_ + 4); v[q].n[2] = bef(np_ + 8); }
+                    }
+                    v[q].t[0] = v[q].t[1] = 0;
+                    if (ucnt) {
+                        u32 uv = uidx[g] >= 0 && (u32)uidx[g] < ucnt ? (u32)uidx[g] : 0;
+                        v[q].t[0] = bef(b + udata + (u64)uv * 8); v[q].t[1] = bef(b + udata + (u64)uv * 8 + 4);
+                    }
+                    memcpy(v[q].c, PALETTE[mi & 7], 3);
+                    v[q].c[3] = 255;
+                }
+                if (!push(m, &v[0]) || !push(m, &v[1]) || !push(m, &v[2])) break;
+            }
+        }
+        add_mesh(m, start, -1, 0);
+        m->meshes++;
+    }
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "HSF";
+    return m->n > 0;
 }
 
 /* ---------------------------------------------------------------- J3D */
@@ -958,7 +1174,7 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
 
                 shape_tex[idx] =
                     add_texture(m, b, len, h + be32(b + h + 0x1C), b[h], be16(b + h + 2),
-                                be16(b + h + 4), pal, b[h + 9], palcount, b[h + 6], b[h + 7]);
+                                be16(b + h + 4), pal, b[h + 9], palcount, b[h + 6], b[h + 7], 0);
             }
         }
     }
@@ -1290,7 +1506,7 @@ static u8 *load_file(const char *path, u32 *len)
 
     if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
         u32 un;
-        u8 *u = arc_lz_unwrap(b, n, &un);
+        u8 *u = arc_lz_unwrap(vfs_basename(path), b, n, &un);
         free(b);
         if (!u) return NULL;
         b = u;
@@ -1314,6 +1530,7 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
         if (off + sz > len) sz = len - off;
         return load_mdl0(m, b, len, off, sz, name);
     }
+    if (!memcmp(b, "HSFV037", 7)) return load_hsf(m, b, len, name);
     return load_j3d(m, b, len, name);
 }
 
@@ -1344,12 +1561,20 @@ bool model_view(const char *path)
         } else
             free(o);
     }
+    /* where a bare MDL0 looks for textures that are not in its own BRRES: the folder of the file */
+    {
+        char whole[VFS_PATH_MAX], dir[VFS_PATH_MAX];
+        snprintf(whole, sizeof(whole), "%s", path);
+        char *first = strstr(whole, "|/");
+        if (first) *first = 0;
+        ext_reset(vfs_parent(whole, dir, sizeof(dir)) ? dir : NULL);
+    }
 
     u32 offs[MAX_MODELS];
     static char names[MAX_MODELS][64];
     int count;
 
-    bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4);
+    bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4) || !memcmp(b, "HSFV037", 7);
     if (j3d) {
         count = 1;
         offs[0] = 0;
@@ -1358,6 +1583,7 @@ bool model_view(const char *path)
         count = brres_models(b, len, offs, names, MAX_MODELS);
     if (!count) {
         free(b);
+        ext_reset(NULL);
         return false;
     }
 
@@ -1374,6 +1600,7 @@ bool model_view(const char *path)
         /* a BRRES with no drawable model: let the caller browse it */
         free_model(&m);
         free(b);
+        ext_reset(NULL);
         if (j3d) {
             ui_message("MODEL", C_YELLOW, "No drawable geometry was found in this model.");
             return true;
@@ -1481,6 +1708,7 @@ bool model_view(const char *path)
     ptr_hide();
     free_model(&m);
     free(b);
+    ext_reset(NULL);
     ui_wipe();
     return true;
 }

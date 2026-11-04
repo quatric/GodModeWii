@@ -26,6 +26,34 @@ static const u32 KONAMI[10] = {
 static const char *const KONAMI_GLYPH[10] = { "UP",    "UP",   "DOWN",  "DOWN", "LEFT",
                                               "RIGHT", "LEFT", "RIGHT", "B",    "A" };
 
+
+/* One step of the code. Tolerant by design: buttons outside the code are ignored, several buttons in
+ * one frame count as the expected one if it is among them, and after a wrong press the longest part of
+ * the entered buttons that still starts the code is kept (UP UP UP DOWN DOWN ... still works). */
+#define KONAMI_MASK (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT | WPAD_BUTTON_A | WPAD_BUTTON_B)
+
+static int konami_step(int progress, u32 p)
+{
+    p &= KONAMI_MASK;
+    if (!p)
+        return progress;
+    if (p & KONAMI[progress])
+        return progress + 1;
+    /* wrong button: find the longest suffix of (entered buttons + p) that is a prefix of the code */
+    u32 seq[11];
+    for (int i = 0; i < progress; i++)
+        seq[i] = KONAMI[i];
+    seq[progress] = p;
+    for (int len = progress; len > 0; len--) {
+        bool ok = true;
+        for (int i = 0; i < len && ok; i++)
+            ok = (seq[progress + 1 - len + i] & KONAMI[i]) != 0;
+        if (ok)
+            return len;
+    }
+    return 0;
+}
+
 /* Full-screen warning, then the Konami code. `lines` are the warning
  * text, `title` the red banner. HOME cancels. */
 static void draw_gate(const char *title, const char *const *lines, int n, int progress, bool full)
@@ -47,7 +75,7 @@ static void draw_gate(const char *title, const char *const *lines, int n, int pr
         ui_color(C_YELLOW, true);
         ui_field(r - 2, 1, cols - 2, "If you understand and accept this, enter the code:");
         ui_color(C_CYAN, true);
-        ui_field(r + 2, 1, cols - 2, "D-Pad, then B and A.  A wrong button starts over.");
+        ui_field(r + 2, 1, cols - 2, "D-Pad, then B and A.  A wrong button sets you back.");
         ui_field(r + 3, 1, cols - 2, "HOME: cancel");
         ui_reset();
     }
@@ -75,10 +103,7 @@ static bool konami_gate(const char *title, const char *const *lines, int n)
             continue;
         if (p & WPAD_BUTTON_HOME)
             return false;
-        if (p == KONAMI[progress])
-            progress++;
-        else
-            progress = (p == KONAMI[0]) ? 1 : 0;
+        progress = konami_step(progress, p);
         draw_gate(title, lines, n, progress, false);
     }
     return true;
@@ -173,27 +198,27 @@ static bool force_store(bool on)
 /* The code is read from the pads while the logo is up. A thread does that so
  * drive detection can carry on in the meantime. */
 static volatile bool poll_run, poll_hit;
+static volatile int poll_progress;
+static volatile u64 poll_last_ms;      /* when the last code button went in */
 static lwp_t poll_thread = LWP_THREAD_NULL;
 static u8 poll_stack[8192] __attribute__((aligned(32)));
 
 static void *poll_main(void *arg)
 {
     int progress = 0;
-    const u32 mask = WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT |
-                     WPAD_BUTTON_RIGHT | WPAD_BUTTON_A | WPAD_BUTTON_B;
     while (poll_run) {
-        u32 p = input_poll_nowait() & mask;
+        u32 p = input_poll_nowait() & KONAMI_MASK;
         if (p) {
-            if (p == KONAMI[progress])
-                progress++;
-            else
-                progress = (p == KONAMI[0]) ? 1 : 0;
+            progress = konami_step(progress, p);
+            poll_progress = progress;
+            poll_last_ms = ticks_to_millisecs(gettime());
             if (progress == 10) {
                 poll_hit = true;
                 progress = 0;
+                poll_progress = 0;
             }
         }
-        usleep(16000);
+        usleep(8000);
     }
     return NULL;
 }
@@ -202,14 +227,25 @@ void risk_startup_poll_begin(void)
 {
     poll_run = true;
     poll_hit = false;
-    LWP_CreateThread(&poll_thread, poll_main, NULL, poll_stack, sizeof(poll_stack), 64);
+    poll_progress = 0;
+    poll_last_ms = 0;
+    /* Above the main thread (80): drive detection must not starve the code reader. */
+    LWP_CreateThread(&poll_thread, poll_main, NULL, poll_stack, sizeof(poll_stack), 100);
 }
 
-/* Keeps listening until at least `min_ms` after begin, then reports whether the code went in. */
+/* Keeps listening until at least `min_ms` after begin, then reports whether the code went in.
+ * A code that is part way in is given time to finish: up to 2 s after each button, 15 s in all. */
 bool risk_startup_poll_end(u32 min_ms, u64 began_ms)
 {
-    while (ticks_to_millisecs(gettime()) - began_ms < min_ms)
+    for (;;) {
+        u64 now = ticks_to_millisecs(gettime());
+        u64 elapsed = now - began_ms;
+        if (poll_hit || elapsed >= 15000)
+            break;
+        if (elapsed >= min_ms && !(poll_progress > 0 && now - poll_last_ms < 2000))
+            break;
         usleep(20000);
+    }
     poll_run = false;
     if (poll_thread != LWP_THREAD_NULL) {
         LWP_JoinThread(poll_thread, NULL);

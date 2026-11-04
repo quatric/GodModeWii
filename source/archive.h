@@ -100,10 +100,10 @@ uint64_t be64(const uint8_t *p);
 uint16_t be16(const uint8_t *p);
 uint32_t le32(const uint8_t *p);
 bool arc_name_has_ext(const char *name, const char *ext);
-/* Compressed single files (.lz, .lz77, .huff, ...): the name without that extension, and the data
+/* Compressed single files (.lz, .lz77, .huff, .stpl, .z, .gz ...): the name without that extension, and the data
  * decompressed into a 32-byte aligned buffer (NULL if it isn't compressed that way). */
 bool arc_lz_name(const char *name, char *out, size_t outsz);
-uint8_t *arc_lz_unwrap(const uint8_t *buf, uint32_t len, uint32_t *out_len);
+uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len);   /* name picks Camelot / zlib / CX */
 archive_t *archive_alloc(const char *kind);
 /* consumes data; NULL (and frees it) if not an archive */
 archive_t *archive_open_memory(uint8_t *data, uint64_t size, const char *name);
@@ -155,6 +155,25 @@ archive_t *arc_databin_open(const src_t *file, const char *name);
 bool arc_wfs_probe(const src_t *file, const char *name);
 archive_t *arc_wfs_open(const src_t *file, const char *name);
 bool arc_wfs_key_at(int index, uint8_t key[16]);        /* the provider, used by arc_wfs.c */
+
+/* disk file systems and partition tables, read-only (arc_ext.c, arc_hfs.c, arc_xfs.c, arc_apfs.c, arc_zfs.c, arc_disk.c) */
+bool arc_ext_probe(const src_t *file, const char *name);       /* ext2 / ext3 / ext4 */
+archive_t *arc_ext_open(const src_t *file, const char *name);
+bool arc_hfs_probe(const src_t *file, const char *name);       /* HFS+ / HFSX, "Mac OS Extended (Journaled)" */
+archive_t *arc_hfs_open(const src_t *file, const char *name);
+bool arc_xfs_probe(const src_t *file, const char *name);       /* XFS v4 / v5 */
+archive_t *arc_xfs_open(const src_t *file, const char *name);
+bool arc_apfs_probe(const src_t *file, const char *name);      /* APFS container */
+archive_t *arc_apfs_open(const src_t *file, const char *name);
+bool arc_zfs_probe(const src_t *file, const char *name);       /* OpenZFS / ZFS pool, one disk or mirror */
+archive_t *arc_zfs_open(const src_t *file, const char *name);
+bool arc_disk_probe(const src_t *file, const char *name);      /* MBR / GPT / Apple partition map */
+archive_t *arc_disk_open(const src_t *file, const char *name);
+bool arc_hsd_probe(const src_t *file, const char *name);       /* HAL sysdolphin .dat */
+archive_t *arc_hsd_open(const src_t *file, const char *name);
+bool arc_nand_probe(const src_t *file, const char *name);      /* BootMii nand.bin */
+archive_t *arc_nand_open(const src_t *file, const char *name);
+void archive_set_nand_key_provider(archive_key_fn fn);        /* the console's own NAND key, when running on it */
 
 /* keys shared by wad / content.bin / data.bin */
 extern const uint8_t ARC_SD_KEY[16], ARC_SD_IV[16];

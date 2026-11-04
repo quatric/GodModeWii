@@ -832,8 +832,11 @@ static void mount_usb(int tries)
         } else if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note),
-                     "Wii U WFS volume  read-only");
+            if (!strcmp(arcfs_pin_kind(DEV_USB0 + i), "WFS"))
+                snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
+            else
+                snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "%.20s  read-only",
+                         arcfs_pin_kind(DEV_USB0 + i));
         } else if (g_devs[DEV_USB0 + i].mounted && uslot[i].hidden) {
             snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note),
                      "hidden by ustealth  read / write");

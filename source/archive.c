@@ -9,6 +9,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include <zlib.h>
+
 #include "archive.h"
 
 const char *g_archive_err;
@@ -675,10 +677,114 @@ static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint3
     return out;
 }
 
+/* ---------------------------------------------------------------- Camelot (STPL) / zlib */
+
+/* Camelot Software Planning's LZ (Mario Golf: Toadstool Tour, Mario Power Tennis ".stpl"), after nintoolbox's
+ * lib-camelot.c: a codec byte (1 or 2), a 24-bit big endian output size, then flag bytes (MSB first); a clear
+ * flag is a literal, a set one is a back reference { len:4 | dist-hi:4, dist-lo [, long length - 17] }. Its
+ * window is zero-filled before the first byte, which early references use. Inside is a TPL texture bank. */
+static bool camelot_header(const uint8_t *h, uint32_t avail, uint32_t *size)
+{
+    if (avail < 5 || (h[0] != 1 && h[0] != 2)) return false;
+    *size = ((uint32_t)h[1] << 16) | ((uint32_t)h[2] << 8) | h[3];
+    return *size != 0;
+}
+
+static uint8_t *camelot_unpack(const uint8_t *src, uint32_t n, uint32_t *osz)
+{
+    uint32_t out_len;
+    if (!camelot_header(src, n, &out_len)) return NULL;
+    if (out_len > ARC_MAX_DECOMPRESSED) { g_archive_err = "Decompressed size is too big for memory"; return NULL; }
+    uint8_t *out = malloc(out_len);
+    if (!out) { g_archive_err = "Out of memory"; return NULL; }
+    uint32_t sp = 4, dp = 0;
+    while (sp < n && dp < out_len) {
+        uint8_t flags = src[sp++];
+        for (int bit = 0; bit < 8 && dp < out_len; bit++) {
+            if (flags & (0x80 >> bit)) {
+                if (sp + 2 > n) goto bad;
+                uint8_t a = src[sp++], b = src[sp++];
+                uint32_t back = ((uint32_t)(a >> 4) << 8) | b, len = a & 15;
+                if (!len) {
+                    if (sp >= n) goto bad;
+                    len = src[sp++] + 17u;
+                } else
+                    len++;
+                if (!back || len > out_len - dp) goto bad;
+                while (len--) { out[dp] = back <= dp ? out[dp - back] : 0; dp++; }
+            } else {
+                if (sp >= n) goto bad;
+                out[dp++] = src[sp++];
+            }
+        }
+    }
+    if (dp != out_len) goto bad;
+    *osz = out_len;
+    return out;
+bad:
+    free(out);
+    g_archive_err = "Corrupt Camelot data";
+    return NULL;
+}
+
+/* zlib (78 xx) or gzip (1F 8B) data; the size is not stored, so the buffer grows */
+static bool zlib_header(const uint8_t *h, uint32_t n)
+{
+    if (n < 6) return false;
+    if (h[0] == 0x1F && h[1] == 0x8B && h[2] == 8) return true;
+    return (h[0] & 0x0F) == 8 && (h[0] >> 4) <= 7 && ((h[0] << 8) | h[1]) % 31 == 0 && !(h[1] & 0x20);
+}
+
+static uint8_t *zlib_unpack(const uint8_t *src, uint32_t n, uint32_t *osz)
+{
+    z_stream z;
+    memset(&z, 0, sizeof(z));
+    if (inflateInit2(&z, 15 + 32) != Z_OK) return NULL;       /* zlib or gzip, whichever it is */
+    uint32_t cap = n < 0x4000 ? 0x10000 : n * 3;
+    if (cap > ARC_MAX_DECOMPRESSED) cap = ARC_MAX_DECOMPRESSED;
+    uint8_t *out = malloc(cap);
+    if (!out) { inflateEnd(&z); g_archive_err = "Out of memory"; return NULL; }
+    z.next_in = (Bytef *)src;
+    z.avail_in = n;
+    int rc;
+    for (;;) {
+        z.next_out = out + z.total_out;
+        z.avail_out = cap - (uint32_t)z.total_out;
+        rc = inflate(&z, Z_NO_FLUSH);
+        if (rc == Z_STREAM_END) break;
+        if (rc != Z_OK && !(rc == Z_BUF_ERROR && z.avail_out == 0)) break;
+        if (z.avail_out == 0) {
+            if (cap >= ARC_MAX_DECOMPRESSED) { rc = Z_MEM_ERROR; break; }
+            uint32_t nc = cap > ARC_MAX_DECOMPRESSED / 2 ? ARC_MAX_DECOMPRESSED : cap * 2;
+            uint8_t *no = realloc(out, nc);
+            if (!no) { rc = Z_MEM_ERROR; break; }
+            out = no;
+            cap = nc;
+        } else if (z.avail_in == 0)
+            break;
+    }
+    uint32_t total = (uint32_t)z.total_out;
+    inflateEnd(&z);
+    if (rc != Z_STREAM_END || !total) {
+        free(out);
+        g_archive_err = rc == Z_MEM_ERROR ? "Decompressed size is too big for memory" : "Corrupt zlib data";
+        return NULL;
+    }
+    *osz = total;
+    return out;
+}
+
+static bool camelot_ext(const char *name) { return arc_name_has_ext(name, ".stpl") || arc_name_has_ext(name, ".camelot"); }
+static bool zlib_ext(const char *name)
+{
+    return arc_name_has_ext(name, ".z") || arc_name_has_ext(name, ".zlib") || arc_name_has_ext(name, ".zz") ||
+           arc_name_has_ext(name, ".gz");
+}
+
 static bool lz_ext(const char *name)
 {
-    static const char *const ext[] = { ".lz", ".lz10", ".lz11", ".lz77", ".huff", ".huf",
-                                       ".rl", ".rle", ".lzh8", ".lh", ".cx", NULL };
+    static const char *const ext[] = { ".lz",  ".lz10", ".lz11", ".lz77",   ".huff", ".huf", ".rl", ".rle", ".lzh8",
+                                       ".lh",  ".cx",   ".stpl", ".camelot", ".z",    ".zlib", ".zz", ".gz",  NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i])) return true;
     return false;
@@ -704,6 +810,11 @@ static bool probe_lz(const src_t *file, const char *name)
     uint8_t h[4096];
     uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
     if (n < 8 || !src_read_full(file, 0, h, n)) return false;
+    {
+        uint32_t csz;
+        if (camelot_ext(name)) return camelot_header(h, n, &csz);
+        if (zlib_ext(name)) return zlib_header(h, n);
+    }
     uint32_t skip = !memcmp(h, "LZ77", 4) ? 4 : 0;
     uint8_t t;
     uint32_t s, hl;
@@ -720,10 +831,26 @@ static void strip_name(const char *name, char *out, size_t outsz)
     base = base ? base + 1 : (name ? name : "");
     snprintf(out, outsz, "%s", base);
     if (lz_ext(out)) {
+        bool cam = camelot_ext(out);
         char *dot = strrchr(out, '.');
         if (dot) *dot = '\0';
+        if (cam) {                                    /* a Camelot texture bank is a TPL */
+            size_t l = strlen(out);
+            if (l + 5 < outsz) memcpy(out + l, ".tpl", 5);
+        }
     }
     if (!out[0]) snprintf(out, outsz, "data.bin");
+}
+
+/* The right decoder for a compressed single file, by its name (Camelot has no magic) or its header. */
+static uint8_t *wrap_unpack(const char *name, const uint8_t *buf, uint32_t len, uint32_t *osz)
+{
+    if (camelot_ext(name)) return camelot_unpack(buf, len, osz);
+    if (zlib_ext(name) || (len >= 3 && buf[0] == 0x1F && buf[1] == 0x8B)) {
+        if (zlib_header(buf, len)) return zlib_unpack(buf, len, osz);
+        if (zlib_ext(name)) { g_archive_err = "Not zlib data"; return NULL; }
+    }
+    return lz_unpack(buf, len, !memcmp(buf, "LZ77", 4) && len >= 4 ? 4 : 0, osz);
 }
 
 static archive_t *open_lz(const src_t *file, const char *name)
@@ -731,9 +858,8 @@ static archive_t *open_lz(const src_t *file, const char *name)
     uint8_t *raw;
     uint32_t rlen;
     if (!read_whole(file, &raw, &rlen)) return NULL;
-    uint32_t skip = !memcmp(raw, "LZ77", 4) ? 4 : 0;
     uint32_t osz;
-    uint8_t *out = lz_unpack(raw, rlen, skip, &osz);
+    uint8_t *out = wrap_unpack(name, raw, rlen, &osz);
     free(raw);
     if (!out) return NULL;
     char inner[256];
@@ -754,10 +880,10 @@ bool arc_lz_name(const char *name, char *out, size_t outsz)
 
 /* A whole LZ10 / LZ11 / Huffman / RL / LZH8 file (optionally behind "LZ77") decompressed into a
  * new 32-byte aligned buffer; NULL when it isn't one or doesn't decode. */
-uint8_t *arc_lz_unwrap(const uint8_t *buf, uint32_t len, uint32_t *out_len)
+uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len)
 {
-    uint32_t skip = len >= 4 && !memcmp(buf, "LZ77", 4) ? 4 : 0, n;
-    uint8_t *u = lz_unpack(buf, len, skip, &n);
+    uint32_t n;
+    uint8_t *u = wrap_unpack(name, buf, len, &n);
     if (!u) return NULL;
     uint8_t *a = memalign(32, (n + 31) & ~31u);
     if (a) memcpy(a, u, n);
@@ -1037,6 +1163,14 @@ static const fmt_t formats[] = {
     { "zip/7z/rar",  arc_zip7zrar_probe,   arc_zip7zrar_open },
     { "more",        arc_more_probe,       arc_more_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
+    { "ext",         arc_ext_probe,        arc_ext_open },
+    { "HFS+",        arc_hfs_probe,        arc_hfs_open },
+    { "XFS",         arc_xfs_probe,        arc_xfs_open },
+    { "APFS",        arc_apfs_probe,       arc_apfs_open },
+    { "ZFS",         arc_zfs_probe,        arc_zfs_open },
+    { "BootMii NAND", arc_nand_probe,      arc_nand_open },
+    { "HSD",         arc_hsd_probe,        arc_hsd_open },
+    { "partitions",  arc_disk_probe,       arc_disk_open },
 };
 
 bool archive_probe(const src_t *file, const char *name)

@@ -730,7 +730,7 @@ static u8 *load_file(const char *path, u32 *len)
 
     if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
         u32 un;
-        u8 *u = arc_lz_unwrap(b, n, &un);
+        u8 *u = arc_lz_unwrap(vfs_basename(path), b, n, &un);
         free(b);
         if (!u) return NULL;
         b = u;

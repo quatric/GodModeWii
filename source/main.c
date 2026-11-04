@@ -189,7 +189,7 @@ int main(int argc, char **argv)
     u64 began = ticks_to_millisecs(gettime());
     risk_startup_poll_begin();
     vfs_init();
-    bool toggled = risk_startup_poll_end(2500, began);
+    bool toggled = risk_startup_poll_end(4000, began);
     risk_load_forced();
 
     if (toggled) {

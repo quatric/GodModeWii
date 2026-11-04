@@ -203,6 +203,7 @@ static bool wfs_key_provider(int index, uint8_t key[16])
 }
 
 static bool prng_provider(uint8_t key[16]);
+static bool nand_provider(uint8_t key[16]);
 
 static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t namesz);
 static const char *opening;         /* the archive file being opened, for sibling_provider */
@@ -226,6 +227,7 @@ static void init_providers(void)
     if (provider_set)
         return;
     archive_set_prng_key_provider(prng_provider);
+    archive_set_nand_key_provider(nand_provider);
     archive_set_wfs_key_provider(wfs_key_provider);
     archive_set_sibling_provider(sibling_provider);
     provider_set = true;
@@ -270,6 +272,18 @@ static bool prng_provider(uint8_t key[16])
     if (!otp) return false;
     bool ok = otp_read_all(otp);
     if (ok) memcpy(key, ((otp_t *)otp)->rng_key, 16);
+    memset(otp, 0, OTP_SIZE);
+    free(otp);
+    return ok;
+}
+
+/* the NAND key of the console this runs on, for nand.bin dumps without keys of their own */
+static bool nand_provider(uint8_t key[16])
+{
+    u8 *otp = memalign(32, OTP_SIZE);
+    if (!otp) return false;
+    bool ok = otp_read_all(otp);
+    if (ok) memcpy(key, ((otp_t *)otp)->nand_key, 16);
     memset(otp, 0, OTP_SIZE);
     free(otp);
     return ok;
@@ -436,24 +450,36 @@ bool arcfs_is_path(const char *path)
     return strchr(path, '|') != NULL || arcfs_dev_pinned(vfs_dev_of(path));
 }
 
+/* A raw USB drive that libfat can't mount: a Wii U WFS volume, or a disk with a partition table / a file system
+ * we read (ext2/3/4, XFS, HFS+, APFS, ZFS), shown read-only through the archive readers. */
 bool arcfs_mount_wfs(int dev, int usb_slot)
 {
     if (dev < DEV_USB0 || dev >= DEV_USB0 + USB_SLOTS || pins[dev - DEV_USB0].a)
         return false;
     init_providers();
     load_wfs_keys();
-    if (!wfs_key_count && vfs_usb_raw_size(usb_slot) == 0)
+    if (vfs_usb_raw_size(usb_slot) == 0)
         return false;
     rawsrc *r = calloc(1, sizeof(*r));
     if (!r) return false;
     r->slot = usb_slot;
     src_t src = { rawsrc_read, rawsrc_close, r, vfs_usb_raw_size(usb_slot) };
-    if (!arc_wfs_probe(&src, "")) {
-        rawsrc_close(r);
-        return false;
-    }
     g_archive_err = NULL;
-    archive_t *a = arc_wfs_open(&src, "");
+    archive_t *a = NULL;
+    if (arc_wfs_probe(&src, ""))
+        a = arc_wfs_open(&src, "");
+    else if (arc_disk_probe(&src, ""))
+        a = arc_disk_open(&src, "");
+    else if (arc_ext_probe(&src, ""))
+        a = arc_ext_open(&src, "");
+    else if (arc_hfs_probe(&src, ""))
+        a = arc_hfs_open(&src, "");
+    else if (arc_xfs_probe(&src, ""))
+        a = arc_xfs_open(&src, "");
+    else if (arc_apfs_probe(&src, ""))
+        a = arc_apfs_open(&src, "");
+    else if (arc_zfs_probe(&src, ""))
+        a = arc_zfs_open(&src, "");
     if (!a) {
         rawsrc_close(r);
         return false;
@@ -463,6 +489,11 @@ bool arcfs_mount_wfs(int dev, int usb_slot)
     e->a = a;
     e->refs = 0;
     return true;
+}
+
+const char *arcfs_pin_kind(int dev)
+{
+    return arcfs_dev_pinned(dev) ? pins[dev - DEV_USB0].a->kind : "";
 }
 
 void arcfs_unpin_all(void)

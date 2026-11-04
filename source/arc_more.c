@@ -740,7 +740,7 @@ static archive_t *pres_open(const src_t *f, const char *name)
     if (!d) return NULL;
     if (memcmp(d, "Pres", 4)) {                 /* .rz: the Pres archive inside LZ10 / LZ11 */
         uint32_t un;
-        uint8_t *u = arc_lz_unwrap(d, len, &un);
+        uint8_t *u = arc_lz_unwrap(NULL, d, len, &un);
         free(d);
         if (!u) return NULL;
         d = u;

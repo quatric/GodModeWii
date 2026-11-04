@@ -71,10 +71,17 @@ Every drive is shown with its free space and a usage bar.
 | FAT / FAT32 | Read / write |
 | exFAT | Read / write (release builds); MBR, GPT or unpartitioned; files over 4 GiB |
 | NTFS | Read / write. A drive Windows didn't shut down fully (Fast Startup, hibernation) is left alone |
-| ext2 / ext3 / ext4 | Read-only |
+| ext2 / ext3 / ext4 | Read-only. Mounted from SD and USB (`WITH_EXT4`), and read from disk images, partitions and raw drives by the built-in reader (below) |
+| XFS (v4 and v5) | Read-only, built-in reader |
+| HFS+ / HFSX (Mac OS Extended, journaled or not) | Read-only, built-in reader |
+| APFS | Read-only, built-in reader; each volume is a folder, encrypted volumes are skipped |
+| OpenZFS | Read-only, built-in reader; single-disk and mirror pools, lzjb / zle / lz4 / gzip / zstd |
 | Wii U WFS | Read-only; needs that Wii U's keys (see below) |
 
 * Extra FAT / exFAT / NTFS partitions on a USB drive each get their own `usbN:` entry ("USB Drive 1, part. 2").
+* **Drives the Wii can't mount** (an APFS, HFS+, XFS or ZFS disk, or one with a GPT / MBR / Apple partition map) are shown read-only
+  as a disk: each partition is a `1_Linux.part`-style file that opens as the file system inside it. Disk images (`.img`, or a raw
+  `.iso` of such a disk) open the same way.
 * A FAT32 drive hidden from the Wii U with **ustealth / USBHide** works like any other; the home screen notes that it is hidden.
 * **Wii U WFS:** a USB drive formatted by a Wii U shows up as its own `usbN:/` drive, and a WFS image (a dump of a Wii U USB drive
   or of the MLC) opens like an archive. WFS is encrypted with keys of the Wii U that formatted it, so put them in `sd:/wfs/`
@@ -98,12 +105,14 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | Kind | Formats |
 | --- | --- |
 | Nintendo archives | U8 (`.arc`, `.app`, `.bnr`, `.carc` …, also with an IMET / IMD5 header), RARC, BRRES, Virtual Console CCF, Brawl PAC, Good-Feel GFA |
-| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`) |
+| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`), **zlib** (`.z`, `.zlib`) and gzip (`.gz`), and **Camelot STPL** (`.stpl`, Mario Power Tennis / Mario Golf: Toadstool Tour; holds a TPL texture bank) |
 | Titles and saves | WAD (with a `wad_info.txt`), `content.bin` (DLC / WiiWare SD backup), `data.bin` (Wii save backup), VFF (WiiConnect24 / Mii mailboxes). Decrypted as you browse, vWii-key WADs included |
 | Sound archives | BRSAR: groups, sequences, banks, sound files and every wave, playable |
 | Disc images | GameCube / Wii `.iso` / `.gcm`, single-file `.wbfs`, `.ciso`, **RVZ** and **WIA** |
 | PC archives | zip, 7z, RAR 1.5 – 5.x |
-| Game archives | Retro Studios PAK (Metroid Prime 1 – 3, Trilogy, Donkey Kong Country Returns) |
+| Game archives | Retro Studios PAK (Metroid Prime 1 – 3, Trilogy, Donkey Kong Country Returns), **HAL sysdolphin `.dat` (HSD)**: its roots, external references and every plain GX texture (as a one-image TPL, opened by the image viewer) |
+| NAND dumps | **BootMii `nand.bin`** (with or without spare areas, with or without the appended keys): the newest SFFS superblock as folders, files decrypted with the NAND key from the dump, a `keys.bin` / `otp.bin` next to it, or this console's own OTP |
+| Disks and partitions | MBR (with logical partitions), GPT and Apple partition maps; **ext2 / ext3 / ext4**, **XFS**, **HFS+ / HFSX**, **APFS** and **OpenZFS** volumes (see [Drives](#drives)) |
 
 * A Wii disc image shows each partition (DATA, UPDATE, CHANNEL) with `ticket.bin`, `tmd.bin`, `sys/` and `files/`, decrypted on the
   fly. RVZ / WIA are decompressed on the fly (Zstandard, bzip2, LZMA, LZMA2, purge, RVZ packing).
@@ -115,14 +124,16 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | Viewer | Formats | Buttons |
 | --- | --- | --- |
 | **Images** | TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, PNG, JPEG, WebP. Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
-| **3D models** | MDL0 in `.brres`, J3D `.bmd` / `.bdl`, lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
+| **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, and Mario Party `.hsf` (HSFV037, flat colour per part); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat, **B** stop |
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 | **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
 
-* **Images** open pixel for pixel (1:1) in their real colours.
+* **Images** open pixel for pixel (1:1) in their real colours. A `.stpl` is unpacked first and shown as the TPL it holds.
+* **A bare MDL0** (opened on its own, not inside its BRRES) gets its textures too: each one is looked up as `<name>.tex0` (with its
+  `.plt0`) next to the model, or inside any `.brres` in the same folder. A model opened from inside a BRRES uses that BRRES.
 * **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colours,
   alpha compare and blending. A banner plays its Start animation into its Loop one, as on the Wii Menu, and opening a BRLAN
   plays it on its layout. Other animations play once and stop on their last frame (**A** starts them again). Text boxes are not
@@ -200,6 +211,12 @@ It appears by itself the first time you try to change the NAND. On the D-Pad, th
 `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A`
 
 HOME cancels. Once entered, the NAND stays unlocked for the rest of the session.
+
+**Always allow dangerous actions:** enter the same code **while the "Looking for drives..." screen is up** at start-up. That flips
+a switch (a `force.cfg` file in `apps/GodModeWii/` on the SD card): from then on every start announces *Risky mode forced on* and
+nothing asks for a warning or the code again. Enter the code at start-up once more to turn it off. The reader is forgiving: take
+your time (a code that is part way in keeps the screen up for up to 15 seconds), a wrong button only drops what no longer
+matches, and extra buttons held at the same time are ignored.
 
 ## Network: FTP and Wiiload
 
@@ -369,6 +386,15 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **Keys:** the vWii common key (index 2, Wii U era WADs) isn't included. `content.bin` needs this console's keys (OTP, so the
   Homebrew Channel with AHBPROT) and only opens on the console that made it.
 * **VFF** is FAT12 / FAT16 with 8.3 names. **`data.bin`** is read the way Dolphin's WiiSave code does it.
+* **Disk file systems** (ext, XFS, HFS+, APFS, ZFS) are read-only and read without checking checksums. ext, HFS+ and APFS were
+  tested on generated images; **XFS and ZFS are written from the on-disk format and not yet tested against real volumes**. Journals
+  are not replayed, so a volume that wasn't unmounted cleanly shows its last checkpoint. Not read: ext compression and encryption,
+  HFS+ resource forks and decmpfs-compressed files, APFS snapshots / sealed-volume details / compressed files and symlink targets,
+  ZFS RAID-Z, striped, encrypted and big-endian pools, snapshots and zvols, XFS realtime volumes and large extent counts.
+* **BootMii NAND:** the file system is read from the newest superblock; without the NAND key (nothing appended, no `keys.bin` /
+  `otp.bin` next to the dump, not this console) the folders can be browsed but file contents can't be read. No ECC or HMAC checks.
+* **HSD / HSF:** HSD archives show roots and plain GX textures (palette textures aren't listed); HSF models show geometry in a flat
+  colour per part, without materials, skinning or animation. A Camelot texture bank is read as a standard TPL.
 * **WFS** is read the way wfslib does (no block hashes checked, areas assumed contiguous, links not shown), tested against
   generated images and one real Wii U drive. Large folders take a moment to list.
 
@@ -414,6 +440,9 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
   Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
   (ISO, WBFS, CISO), and file-type detection.
+* **[HSDLib](https://github.com/Ploaj/HSDLib)** by Ploaj (MIT) — the HSD `.dat` container and relocation layout, via nintoolbox's `lib-hsd.c`; and **[Metanoia](https://github.com/Ploaj/Metanoia)**'s HSF reader, via nintoolbox's `lib-hsf.c` (Mario Party HSFV037 models).
+* **Camelot STPL** — the codec layout comes from nintoolbox's `lib-camelot.c`.
+* **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
 * **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
 * **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
 * **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder match nintoolbox's.
