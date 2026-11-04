@@ -655,7 +655,7 @@ out:
     return ret;
 }
 
-void wad_install_paths(char **paths, int n)
+int wad_install_paths(char **paths, int n)
 {
     int wads = 0;
     for (int i = 0; i < n; i++)
@@ -663,7 +663,7 @@ void wad_install_paths(char **paths, int n)
             wads++;
     if (!wads) {
         ui_message("INSTALL WAD", C_YELLOW, "Select one or more .wad files to install.");
-        return;
+        return 0;
     }
     char q[400];
     if (wads == 1) {
@@ -681,9 +681,9 @@ void wad_install_paths(char **paths, int n)
                  wads);
     }
     if (!ui_confirm("INSTALL WAD", C_YELLOW, q))
-        return;
+        return 0;
     if (!risk_ensure_unlocked())
-        return;
+        return 0;
 
     int ok = 0, done = 0;
     char report[1200] = "";
@@ -701,7 +701,7 @@ void wad_install_paths(char **paths, int n)
                      note[0] ? "\n\n" : "", note);
             ui_message(r == 0 ? "INSTALLED" : "INSTALL FAILED",
                        r == 0 ? (note[0] == 'W' ? C_YELLOW : C_GREEN) : C_RED, text);
-            return;
+            return ok;
         }
         if (rl < sizeof(report) - 1)
             rl += snprintf(report + rl, sizeof(report) - rl, "%s %s: %s%s%s\n",
@@ -712,4 +712,5 @@ void wad_install_paths(char **paths, int n)
     char title[48];
     snprintf(title, sizeof(title), "INSTALLED %d OF %d", ok, done);
     ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
+    return ok;
 }

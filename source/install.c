@@ -551,6 +551,15 @@ static bool reader_extract(reader_t *rd, u64 size, wsink_t *w, char *buf, char *
 
 /* ---------------------------------------------------------------- install */
 
+static void (*g_written)(const char *path, void *ctx);
+static void *g_written_ctx;
+
+void install_on_written(void (*fn)(const char *path, void *ctx), void *ctx)
+{
+    g_written = fn;
+    g_written_ctx = ctx;
+}
+
 static int install_any(const char *arc_path, int dev, bool apps_only, install_cb cb, char *err,
                        size_t errsz)
 {
@@ -698,6 +707,7 @@ static int install_any(const char *arc_path, int dev, bool apps_only, install_cb
             goto done;
         }
         written++;
+        if (g_written) g_written(dest, g_written_ctx);
     }
     result = written;
 

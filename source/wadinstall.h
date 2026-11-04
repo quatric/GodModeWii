@@ -10,7 +10,8 @@
  * Shows its own confirmation, progress and result dialogs. Asks for the
  * Konami code first (risk_ensure_unlocked). */
 
-/* Installs each of the `n` WADs at `paths` (one confirmation for all). */
-void wad_install_paths(char **paths, int n);
+/* Installs each of the `n` WADs at `paths` (one confirmation for all). Returns how many were
+ * installed (0 when declined). */
+int wad_install_paths(char **paths, int n);
 
 #endif

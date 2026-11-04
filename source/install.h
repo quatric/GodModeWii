@@ -29,6 +29,10 @@ int install_archive(const char *arc_path, int dev, install_cb cb, char *err, siz
  * without a program are placed as install_archive does it. */
 int install_archive_apps(const char *arc_path, int dev, install_cb cb, char *err, size_t errsz);
 
+/* Called with the full path of each file the next install_archive / install_archive_apps writes
+ * (wiiload uses it to find the WADs it unpacked); NULL to stop. */
+void install_on_written(void (*fn)(const char *path, void *ctx), void *ctx);
+
 /* The drive to install onto: first mounted USB drive for want_usb, else the
  * SD card. -1 if there is none. */
 int install_pick_device(bool want_usb);

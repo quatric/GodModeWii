@@ -29,6 +29,7 @@
 #include "vfs.h"
 #include "install.h"
 #include "ftype.h"
+#include "wadinstall.h"
 
 #define WIILOAD_PORT  4299
 #define IOS_NONBLOCK  0x04
@@ -111,7 +112,7 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
              : dev == DEV_SD ? "SD card"
                              : g_devs[dev].tag);
     ui_color(C_WHITE, false);
-    ui_field(7, 1, cols - 2, "Archives (.zip .7z .rar) install into apps; a .dol / .elf can run.");
+    ui_field(7, 1, cols - 2, "Archives install into apps, a .dol / .elf can run, a .wad installs.");
 
     if (busy) {
         char a[24], b[24];
@@ -380,6 +381,40 @@ static bool install_progress(const char *file, u64 done, u64 total)
     return true;
 }
 
+/* The WADs an archive unpacked, to offer them for installing. */
+typedef struct {
+    char **paths;
+    int n, cap;
+} wadlist_t;
+
+static void note_wad(const char *path, void *ctx)
+{
+    wadlist_t *w = ctx;
+    const char *dot = strrchr(path, '.');
+    if (!dot || strcasecmp(dot, ".wad")) return;
+    if (w->n == w->cap) {
+        int nc = w->cap ? w->cap * 2 : 8;
+        char **np = realloc(w->paths, (size_t)nc * sizeof(char *));
+        if (!np) return;
+        w->paths = np;
+        w->cap = nc;
+    }
+    if ((w->paths[w->n] = strdup(path))) w->n++;
+}
+
+/* Installs WADs to the NAND (the installer asks first, and for the Konami code); true when all went in. */
+static bool install_wads(char **paths, int n)
+{
+#ifdef GMW_AUTOTEST
+    for (int i = 0; i < n; i++) wl_log("Would install %s to the NAND", vfs_basename(paths[i]));
+    return false;
+#endif
+    int ok = wad_install_paths(paths, n);
+    if (ok) wl_log("Installed %d of %d WAD%s to the NAND", ok, n, n == 1 ? "" : "s");
+    else wl_log("WAD%s not installed", n == 1 ? "" : "s");
+    return ok == n;
+}
+
 /* true when the user chose to start the program now */
 static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *launch,
                    size_t launchsz)
@@ -390,15 +425,31 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         char err[96] = "";
         g_inst_name = name;
         g_inst_dev = dev;
+        wadlist_t wads = { 0 };
+        install_on_written(note_wad, &wads);
         int n = install_archive_apps(path, dev, install_progress, err, sizeof(err));
+        install_on_written(NULL, NULL);
         if (n >= 0) {
             vfs_remove(path, false);
             wl_log("Installed %d file%s to the %s", n, n == 1 ? "" : "s", g_devs[dev].tag);
+            if (wads.n) install_wads(wads.paths, wads.n);       /* they stay on the drive either way */
         } else {
             wl_log("Install failed: %s", err);
             wl_log("Kept it as GodModeWii/wiiload/%s", name);
         }
+        for (int i = 0; i < wads.n; i++) free(wads.paths[i]);
+        free(wads.paths);
         vfs_update_space(dev);
+        return false;
+    }
+
+    if (ftype_sniff(head, headn, 0x100, name) == FT_WAD) {
+        char *one = (char *)path;
+        if (install_wads(&one, 1)) {
+            vfs_remove(path, false);                    /* it's on the NAND now */
+            vfs_update_space(dev);
+        } else
+            wl_log("Kept GodModeWii/wiiload/%s", name);
         return false;
     }
 

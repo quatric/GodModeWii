@@ -8,7 +8,7 @@ No fancy GUI: just a console, a cursor and a lot of power.
 * Copy, move and delete files between every drive the console can see.
 * Open archives, disc images, saves and WADs like folders.
 * View images, 3D models, banners and layouts; play music, sequences and videos.
-* Install WADs, launch homebrew, and install apps over the network (FTP or `wiiload`).
+* Install WADs, launch homebrew, and install apps and WADs over the network (FTP or `wiiload`).
 * And, only if you really mean it, change the NAND.
 
 > [!CAUTION]
@@ -285,7 +285,8 @@ It installs to the SD card, or to USB after pressing **1**. What happens depends
 | You send | What happens |
 | --- | --- |
 | `.zip` / `.7z` / `.rar` with a program | The folder holding `boot.dol` / `boot.elf` (or another `.dol` / `.elf`) goes to `apps/<folder>/`, wherever it sits in the archive |
-| `.zip` / `.7z` / `.rar` without a program (WADs, say) | Placed like the FTP install server does it |
+| `.zip` / `.7z` / `.rar` without a program (WADs, say) | Placed like the FTP install server does it; any WADs in it (put in `wad/`) are then offered for installing to the NAND |
+| `.wad` | Installed to the NAND, the same way as from the file browser (asks first, then for the Konami code; save data kept and backed up). Removed from `GodModeWii/wiiload/` once installed, kept there otherwise |
 | `.dol` / `.elf` | Kept in `GodModeWii/wiiload/`, and you're offered to start it |
 | Anything else | Kept in `GodModeWii/wiiload/` |
 
