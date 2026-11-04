@@ -28,24 +28,29 @@ static const char *const KONAMI_GLYPH[10] = { "UP",    "UP",   "DOWN",  "DOWN", 
 
 /* Full-screen warning followed by the Konami code. `lines` are the warning
  * text, `title` the red banner. HOME cancels. */
-static void draw_gate(const char *title, const char *const *lines, int n, int progress)
+static void draw_gate(const char *title, const char *const *lines, int n, int progress, bool full)
 {
     int cols = ui_cols();
-    ui_clear();
-    ui_bg(C_RED);
-    ui_color(C_WHITE, true);
-    ui_field(0, 0, cols - 1, " !!!  %s  !!!", title);
-    ui_reset();
+    int r = n + 5;      /* the code's row, under the warning and the prompt */
+    /* After the first draw only the code row changes; clearing the screen each press made the banner blink. */
+    if (full) {
+        ui_clear();
+        ui_bg(C_RED);
+        ui_color(C_WHITE, true);
+        ui_field(0, 0, cols - 1, " !!!  %s  !!!", title);
+        ui_reset();
 
-    int r = 2;
-    for (int i = 0; i < n; i++) {
-        ui_color(i == 0 ? C_RED : C_WHITE, i == 0);
-        ui_field(r++, 1, cols - 2, "%s", lines[i]);
+        for (int i = 0; i < n; i++) {
+            ui_color(i == 0 ? C_RED : C_WHITE, i == 0);
+            ui_field(2 + i, 1, cols - 2, "%s", lines[i]);
+        }
+        ui_color(C_YELLOW, true);
+        ui_field(r - 2, 1, cols - 2, "If you understand and accept this, enter the code:");
+        ui_color(C_CYAN, true);
+        ui_field(r + 2, 1, cols - 2, "D-Pad, then B and A.  A wrong button starts over.");
+        ui_field(r + 3, 1, cols - 2, "HOME: cancel");
+        ui_reset();
     }
-    r++;
-    ui_color(C_YELLOW, true);
-    ui_field(r++, 1, cols - 2, "If you understand and accept this, enter the code:");
-    r++;
 
     int width = -1;
     for (int i = 0; i < 10; i++)
@@ -56,16 +61,12 @@ static void draw_gate(const char *title, const char *const *lines, int n, int pr
         printf("[%s] ", KONAMI_GLYPH[i]);
     }
     ui_reset();
-    ui_color(C_CYAN, true);
-    ui_field(r + 2, 1, cols - 2, "D-Pad, then B and A.  A wrong button starts over.");
-    ui_field(r + 3, 1, cols - 2, "HOME: cancel");
-    ui_reset();
 }
 
 static bool konami_gate(const char *title, const char *const *lines, int n)
 {
     int progress = 0;
-    draw_gate(title, lines, n, progress);
+    draw_gate(title, lines, n, progress, true);
     const u32 mask = WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT |
                      WPAD_BUTTON_RIGHT | WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME;
     while (progress < 10) {
@@ -78,7 +79,7 @@ static bool konami_gate(const char *title, const char *const *lines, int n)
             progress++;
         else
             progress = (p == KONAMI[0]) ? 1 : 0;
-        draw_gate(title, lines, n, progress);
+        draw_gate(title, lines, n, progress, false);
     }
     return true;
 }
