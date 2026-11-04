@@ -97,7 +97,8 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (n >= 8 && be32(h) == 0x20 && (!memcmp(h + 4, "Is", 2) || !memcmp(h + 4, "ib", 2) || !memcmp(h + 4, "Bk", 2)))
             return FT_WAD;
         if (n >= 0x14 && M("\x7F" "ELF") && h[4] == 1 && h[5] == 2 && be16(h + 0x12) == 20) return FT_PROGRAM;
-        if (dol(h, n, size)) return FT_PROGRAM;
+        /* a channel's NAND contents (0000000N.app) are often its DOL: browse them, don't launch them */
+        if (!(name && arc_name_has_ext(name, ".app")) && dol(h, n, size)) return FT_PROGRAM;
     }
     return name ? by_name(name) : FT_NONE;
 }

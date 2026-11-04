@@ -147,6 +147,7 @@ struct seq {
     int loops;                          /* backward jumps of the loop track */
     int loop_track;
     float fade, fade_step;
+    uint32_t label;                     /* where the sequence starts */
 };
 
 static int16_t g_var[16];
@@ -399,6 +400,24 @@ static void track_reset(track_t *t, uint32_t pc)
     t->tie_voice = -1;
 }
 
+/* Back to the start of the sequence: the sequencer state as the sequence first found it. Notes
+ * still sounding ring on. */
+static void seq_restart(seq_t *s)
+{
+    for (int i = 0; i < MAX_TRACKS; i++) s->t[i].on = false;
+    track_reset(&s->t[0], s->label);
+    memset(s->lvar, 0, sizeof(s->lvar));
+    s->tempo = 120;
+    s->timebase = 48;
+    s->main_vol = 127;
+    s->ticks = 0;
+    s->loops = 0;
+    s->loop_track = -1;
+    s->fade = 1;
+    s->fade_step = 0;
+    s->ended = false;
+}
+
 seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, const char **err)
 {
     rsar_t r;
@@ -478,13 +497,9 @@ seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, cons
     if (!s->waves) goto fail;
 
     rsar_free(&r);
-    s->tempo = 120;
-    s->timebase = 48;
-    s->main_vol = 127;
     s->rng = 0x12345678u;
-    s->fade = 1;
-    s->loop_track = -1;
-    track_reset(&s->t[0], label);
+    s->label = label;
+    seq_restart(s);
     *err = NULL;
     return s;
 fail:
@@ -822,7 +837,8 @@ static void tick(seq_t *s)
 void seq_set_repeat(seq_t *s, bool repeat)
 {
     s->repeat = repeat;
-    if (repeat) { s->fade_step = 0; s->fade = 1; }
+    if (repeat && s->ended) seq_restart(s);     /* it had finished: from the top */
+    else if (repeat) { s->fade_step = 0; s->fade = 1; }
 }
 
 uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
@@ -835,6 +851,9 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
             while (s->ticks >= 1) { tick(s); s->ticks -= 1; }
             bool any = false;
             for (int i = 0; i < MAX_TRACKS; i++) any |= s->t[i].on;
+            /* repeat: a sequence with no loop of its own (most jingles and sound effects) starts
+             * again once all its tracks have finished */
+            if (!any && s->repeat) { seq_restart(s); any = true; }
             for (int i = 0; i < MAX_VOICES; i++) {
                 if (s->v[i].on) env_step(&s->v[i]);
                 any |= s->v[i].on;

@@ -774,7 +774,7 @@ static bool view(const char *start_path)
     if (!load_set(s, path)) { free_set(s); free(s); return false; }
 
     int cur = 0, zoom = ZOOM_NATIVE, panx = 0, pany = 0, bg = BG_CHECK;
-    bool info = true, redraw = true, fit = true, full = true;   /* opens scaled to fit; 1: 1:1 */
+    bool info = true, redraw = true, fit = false, full = true;  /* opens at 1:1 (native size); 1: scale to fit */
     u8 *rgba = NULL;
     bool owned = false;                         /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
     int shown = -1;

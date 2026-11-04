@@ -1183,7 +1183,11 @@ static bool play_seq(const char *path)
         u32 p = input_pressed();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         if (p & WPAD_BUTTON_PLUS) { paused = !paused; oq_pause(paused); }
-        if (p & WPAD_BUTTON_1) { repeat = !repeat; seq_set_repeat(sq, repeat); }
+        if (p & WPAD_BUTTON_1) {
+            repeat = !repeat;
+            seq_set_repeat(sq, repeat);
+            if (repeat) ended = false;              /* one that had finished starts again */
+        }
         if (p & WPAD_BUTTON_UP) sel = (sel + SEQ_MAX_TRACKS - 1) % SEQ_MAX_TRACKS;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % SEQ_MAX_TRACKS;
         if (p & WPAD_BUTTON_A) muted ^= 1u << sel;
