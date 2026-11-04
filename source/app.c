@@ -783,7 +783,7 @@ static void invert_marks(void)
     }
 }
 
-enum { A_OPEN, A_INSTALL_WAD, A_LAUNCH, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
 
 static void actions_menu(void);
 
@@ -824,10 +824,21 @@ static void do_launch(const vfs_entry *en)
 /* A on a .wad: install it or look inside (decrypted). False to fall back to the actions menu. */
 static void wad_menu(const vfs_entry *en)
 {
-    const char *items[] = { "Install to NAND", "Browse decrypted contents", "More actions..." };
+    int marked_wads = 0;
+    for (int i = 0; i < nents; i++)
+        if (marks[i] && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
+            marked_wads++;
+    char install[48] = "Install to NAND";
+    if (marked_wads > 1)
+        snprintf(install, sizeof(install), "Install %d marked WADs to NAND", marked_wads);
+    const char *items[] = { install, "Browse decrypted contents", "More actions..." };
     int r = ui_menu(en->name, items, NULL, 3, 0);
     char path[VFS_PATH_MAX];
-    if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
+    if (r == 0 && marked_wads > 1) {
+        int t;
+        char **tp = targets(&t);
+        if (t) { wad_install_paths(tp, t); free_paths(tp, t); reload_keep(); }
+    } else if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
         char *one = path;
         wad_install_paths(&one, 1);
         reload_keep();
@@ -855,10 +866,6 @@ static void actions_menu(void)
     const char *del_label = "Delete", *ren_label = "Rename";
 
     items[n] = "Open as archive"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_OPEN;
-    bool any_wad = false;
-    for (int i = 0; i < nents && !any_wad; i++)
-        if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
-            any_wad = true;
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
@@ -878,10 +885,6 @@ static void actions_menu(void)
     items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
     items[n] = "Invert selection"; en[n] = nents > 0; code[n++] = A_INVERT;
     items[n] = "Refresh"; en[n] = true; code[n++] = A_REFRESH;
-    items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
-    if (!(on_entry && arc_name_has_ext(ents[e].name, ".app"))) {   /* channel contents are never launched */
-        items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
-    }
 
     int r = ui_menu("ACTIONS", items, en, n, 0);
     if (r < 0)
@@ -894,11 +897,6 @@ static void actions_menu(void)
     int t; char **tp;
     switch (code[r]) {
     case A_OPEN:    open_archive(&ents[e]); break;
-    case A_INSTALL_WAD:
-        tp = targets(&t);
-        if (t) { wad_install_paths(tp, t); free_paths(tp, t); reload_keep(); }
-        break;
-    case A_LAUNCH:  do_launch(&ents[e]); break;
     case A_PASTE:   do_paste(); break;
     case A_CLIP_CLEAR: do_clip_clear(); break;
     case A_COPY:    do_copy_cut(false); break;
