@@ -13,7 +13,7 @@
  *   PAC (.pac)                        Super Smash Bros. Brawl "ARC" archive: typed, indexed members
  *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10
  *                                     payload, little endian
- * Layouts follow quatric's nintoolbox (Wiimm's SZS tools lineage).
+ * Layouts match quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
 #include <stdlib.h>

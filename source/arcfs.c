@@ -114,8 +114,6 @@ static void nestsrc_close(void *ctx)
     free(s);
 }
 
-/* ---------------------------------------------------------------- cache */
-
 /* ---------------------------------------------------------------- WFS keys */
 
 /* Keys for Wii U volumes come from files on the SD card:

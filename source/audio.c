@@ -1,7 +1,7 @@
 /*
  * Audio player for Nintendo stream / wave formats. See media.h.
  *
- * Formats and layouts follow quatric's mobipeg (libavformat brstm.c, rwav.c,
+ * Formats and layouts match quatric's mobipeg (libavformat brstm.c, rwav.c,
  * bns.c, dsp.c, astdec.c, btsnd.c) and nintoolbox:
  *   BRSTM / BCSTM / BFSTM     block-interleaved DSP-ADPCM, PCM16 or PCM8
  *   BRWAV / BCWAV / BFWAV     one wave per channel (DSP-ADPCM, PCM16, PCM8)

@@ -4,7 +4,7 @@
 /* RVZ and WIA disc images (Dolphin / wit), read-only, with random access.
  * Written from Dolphin's format description (docs/WiaAndRvz.md); the design (the disc outside
  * partition data read by disc offset, Wii partition data read decrypted and without hashes, the
- * last group kept decoded) follows KakarottoCake's RiftWii.
+ * last group kept decoded) matches KakarottoCake's RiftWii.
  * Compression: none, purge (WIA), bzip2, LZMA, LZMA2 and Zstandard (RVZ), with RVZ packing. */
 
 #include <stdint.h>

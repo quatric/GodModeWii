@@ -1,6 +1,6 @@
 /*
  * WAD packages, content.bin and data.bin, read-only.
- * Layouts follow Sharpii / libWiiSharp (WAD), DarkMatterCore's wad2bin (content.bin,
+ * Layouts match Sharpii / libWiiSharp (WAD), DarkMatterCore's wad2bin (content.bin,
  * "Bk" header) and Dolphin's WiiSave (data.bin). Everything that is encrypted is
  * decrypted on the fly while reading, so nothing is ever unpacked to disk first.
  */
@@ -359,7 +359,7 @@ archive_t *arc_contentbin_open(const src_t *file, const char *name)
     }
     encpriv *p = a->priv;
 
-    /* blob = decrypted header (part A) followed by decrypted icon.bin (part B) */
+    /* blob = decrypted header (part A), then decrypted icon.bin (part B) */
     p->blob = realloc(hdr, CB_HEADER + icon_alloc);
     if (!p->blob) {
         free(hdr);

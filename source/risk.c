@@ -26,7 +26,7 @@ static const u32 KONAMI[10] = {
 static const char *const KONAMI_GLYPH[10] = { "UP",    "UP",   "DOWN",  "DOWN", "LEFT",
                                               "RIGHT", "LEFT", "RIGHT", "B",    "A" };
 
-/* Full-screen warning followed by the Konami code. `lines` are the warning
+/* Full-screen warning, then the Konami code. `lines` are the warning
  * text, `title` the red banner. HOME cancels. */
 static void draw_gate(const char *title, const char *const *lines, int n, int progress, bool full)
 {

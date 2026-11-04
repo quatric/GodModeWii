@@ -9,7 +9,7 @@
  * Wii only), shown as read-only virtual drives (mca:/ and mcb:/).
  *
  * Every save appears as one file named <company>-<gamecode>-<filename>.gci.
- * The file is a standard .gci: the 0x40 byte directory entry followed by the
+ * The file is a standard .gci: the 0x40 byte directory entry, then the
  * save data, which is the format GCMM and Dolphin import / export, so
  * copying a save to an SD card or USB drive makes a GCMM-compatible backup.
  * Copying a .gci onto the card restores it; saves can also be deleted. The

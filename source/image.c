@@ -366,7 +366,7 @@ static void parse_tex0(set_t *s, u32 at, const char *label)
 
 /* ---- BRFNA: font sheets stored compressed, each as a u32 size and a chunk whose first (little
  * endian) word is the output size << 8 | codec (0x10 LZSS, 0x20 Huffman, 0x30 RLE). The decoders
- * follow nintoolbox's lib-brfna.c. */
+ * match nintoolbox's lib-brfna.c. */
 
 static u32 fna_lzss(const u8 *src, u32 n, u32 target, u8 *dst)
 {

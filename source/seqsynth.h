@@ -3,7 +3,7 @@
 
 /* NW4R sequences (RSEQ) from a BRSAR sound archive, played through their instrument bank (RBNK)
  * and its waves (RWAR): a small sequencer and a software synthesizer with the NW4R envelopes.
- * The formats follow VGMTrans' RSAR reader (zlib licence; see seqsynth.c).
+ * The formats match VGMTrans' RSAR reader (zlib licence; see seqsynth.c).
  * Plain C, no console dependencies: it renders 48 kHz stereo 16-bit samples. */
 
 #include <stdint.h>

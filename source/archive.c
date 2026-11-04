@@ -1,6 +1,6 @@
 /*
  * Read-only archives: U8, LZ10 / LZ11, plus the shared tree / source / CBC helpers.
- * U8 and the LZ formats follow Nintendo's published layouts as implemented by
+ * U8 and the LZ formats match Nintendo's published layouts as implemented by
  * libWiiSharp / Sharpii (U8, IMD5, LZ77) and wad2bin (IMET / u8.c).
  */
 #include <stdio.h>
@@ -354,7 +354,7 @@ int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0
 
 /* ---------------------------------------------------------------- LZ10 / LZ11 */
 
-/* Nintendo LZ77: type byte 0x10 / 0x11, 24-bit size (0 = a 32-bit size follows). */
+/* Nintendo LZ77: type byte 0x10 / 0x11, 24-bit size (0 = a 32-bit size comes next). */
 static bool lz_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size,
                       uint32_t *hdr_len)
 {
@@ -621,7 +621,7 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
     return true;
 }
 
-/* type byte, 24-bit size (0 = a 32-bit size follows); every CX codec */
+/* type byte, 24-bit size (0 = a 32-bit size comes next); every CX codec */
 static bool cx_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size,
                       uint32_t *hdr_len)
 {

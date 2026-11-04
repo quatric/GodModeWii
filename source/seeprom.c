@@ -12,7 +12,7 @@
  *
  * Register map and pin numbers: WiiBrew "Hardware/Hollywood Registers" and
  * "Hardware/Hollywood GPIOs"; READ framing (start bit + opcode 10 + 8 bit
- * word address, then 16 data bits) follows the 93Cxx Microwire protocol as
+ * word address, then 16 data bits) matches the 93Cxx Microwire protocol as
  * used by BootMii.
  */
 #include <unistd.h>

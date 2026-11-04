@@ -22,7 +22,7 @@ import re, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = p.read_text()
-# FF_LBA64 is what lets FatFs follow GPT, which macOS uses for external drives.
+# FF_LBA64 is what lets FatFs handle GPT, which macOS uses for external drives.
 for opt in ("FF_FS_EXFAT", "FF_LBA64"):
     s, n = re.subn(rf"^(#define {opt}\s+)0$", r"\g<1>1", s, flags=re.M)
     if n != 1:

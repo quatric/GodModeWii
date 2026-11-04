@@ -668,7 +668,7 @@ static void mount_fat(int dev, const char *name, const DISC_INTERFACE *io)
 
 /* libfat, libntfs and libdvm each mount one partition of a drive by default. Every other
  * FAT, exFAT or NTFS primary / GPT partition is mounted on a free usbN: name after the
- * drives. (Logical partitions inside an extended partition are not followed.) */
+ * drives. (Logical partitions inside an extended partition are not scanned.) */
 enum { PK_FAT, PK_EXFAT, PK_NTFS };
 #define MAX_PARTS 16
 

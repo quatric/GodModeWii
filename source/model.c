@@ -1,7 +1,7 @@
 /*
  * 3D model viewer: NW4R MDL0 (in .brres) and J3D BMD / BDL, drawn with GX.
  *
- * Layouts follow quatric's nintoolbox (lib-brres-model.c, lib-j3d.c):
+ * Layouts match quatric's nintoolbox (lib-brres-model.c, lib-j3d.c):
  *   MDL0  bones carry their world matrix; vertex arrays (VTX0 / NRM0 / CLR0)
  *         are indexed from each object's GX display list, and LOAD_INDX_A
  *         commands map matrix slots to nodes

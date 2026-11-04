@@ -1,5 +1,5 @@
 /*
- * WFS: the file system of the Wii U's USB drives and MLC, read-only. The layout follows koolkdev's
+ * WFS: the file system of the Wii U's USB drives and MLC, read-only. The layout matches koolkdev's
  * wfslib / wfs-tools: a device header and area header in block 0, areas ("quota" folders) with
  * their own block numbering and IV, directories stored as prefix tries in 0x1000 / 0x2000 byte
  * blocks, and files stored inline, as block lists, large block lists, clusters or lists of

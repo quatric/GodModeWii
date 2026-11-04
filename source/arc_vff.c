@@ -141,7 +141,7 @@ static int32_t vff_read(archive_t *a, const tnode *n, uint64_t off, void *buf, u
 
     while (done < len) {
         if (!fat_used(v, c)) return done ? (int32_t)done : -1;
-        /* extend over clusters that follow each other so they are read in one go */
+        /* extend over consecutive clusters so they are read in one go */
         uint32_t run = 1, last = c;
         while ((uint64_t)run * cs - in_cluster < len - done) {
             uint32_t nx = fat_get(v, last);

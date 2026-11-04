@@ -1,5 +1,5 @@
 /*
- * Retro Studios PAK archives, read-only, for browsing. Layouts and the LZO1X decoder follow
+ * Retro Studios PAK archives, read-only, for browsing. Layouts and the LZO1X decoder match
  * quatric's nintoolbox (lib-rpak.c, lib-lzo.c, extract/retropak.inc).
  *
  *   PAK 3.5 (Metroid Prime, Metroid Prime 2 on GameCube)

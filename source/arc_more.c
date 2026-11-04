@@ -1,5 +1,5 @@
 /*
- * More archives, read-only, for browsing. Layouts follow quatric's nintoolbox (lib-vcra.c,
+ * More archives, read-only, for browsing. Layouts match quatric's nintoolbox (lib-vcra.c,
  * lib-sszl.c, lib-rflres.c, lib-gpak.c, lib-gpkg.c, lib-blpkg.c and the matching extract readers).
  *
  *   VCRA       Namco Museum Remix: "VCRA", u32 count, size, crc flag (LE); entries of 44 bytes

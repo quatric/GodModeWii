@@ -3,10 +3,10 @@
  * its waves.
  *
  * The BRSAR tables (sounds, banks, files, groups), the RSEQ command set, the RBNK region tables
- * and the envelope tables follow VGMTrans' RSAR reader (src/main/formats/RSARScanner.cpp,
+ * and the envelope tables match VGMTrans' RSAR reader (src/main/formats/RSARScanner.cpp,
  * RSARSeq.cpp, RSARInstrSet.cpp; Copyright (c) 2002-2015 Mike, VGMTrans Team; zlib/libpng
  * licence), rewritten in C here and extended into a player: this is an altered version, not
- * the original. The sequencer's variable and compare commands follow the same command set as
+ * the original. The sequencer's variable and compare commands use the same command set as
  * NITRO / NW4R sequence data (BrawlLib's RSEQ.cs lists the codes).
  *
  *   BRSAR   SYMB names; INFO tables of sounds (a sequence sound names its RSEQ file, the label it
@@ -368,7 +368,7 @@ static const wave_t *get_wave(seq_t *s, uint32_t idx)
 
 /* ---------------------------------------------------------------- instruments */
 
-/* One level of an RBNK region table: the reference to follow for value v. */
+/* One level of an RBNK region table: the reference to take for value v. */
 static int32_t sub_ref(const seq_t *s, uint32_t ref, int v)
 {
     blk_t k = { s->rbnk + s->inst, s->inst_n };

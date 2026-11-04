@@ -157,7 +157,7 @@ bool bmg_view(const char *path)
                 c = b[p++];
             }
             if (!c) break;
-            if (c == 0x1A) {                /* control code: length byte follows */
+            if (c == 0x1A) {                /* control code: a length byte comes next */
                 u32 l = p < len ? b[p] : 0;
                 u32 skip = enc == 2 ? (l > 2 ? l - 2 : 0) : (l > 1 ? l - 1 : 0);
                 put(&s, "{...}", 5);
