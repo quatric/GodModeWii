@@ -66,6 +66,11 @@ void archive_set_prng_key_provider(archive_key_fn fn);
 /* Candidate AES keys for WFS volumes (Wii U USB / MLC): index 0, 1, ... until false. */
 typedef bool (*archive_wfs_key_fn)(int index, uint8_t key[16]);
 void archive_set_wfs_key_provider(archive_wfs_key_fn fn);
+/* A file next to the archive being opened (only while archive_open runs), for formats that come
+ * as a pair (INFO.DAT + GAME.DAT, .arc + .dir). The archive owns the source and closes it. */
+typedef bool (*archive_sibling_fn)(const char *name, src_t *out);
+void archive_set_sibling_provider(archive_sibling_fn fn);
+bool archive_open_sibling(const char *name, src_t *out);
 
 extern const char *g_archive_err;           /* last failure, for the user */
 
@@ -118,6 +123,9 @@ bool arc_pac_probe(const src_t *file, const char *name);
 archive_t *arc_pac_open(const src_t *file, const char *name);
 bool arc_retro_probe(const src_t *file, const char *name);     /* Retro Studios .pak (Metroid Prime, DKC Returns) */
 archive_t *arc_retro_open(const src_t *file, const char *name);
+/* arc_more.c: VCRA, SSZL, RFL_Res, GPAK, GPKG, BLPKG, ... */
+bool arc_more_probe(const src_t *file, const char *name);
+archive_t *arc_more_open(const src_t *file, const char *name);
 bool arc_lzop_probe(const src_t *file, const char *name);      /* lzop .lzo */
 archive_t *arc_lzop_open(const src_t *file, const char *name);
 long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap);

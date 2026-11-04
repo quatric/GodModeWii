@@ -54,6 +54,10 @@ void archive_set_prng_key_provider(archive_key_fn fn) { prng_provider = fn; }
 
 void archive_set_wfs_key_provider(archive_wfs_key_fn fn) { wfs_provider = fn; }
 
+static archive_sibling_fn sibling_provider;
+void archive_set_sibling_provider(archive_sibling_fn fn) { sibling_provider = fn; }
+bool archive_open_sibling(const char *name, src_t *out) { return sibling_provider && sibling_provider(name, out); }
+
 bool arc_wfs_key_at(int index, uint8_t key[16])
 {
     return wfs_provider && wfs_provider(index, key);
@@ -865,6 +869,7 @@ static const fmt_t formats[] = {
     { "LZO",         arc_lzop_probe,       arc_lzop_open },
     { "disc image",  arc_disc_probe,       arc_disc_open },
     { "zip/7z/rar",  arc_zip7zrar_probe,   arc_zip7zrar_open },
+    { "more",        arc_more_probe,       arc_more_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
 

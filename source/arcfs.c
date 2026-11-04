@@ -196,12 +196,30 @@ static bool wfs_key_provider(int index, uint8_t key[16])
 
 static bool prng_provider(uint8_t key[16]);
 
+static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t namesz);
+static const char *opening;         /* the archive file being opened, for sibling_provider */
+
+static bool sibling_provider(const char *name, src_t *out)
+{
+    if (!opening || strchr(name, '/') || strchr(name, '|')) return false;
+    char path[VFS_PATH_MAX + 64], nm[VFS_NAME_MAX];
+    const char *slash = strrchr(opening, '/');
+    if (!slash) return false;
+    snprintf(path, sizeof(path), "%.*s/%s", (int)(slash - opening), opening, name);
+    const char *saved = opening;
+    opening = NULL;                 /* no nesting */
+    bool ok = open_src(path, strlen(path), out, nm, sizeof(nm));
+    opening = saved;
+    return ok;
+}
+
 static void init_providers(void)
 {
     if (provider_set)
         return;
     archive_set_prng_key_provider(prng_provider);
     archive_set_wfs_key_provider(wfs_key_provider);
+    archive_set_sibling_provider(sibling_provider);
     provider_set = true;
 }
 
@@ -320,7 +338,9 @@ static entry *get_archive(const char *spec, size_t n)
         if (!g_archive_err) g_archive_err = "Can't read that file";
         return NULL;
     }
+    opening = key;
     archive_t *a = archive_open(&src, name);
+    opening = NULL;
     if (!a) {
         if (src.close) src.close(src.ctx);
         if (!g_archive_err) g_archive_err = "Not a supported archive";
