@@ -691,7 +691,7 @@ static void do_paste(void)
         return;
     }
     bool ok = ops_paste(clip, clip_n, clip_cut, cwd);
-    if (ok && clip_cut)
+    if (ok)
         clip_clear();
     reload_keep();
     status_msg[0] = 0;
