@@ -14,6 +14,10 @@ bool audio_play(const char *path);          /* false if the file isn't a stream 
 bool image_is_name(const char *name);
 bool image_view(const char *path);          /* false if there is no image in it */
 
+/* GX texture data -> malloc'd RGBA bytes (NULL if short or out of memory); the bytes a texture takes. */
+u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *pal, int palfmt, int palcount);
+u32 image_gx_size(int fmt, int w, int h);
+
 bool model_is_name(const char *name);
 bool model_view(const char *path);          /* BRRES (MDL0) / BMD / BDL in 3D */
 

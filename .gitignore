@@ -8,3 +8,4 @@ portlibs/
 data/
 appboot/appboot.bin
 build_test/
+appboot/GodModeWiiTest.bin

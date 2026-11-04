@@ -181,6 +181,20 @@ static bool gx_decode(const img_t *im, u8 *out)
     return true;
 }
 
+u32 image_gx_size(int fmt, int w, int h)
+{
+    return tex_size(fmt, w, h);
+}
+
+u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *pal, int palfmt, int palcount)
+{
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return NULL;
+    img_t im = { .fmt = fmt, .w = w, .h = h, .data = data, .avail = avail, .pal = pal, .palfmt = palfmt, .palcount = palcount };
+    u8 *out = malloc(w * h * 4);
+    if (out && !gx_decode(&im, out)) { free(out); out = NULL; }
+    return out;
+}
+
 /* ---------------------------------------------------------------- containers */
 
 static bool valid_fmt(int f) { return (f >= 0 && f <= 6) || (f >= 8 && f <= 10) || f == 14; }

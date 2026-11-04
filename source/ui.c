@@ -25,7 +25,7 @@ bool ui_test_dump(void)
     static int n;
     char name[32];
     snprintf(name, sizeof name, "sd:/shot_%d.yuv", n++);
-    VIDEO_WaitVSync();
+    for (int i = 0; i < 10; i++) VIDEO_WaitVSync();
     FILE *f = fopen(name, "wb");
     if (f) {
         fwrite(xfb, 1, rmode->fbWidth * rmode->xfbHeight * 2, f);

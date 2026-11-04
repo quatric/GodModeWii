@@ -6,6 +6,8 @@
 #
 # Needs: a test build (make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1),
 # mtools (mformat, mcopy) and Dolphin. DOLPHIN=/path/to/Dolphin overrides where Dolphin is.
+# The 3D model viewer draws with the GPU: run it with GFX=Vulkan (or OGL / Metal) so Dolphin renders,
+# and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out=$1; shift
@@ -34,7 +36,7 @@ WiiSDCardPath = $sd
 WiiSDCard = True
 WiiSDCardAllowWrites = True
 WiiSDCardEnableFolderSync = False
-GFXBackend = Null
+GFXBackend = ${GFX:-Null}
 [Interface]
 ConfirmStop = False
 UsePanicHandlers = False
@@ -44,8 +46,14 @@ Backend = No Audio Output
 Enabled = False
 PermissionAsked = True
 EOF
+cat > "$work/user/Config/GFX.ini" <<EOF
+[Hacks]
+EFBToTextureEnable = False
+XFBToTextureEnable = False
+ImmediateXFBEnable = False
+EOF
 
-"$dolphin" -u "$work/user" -b -e "$dol" -v Null >"$work/dolphin.log" 2>&1 &
+"$dolphin" -u "$work/user" -b -e "$dol" -v "${GFX:-Null}" >"$work/dolphin.log" 2>&1 &
 pid=$!
 i=0
 while [ $i -lt 120 ]; do

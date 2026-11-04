@@ -9,8 +9,10 @@
  *         display lists whose matrix slots go through DRW1
  * Vertices bound to a single bone / joint are moved into place with its world
  * matrix; envelope-weighted ones are already in bind-pose model space.
- * Shown untextured with GX hardware lighting (vertex colours where the model
- * has them). View only.
+ * Each mesh shows the first texture layer of its material (MDL0 materials name
+ * a TEX0 in the BRRES's Textures(NW4R) folder, with its PLT0 for palette
+ * formats; J3D materials index TEX1), mapped with UV set 0 and lit with GX
+ * hardware lighting. View only.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +31,18 @@
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_VERTS (2u * 1024 * 1024)
 
-typedef struct { float p[3], n[3]; u8 c[4]; } vert_t;
+#define MAX_TEX 256
+
+typedef struct { float p[3], n[3], t[2]; u8 c[4]; } vert_t;
+
+typedef struct { u32 start, count; int tex; } mesh_t;
+
+typedef struct {
+    GXTexObj obj;
+    void *own;                  /* converted / realigned copy, or NULL when it points into the file */
+    u32 key;                    /* where it came from in the file, to share it between meshes */
+    bool cutout;                /* has real alpha (I4 / I8 repeat their intensity as alpha on GX) */
+} tex_t;
 
 typedef struct {
     vert_t *v;
@@ -38,6 +51,10 @@ typedef struct {
     int meshes, bones;
     char name[64];
     const char *kind;
+    mesh_t *mesh;
+    int nmesh, capmesh;
+    tex_t tex[MAX_TEX];
+    int ntex, textured;
 } model_t;
 
 static float bef(const u8 *p) { u32 b = be32(p); float f; memcpy(&f, &b, 4); return f; }
@@ -80,6 +97,88 @@ static void mul34(const float *a, const float *b, float *o)
         for (int c = 0; c < 4; c++)
             t[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] + a[r * 4 + 2] * b[8 + c] + (c == 3 ? a[r * 4 + 3] : 0);
     memcpy(o, t, sizeof(t));
+}
+
+/* ---------------------------------------------------------------- meshes and textures */
+
+static void add_mesh(model_t *m, u32 start, int tex)
+{
+    if (m->n <= start) return;
+    if (m->nmesh == m->capmesh) {
+        int nc = m->capmesh ? m->capmesh * 2 : 64;
+        mesh_t *nm = realloc(m->mesh, nc * sizeof(mesh_t));
+        if (!nm) return;
+        m->mesh = nm;
+        m->capmesh = nc;
+    }
+    m->mesh[m->nmesh++] = (mesh_t){ start, m->n - start, tex };
+    if (tex >= 0) m->textured++;
+}
+
+static bool is_pow2(int v) { return v > 0 && !(v & (v - 1)); }
+
+/* A GX texture from data in the file. GX formats other than the palette ones are used as they are;
+ * palette textures are decoded and handed to GX as RGBA8. Returns the index into m->tex, or -1. */
+static int add_texture(model_t *m, const u8 *file, u32 flen, u32 at, int fmt, int w, int h,
+                       const u8 *pal, int palfmt, int palcount, int wrap_s, int wrap_t)
+{
+    u32 key = at;
+    for (int i = 0; i < m->ntex; i++)
+        if (m->tex[i].key == key) return i;
+    if (m->ntex >= MAX_TEX || w <= 0 || h <= 0 || w > 1024 || h > 1024 || at >= flen) return -1;
+    if (!((fmt >= 0 && fmt <= 6) || (fmt >= 8 && fmt <= 10) || fmt == 14)) return -1;
+    u32 need = image_gx_size(fmt, w, h);
+    if (need > flen - at) return -1;
+    tex_t *t = &m->tex[m->ntex];
+    memset(t, 0, sizeof(*t));
+    void *pixels;
+    if (fmt >= 8 && fmt <= 10) {
+        u8 *rgba = image_decode_gx(file + at, flen - at, fmt, w, h, pal, palfmt, palcount);
+        if (!rgba) return -1;
+        int tw = (w + 3) & ~3, th = (h + 3) & ~3;
+        u8 *gx = memalign(32, tw * th * 4);
+        if (!gx) { free(rgba); return -1; }
+        /* RGBA8 tiles: 4x4 pixels, 32 bytes of AR then 32 bytes of GB */
+        u8 *o = gx;
+        for (int by = 0; by < th; by += 4)
+            for (int bx = 0; bx < tw; bx += 4, o += 64)
+                for (int i = 0; i < 16; i++) {
+                    int x = bx + (i & 3), y = by + (i >> 2);
+                    const u8 *c = x < w && y < h ? rgba + (y * w + x) * 4 : (const u8 *)"\0\0\0\0";
+                    o[i * 2] = c[3]; o[i * 2 + 1] = c[0];
+                    o[32 + i * 2] = c[1]; o[32 + i * 2 + 1] = c[2];
+                }
+        free(rgba);
+        t->own = gx;
+        pixels = gx;
+        need = tw * th * 4;
+        fmt = GX_TF_RGBA8;
+    } else if (((uintptr_t)(file + at)) & 31) {
+        t->own = memalign(32, need);
+        if (!t->own) return -1;
+        memcpy(t->own, file + at, need);
+        pixels = t->own;
+    } else
+        pixels = (void *)(file + at);
+    /* repeat and mirror need power-of-two sizes on GX */
+    if (!is_pow2(w)) wrap_s = GX_CLAMP;
+    if (!is_pow2(h)) wrap_t = GX_CLAMP;
+    if (wrap_s < 0 || wrap_s > 2) wrap_s = GX_REPEAT;
+    if (wrap_t < 0 || wrap_t > 2) wrap_t = GX_REPEAT;
+    DCFlushRange(pixels, need);
+    GX_InitTexObj(&t->obj, pixels, w, h, fmt, wrap_s, wrap_t, GX_FALSE);
+    GX_InitTexObjLOD(&t->obj, GX_LINEAR, GX_LINEAR, 0, 0, 0, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    t->key = key;
+    t->cutout = fmt != GX_TF_I4 && fmt != GX_TF_I8 && fmt != GX_TF_RGB565;
+    return m->ntex++;
+}
+
+static void free_model(model_t *m)
+{
+    for (int i = 0; i < m->ntex; i++) free(m->tex[i].own);
+    free(m->v);
+    free(m->mesh);
+    memset(m, 0, sizeof(*m));
 }
 
 static const u8 PALETTE[8][3] = {
@@ -134,13 +233,13 @@ static void get_color(const u8 *base, u32 count, u32 stride, int fmt, u32 i, u8 
 /* ---------------------------------------------------------------- primitives */
 
 typedef struct {
-    u32 pos, nrm, clr;
+    u32 pos, nrm, clr, uv;
     int mtx;                    /* matrix slot node, -1 = none */
 } pv_t;
 
 typedef struct {
     model_t *m;
-    const arr_t *pos, *nrm;
+    const arr_t *pos, *nrm, *uv;
     const u8 *clr; u32 clr_n, clr_stride; int clr_fmt;
     const float *(*matrix)(void *ctx, int node);   /* node -> world matrix or NULL */
     void *ctx;
@@ -157,6 +256,11 @@ static void make_vert(emit_t *e, const pv_t *p, vert_t *v)
     const float *M = node >= 0 && e->matrix ? e->matrix(e->ctx, node) : NULL;
     if (M) { xform(M, pos, v->p); xform_n(M, nrm, v->n); }
     else { memcpy(v->p, pos, 12); memcpy(v->n, nrm, 12); }
+    v->t[0] = v->t[1] = 0;
+    if (e->uv && e->uv->base && p->uv < e->uv->count) {
+        v->t[0] = comp(e->uv, p->uv, 0);
+        if (e->uv->comps > 1) v->t[1] = comp(e->uv, p->uv, 1);
+    }
     v->c[0] = e->tint[0]; v->c[1] = e->tint[1]; v->c[2] = e->tint[2]; v->c[3] = 255;
     if (e->clr) get_color(e->clr, e->clr_n, e->clr_stride, e->clr_fmt, p->clr, v->c);
 }
@@ -184,6 +288,7 @@ static void emit_prim(emit_t *e, int prim, const pv_t *p, u32 n)
 
 typedef struct {
     const u8 *b; u32 len, ver;
+    const u8 *file; u32 flen;   /* the BRRES around it: names and textures live outside the MDL0 */
     float (*mtx)[12];           /* by node id */
     u8 *has;
     int nmtx;
@@ -214,12 +319,15 @@ static u32 grp_item(const mdl_t *d, u32 grp, int id, u32 need)
     return o > 0 && at + need <= d->len ? at : 0;
 }
 
-static void mdl_array(const mdl_t *d, u32 at, bool normals, arr_t *a)
+enum { ARR_POS, ARR_NRM, ARR_UV };
+
+static void mdl_array(const mdl_t *d, u32 at, int kind, arr_t *a)
 {
     memset(a, 0, sizeof(*a));
     if (!at) return;
     s32 doff = (s32)be32(d->b + at + 8);
-    a->comps = normals ? 3 : (be32(d->b + at + 20) ? 3 : 2);
+    u32 flag = be32(d->b + at + 20);
+    a->comps = kind == ARR_NRM ? 3 : kind == ARR_UV ? (flag ? 2 : 1) : (flag ? 3 : 2);
     a->type = be32(d->b + at + 24);
     a->frac = d->b[at + 28];
     a->stride = d->b[at + 29];
@@ -275,7 +383,10 @@ static void mdl_object(mdl_t *d, emit_t *e, u32 o)
             for (int k = 0; k < 8; k++) q += lo >> (k + 1) & 1;
             v->pos = pos_t == 2 ? *q : be16(q); q += isz[pos_t];
             v->nrm = nrm_t == 2 ? *q : nrm_t == 3 ? be16(q) : 0; q += isz[nrm_t];
-            v->clr = c0_t == 2 ? *q : c0_t == 3 ? be16(q) : 0;
+            v->clr = c0_t == 2 ? *q : c0_t == 3 ? be16(q) : 0; q += isz[c0_t];
+            q += isz[c1_t];
+            int t0 = hi & 3;
+            v->uv = t0 == 2 ? *q : t0 == 3 ? be16(q) : 0;
         }
         p += n * stride;
         emit_prim(e, prim, pts, n);
@@ -283,13 +394,68 @@ static void mdl_object(mdl_t *d, emit_t *e, u32 o)
     free(pts);
 }
 
-static bool load_mdl0(model_t *m, const u8 *b, u32 len, const char *name)
+/* A BRRES resource by folder and name ("Textures(NW4R)", "Palettes(NW4R)"): its offset in the file, or 0. */
+static u32 brres_find(const u8 *f, u32 flen, const char *folder, const char *name, u32 nlen)
 {
-    mdl_t d = { b, len, be32(b + 8), NULL, NULL, 0 };
+    if (flen < 0x10 || memcmp(f, "bres", 4)) return 0;
+    u32 root = be16(f + 0x0C);
+    if (root + 16 > flen || memcmp(f + root, "root", 4)) return 0;
+    u32 g = root + 8, n = be32(f + g + 4);
+    for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= flen; i++) {
+        const u8 *e = f + g + 8 + i * 16;
+        u32 fn = g + be32(e + 8), sub = g + be32(e + 12);
+        if (fn >= flen || sub + 8 > flen || strncmp((const char *)f + fn, folder, flen - fn)) continue;
+        u32 sn = be32(f + sub + 4);
+        for (u32 k = 1; k <= sn && sub + 8 + (k + 1) * 16 <= flen; k++) {
+            const u8 *se = f + sub + 8 + k * 16;
+            u32 no = sub + be32(se + 8), at = sub + be32(se + 12);
+            if (no + nlen < flen && !memcmp(f + no, name, nlen) && !f[no + nlen] && at + 0x40 <= flen) return at;
+        }
+    }
+    return 0;
+}
+
+/* Texture layer 0 of an MDL0 material -> m->tex index, or -1. */
+static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
+{
+    const u8 *f = d->file;
+    if (!mat || mat + 0x34 > d->len) return -1;
+    u32 count = be32(d->b + mat + 0x2C);
+    s32 refs = (s32)be32(d->b + mat + 0x30);
+    if (!count || count > 8 || refs <= 0 || mat + refs + 0x34 > d->len) return -1;
+    const u8 *ref = d->b + mat + refs;
+    s32 rel = (s32)be32(ref);                   /* self-relative, to the name's characters */
+    const u8 *nm = ref + rel;
+    if (!rel || nm - 4 < f || nm >= f + d->flen) return -1;
+    u32 nlen = be32(nm - 4);
+    if (!nlen || nlen > 255 || nm + nlen > f + d->flen) return -1;
+    u32 tex = brres_find(f, d->flen, "Textures(NW4R)", (const char *)nm, nlen);
+    if (!tex || memcmp(f + tex, "TEX0", 4)) return -1;
+    const u8 *t = f + tex;
+    int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
+    const u8 *pal = NULL; int palfmt = 0, palcount = 0;
+    if (fmt >= 8 && fmt <= 10) {
+        u32 pl = brres_find(f, d->flen, "Palettes(NW4R)", (const char *)nm, nlen);
+        if (pl && !memcmp(f + pl, "PLT0", 4)) {
+            u32 plen = be32(f + pl + 4), doff = be32(f + pl + 0x10);
+            palcount = be16(f + pl + 0x1C);
+            if (pl + doff + palcount * 2u <= d->flen && doff + palcount * 2u <= plen) { pal = f + pl + doff; palfmt = be32(f + pl + 0x18); }
+            else palcount = 0;
+        }
+    }
+    return add_texture(m, f, d->flen, tex + be32(t + 0x10), fmt, w, h, pal, palfmt, palcount,
+                       (int)be32(ref + 0x18), (int)be32(ref + 0x1C));
+}
+
+static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, const char *name)
+{
+    const u8 *b = file + off;
+    mdl_t d = { b, len, be32(b + 8), file, flen, NULL, NULL, 0 };
     if (d.ver < 8 || d.ver > 11) return false;
     bool v10 = d.ver >= 10;
     u32 g_def = mdl_group(&d, 0), g_bone = mdl_group(&d, 1), g_pos = mdl_group(&d, 2), g_nrm = mdl_group(&d, 3),
-        g_clr = mdl_group(&d, 4), g_obj = mdl_group(&d, v10 ? 10 : 8);
+        g_clr = mdl_group(&d, 4), g_uv = mdl_group(&d, 5), g_mat = mdl_group(&d, v10 ? 8 : 6),
+        g_obj = mdl_group(&d, v10 ? 10 : 8);
     if (!g_obj || !g_pos) return false;
 
     /* bones: node id -> world matrix */
@@ -312,13 +478,15 @@ static bool load_mdl0(model_t *m, const u8 *b, u32 len, const char *name)
 
     /* draw lists: object -> bone, for objects without their own node */
     int nobj = be32(b + g_obj + 4);
-    int *obj_bone = malloc((nobj > 0 ? nobj : 1) * sizeof(int));
-    for (int i = 0; obj_bone && i < nobj; i++) obj_bone[i] = -1;
+    int *obj_bone = malloc((nobj > 0 ? nobj : 1) * sizeof(int) * 2);
+    int *obj_mat = obj_bone ? obj_bone + (nobj > 0 ? nobj : 1) : NULL;
+    for (int i = 0; obj_bone && i < nobj; i++) obj_bone[i] = obj_mat[i] = -1;
     int ndef = g_def ? (int)be32(b + g_def + 4) : 0;
     for (int i = 0; i < ndef && obj_bone; i++) {
         u32 at = grp_item(&d, g_def, i, 1);
         while (at && at + 8 <= len && b[at] == 4) {
-            u32 obj = be16(b + at + 3), bone = be16(b + at + 5);
+            u32 mat = be16(b + at + 1), obj = be16(b + at + 3), bone = be16(b + at + 5);
+            if ((int)obj < nobj && obj_mat[obj] < 0) obj_mat[obj] = mat;
             if ((int)obj < nobj && obj_bone[obj] < 0) {
                 u32 ba = grp_item(&d, g_bone, bone, 0x14);
                 obj_bone[obj] = ba ? (s32)be32(b + ba + 0x10) : -1;
@@ -330,12 +498,17 @@ static bool load_mdl0(model_t *m, const u8 *b, u32 len, const char *name)
     for (int i = 0; i < nobj; i++) {
         u32 o = grp_item(&d, g_obj, i, 0x60);
         if (!o) continue;
-        arr_t pos, nrm;
-        mdl_array(&d, grp_item(&d, g_pos, (s16)be16(b + o + 0x48), 0x20), false, &pos);
-        mdl_array(&d, grp_item(&d, g_nrm, (s16)be16(b + o + 0x4A), 0x20), true, &nrm);
+        arr_t pos, nrm, uv;
+        mdl_array(&d, grp_item(&d, g_pos, (s16)be16(b + o + 0x48), 0x20), ARR_POS, &pos);
+        mdl_array(&d, grp_item(&d, g_nrm, (s16)be16(b + o + 0x4A), 0x20), ARR_NRM, &nrm);
+        mdl_array(&d, grp_item(&d, g_uv, (s16)be16(b + o + 0x50), 0x20), ARR_UV, &uv);
         if (!pos.base) continue;
-        emit_t e = { m, &pos, &nrm, NULL, 0, 0, 0, mdl_matrix, &d, -1, { 0 } };
-        memcpy(e.tint, PALETTE[i & 7], 3);
+        int tex = -1;
+        if (uv.base && obj_mat && obj_mat[i] >= 0)
+            tex = mdl_material_texture(&d, m, grp_item(&d, g_mat, obj_mat[i], 0x34));
+        emit_t e = { m, &pos, &nrm, &uv, NULL, 0, 0, 0, mdl_matrix, &d, -1, { 0 } };
+        if (tex >= 0) memset(e.tint, 255, 3);
+        else memcpy(e.tint, PALETTE[i & 7], 3);
         u32 ca = grp_item(&d, g_clr, (s16)be16(b + o + 0x4C), 0x20);
         if (ca) {
             s32 doff = (s32)be32(b + ca + 8);
@@ -346,7 +519,9 @@ static bool load_mdl0(model_t *m, const u8 *b, u32 len, const char *name)
         }
         s32 node = (s32)be32(b + o + 0x08);
         e.default_node = node >= 0 ? node : (obj_bone ? obj_bone[i] : -1);
+        u32 start = m->n;
         mdl_object(&d, &e, o);
+        add_mesh(m, start, tex);
         m->meshes++;
     }
     free(obj_bone);
@@ -412,7 +587,7 @@ static void euler_mtx(const float s[3], const float r[3], const float t[3], floa
 
 static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
 {
-    u32 nsec = be32(b + 0x0C), pos = 0x20, inf = 0, vtx = 0, drw = 0, jnt = 0, shp = 0;
+    u32 nsec = be32(b + 0x0C), pos = 0x20, inf = 0, vtx = 0, drw = 0, jnt = 0, shp = 0, mat3 = 0, tex1 = 0;
     for (u32 i = 0; i < nsec && pos + 8 <= len; i++) {
         u32 sz = be32(b + pos + 4);
         if (!memcmp(b + pos, "INF1", 4)) inf = pos;
@@ -420,13 +595,15 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
         else if (!memcmp(b + pos, "DRW1", 4)) drw = pos;
         else if (!memcmp(b + pos, "JNT1", 4)) jnt = pos;
         else if (!memcmp(b + pos, "SHP1", 4)) shp = pos;
+        else if (!memcmp(b + pos, "MAT3", 4)) mat3 = pos;
+        else if (!memcmp(b + pos, "TEX1", 4)) tex1 = pos;
         if (sz < 8 || pos + sz > len) break;
         pos += sz;
     }
     if (!vtx || !shp) return false;
 
     /* VTX1 arrays */
-    arr_t pa = { 0 }, na = { 0 };
+    arr_t pa = { 0 }, na = { 0 }, ua = { 0 };
     const u8 *cbase = NULL; u32 cn = 0, cstride = 4; int cfmt = 5;
     u32 vsz = be32(b + vtx + 4), offs[13];
     for (int i = 0; i < 13; i++) offs[i] = be32(b + vtx + 12 + i * 4);
@@ -435,7 +612,7 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
         if (attr == 0xFF) break;
         u32 cnt = be32(b + hp + 4), type = be32(b + hp + 8);
         int frac = b[hp + 12];
-        int slot = attr == 9 ? 0 : attr == 10 ? 1 : attr == 11 ? 3 : -1;
+        int slot = attr == 9 ? 0 : attr == 10 ? 1 : attr == 11 ? 3 : attr == 13 ? 5 : -1;
         if (slot < 0 || !offs[slot]) continue;
         u32 start = offs[slot], stop = vsz;
         for (int k = 0; k < 13; k++) if (offs[k] > start && offs[k] < stop) stop = offs[k];
@@ -446,10 +623,11 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
             cbase = b + vtx + start; cfmt = type; cstride = csz[type]; cn = (stop - start) / cstride;
             continue;
         }
-        arr_t *a = attr == 9 ? &pa : &na;
+        arr_t *a = attr == 9 ? &pa : attr == 10 ? &na : &ua;
         int esz = type < 2 ? 1 : type < 4 ? 2 : 4;
+        if (type > 4) continue;
         a->type = type; a->frac = frac;
-        a->comps = attr == 9 ? (cnt ? 3 : 2) : 3;
+        a->comps = attr == 9 ? (cnt ? 3 : 2) : attr == 13 ? (cnt ? 2 : 1) : 3;
         a->stride = esz * a->comps;
         a->base = b + vtx + start;
         a->count = (stop - start) / a->stride;
@@ -519,8 +697,47 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
         else { d.drw_weighted = b + drw + ob; d.drw_idx = b + drw + oi; }
     }
 
-    /* SHP1 */
+    /* shape -> material (INF1) -> texture (MAT3 texture slot 0 -> TEX1) */
     int nshape = be16(b + shp + 8);
+    int *shape_tex = malloc((nshape > 0 ? nshape : 1) * sizeof(int));
+    for (int i = 0; shape_tex && i < nshape; i++) shape_tex[i] = -1;
+    if (shape_tex && inf && mat3 && tex1 && ua.base && mat3 + 12 + 30 * 4 <= len && tex1 + 0x14 <= len) {
+        int nmat = (s16)be16(b + mat3 + 8);
+        u32 mo[30];
+        for (int k = 0; k < 30; k++) mo[k] = be32(b + mat3 + 12 + k * 4);
+        u32 msz = be32(b + mat3 + 4), remap_end = msz;
+        for (int k = 16; k < 30; k++) if (mo[k] > mo[15] && mo[k] < remap_end) remap_end = mo[k];
+        int ntexremap = mo[15] && remap_end > mo[15] ? (int)((remap_end - mo[15]) / 2) : 0;
+        int ntex = (s16)be16(b + tex1 + 8);
+        u32 thdr = tex1 + be32(b + tex1 + 12);
+        int stack[256], sp = 0, cur = -1;
+        for (u32 p = inf + be32(b + inf + 0x14); p + 4 <= len; p += 4) {
+            int t = be16(b + p), idx = be16(b + p + 2);
+            if (t == 0) break;
+            if (t == 1) { if (sp < 256) stack[sp++] = cur; }
+            else if (t == 2) cur = sp ? stack[--sp] : -1;
+            else if (t == 0x11) cur = idx;
+            else if (t == 0x12 && idx < nshape && shape_tex[idx] < 0 && cur >= 0 && cur < nmat && mo[0] && mo[1]) {
+                u32 ra = mat3 + mo[1] + cur * 2;
+                if (ra + 2 > len) continue;
+                u32 rec = mat3 + mo[0] + be16(b + ra) * 332u;
+                if (rec + 0x86 > len) continue;
+                int tn = (s16)be16(b + rec + 0x84);
+                if (tn < 0 || tn >= ntexremap || mat3 + mo[15] + tn * 2 + 2 > len) continue;
+                int ti = (s16)be16(b + mat3 + mo[15] + tn * 2);
+                u32 h = thdr + ti * 0x20;
+                if (ti < 0 || ti >= ntex || h + 0x20 > len) continue;
+                const u8 *pal = NULL;
+                int palcount = be16(b + h + 0x0A);
+                if (palcount && h + be32(b + h + 0x0C) + palcount * 2u <= len) pal = b + h + be32(b + h + 0x0C);
+                else palcount = 0;
+                shape_tex[idx] = add_texture(m, b, len, h + be32(b + h + 0x1C), b[h], be16(b + h + 2), be16(b + h + 4),
+                                             pal, b[h + 9], palcount, b[h + 6], b[h + 7]);
+            }
+        }
+    }
+
+    /* SHP1 */
     u32 o_shape = shp + be32(b + shp + 0x0C), o_attr = shp + be32(b + shp + 0x18), o_mtab = shp + be32(b + shp + 0x1C),
         o_dl = shp + be32(b + shp + 0x20), o_mdat = shp + be32(b + shp + 0x24), o_pkt = shp + be32(b + shp + 0x28);
     pv_t *pts = NULL;
@@ -539,8 +756,11 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
             stride += ty == 3 ? 2 : 1;
             if (at == 0) has_pm = true;
         }
-        emit_t e = { m, &pa, &na, cbase, cn, cstride, cfmt, j3d_matrix, &d, -1, { 0 } };
-        memcpy(e.tint, PALETTE[si & 7], 3);
+        int tex = shape_tex ? shape_tex[si] : -1;
+        emit_t e = { m, &pa, &na, &ua, cbase, cn, cstride, cfmt, j3d_matrix, &d, -1, { 0 } };
+        if (tex >= 0) memset(e.tint, 255, 3);
+        else memcpy(e.tint, PALETTE[si & 7], 3);
+        u32 start = m->n;
         int prev_mtx[16];
         for (int k = 0; k < 16; k++) prev_mtx[k] = -1;
         for (int pk = 0; pk < npkt; pk++) {
@@ -577,14 +797,17 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
                         else if (attrs[a] == 9) v->pos = idx;
                         else if (attrs[a] == 10) v->nrm = idx;
                         else if (attrs[a] == 11) v->clr = idx;
+                        else if (attrs[a] == 13) v->uv = idx;
                     }
                 }
                 emit_prim(&e, prim, pts, n);
             }
         }
         (void)has_pm;
+        add_mesh(m, start, tex);
         m->meshes++;
     }
+    free(shape_tex);
     free(pts);
     free(d.w);
     snprintf(m->name, sizeof(m->name), "%s", name);
@@ -625,33 +848,44 @@ static void gx_setup(void)
     GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
     GX_SetVtxDesc(GX_VA_NRM, GX_DIRECT);
     GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+    GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
-    GX_SetNumTexGens(0);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+    GX_SetNumTexGens(1);
+    GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
     GX_SetNumTevStages(1);
     GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
     GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
     GX_SetNumChans(1);
     GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
+    /* cut-out textures (leaves, fences, text): drop clear pixels, and test alpha before depth is written */
+    GX_SetAlphaCompare(GX_GEQUAL, 128, GX_AOP_AND, GX_ALWAYS, 0);
+    GX_SetZCompLoc(GX_FALSE);
     GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
     GX_SetColorUpdate(GX_TRUE);
 }
 
 enum { SH_LIT, SH_FLAT, SH_WIRE, SH_COUNT };
 
+static void draw_range(const model_t *m, u32 done, u32 stop, int shade);
+
 static void render(const model_t *m, float yaw, float pitch, float dist, int shade)
 {
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
     void *xfb = ui_framebuffer(NULL, NULL);
-    Mtx44 proj;
-    guPerspective(proj, 45, (f32)rm->fbWidth / rm->efbHeight, 0.1f * dist / 10, dist * 10);
-    GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
-
     float c[3], r = 0;
     for (int k = 0; k < 3; k++) { c[k] = (m->min[k] + m->max[k]) / 2; float e = (m->max[k] - m->min[k]) / 2; r += e * e; }
     r = sqrtf(r);
     if (r < 1e-4f) r = 1;
+
+    /* the camera sits dist * r from the centre: keep all of the model between the clipping planes */
+    Mtx44 proj;
+    float zfar = (dist + 1.5f) * r, znear = dist > 1.2f ? (dist - 1.1f) * r : zfar / 1000;
+    if (znear < zfar / 1000) znear = zfar / 1000;
+    guPerspective(proj, 45, (f32)rm->fbWidth / rm->efbHeight, znear, zfar);
+    GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
 
     Mtx view, model, rx, ry, mv, tr;
     guVector cam = { 0, 0, dist * r }, up = { 0, 1, 0 }, look = { 0, 0, 0 };
@@ -678,14 +912,37 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     GX_LoadLightObj(&light, GX_LIGHT0);
     GX_SetChanAmbColor(GX_COLOR0A0, amb);
     if (shade == SH_LIT)
-        GX_SetChanCtrl(GX_COLOR0A0, GX_ENABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHT0, GX_DF_CLAMP, GX_AF_NONE);
+        GX_SetChanCtrl(GX_COLOR0, GX_ENABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHT0, GX_DF_CLAMP, GX_AF_NONE);
     else
-        GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHTNULL, GX_DF_NONE, GX_AF_NONE);
+        GX_SetChanCtrl(GX_COLOR0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHTNULL, GX_DF_NONE, GX_AF_NONE);
+    GX_SetChanCtrl(GX_ALPHA0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHTNULL, GX_DF_NONE, GX_AF_NONE);
 
     GX_InvVtxCache();
-    u32 done = 0;
-    while (done < m->n) {
-        u32 n = m->n - done;
+    GX_InvalidateTexAll();
+    for (int k = 0; k < m->nmesh; k++) {
+        const mesh_t *ms = &m->mesh[k];
+        if (ms->tex >= 0 && ms->tex < m->ntex && shade != SH_WIRE) {
+            GX_LoadTexObj((GXTexObj *)&m->tex[ms->tex].obj, GX_TEXMAP0);
+            if (m->tex[ms->tex].cutout) GX_SetAlphaCompare(GX_GEQUAL, 128, GX_AOP_AND, GX_ALWAYS, 0);
+            else GX_SetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
+            GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+            GX_SetTevOp(GX_TEVSTAGE0, GX_MODULATE);
+        } else {
+            GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+            GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+        }
+        draw_range(m, ms->start, ms->start + ms->count, shade);
+    }
+    GX_DrawDone();
+    GX_CopyDisp(xfb, GX_TRUE);
+    GX_Flush();
+    GX_DrawDone();
+}
+
+static void draw_range(const model_t *m, u32 done, u32 stop, int shade)
+{
+    while (done < stop) {
+        u32 n = stop - done;
         if (shade == SH_WIRE) {
             if (n > 21843) n = 21843;               /* 3 lines (6 verts) per triangle, < 65536 */
             n -= n % 3;
@@ -697,6 +954,7 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
                         GX_Position3f32(v->p[0], v->p[1], v->p[2]);
                         GX_Normal3f32(v->n[0], v->n[1], v->n[2]);
                         GX_Color4u8(v->c[0], v->c[1], v->c[2], 255);
+                        GX_TexCoord2f32(v->t[0], v->t[1]);
                     }
         } else {
             if (n > 65535) n = 65535 - 65535 % 3;
@@ -705,16 +963,13 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
                 const vert_t *v = &m->v[done + i];
                 GX_Position3f32(v->p[0], v->p[1], v->p[2]);
                 GX_Normal3f32(v->n[0], v->n[1], v->n[2]);
-                GX_Color4u8(v->c[0], v->c[1], v->c[2], 255);
+                GX_Color4u8(v->c[0], v->c[1], v->c[2], 255);   /* only the texture's alpha cuts pixels out */
+                GX_TexCoord2f32(v->t[0], v->t[1]);
             }
         }
         GX_End();
         done += n;
     }
-    GX_DrawDone();
-    GX_CopyDisp(xfb, GX_TRUE);
-    GX_Flush();
-    GX_DrawDone();
 }
 
 /* ---------------------------------------------------------------- viewer */
@@ -739,13 +994,13 @@ static u8 *load_file(const char *path, u32 *len)
 
 static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *name)
 {
-    free(m->v);
-    memset(m, 0, sizeof(*m));
+    if (gx_fifo) GX_DrawDone();                 /* nothing may still be reading the old textures */
+    free_model(m);
     for (int k = 0; k < 3; k++) { m->min[k] = 1e30f; m->max[k] = -1e30f; }
     if (!memcmp(b + off, "MDL0", 4)) {
         u32 sz = be32(b + off + 4);
         if (off + sz > len) sz = len - off;
-        return load_mdl0(m, b + off, sz, name);
+        return load_mdl0(m, b, len, off, sz, name);
     }
     return load_j3d(m, b, len, name);
 }
@@ -776,7 +1031,7 @@ bool model_view(const char *path)
     int cur = 0;
     if (!load_model(&m, b, len, offs[0], names[0])) {
         /* a BRRES with no drawable model: let the caller browse it */
-        free(m.v);
+        free_model(&m);
         free(b);
         if (j3d) { ui_message("MODEL", C_YELLOW, "No drawable geometry was found in this model."); return true; }
         return false;
@@ -784,20 +1039,25 @@ bool model_view(const char *path)
 
     gx_setup();
     float yaw = 30, pitch = 15, dist = 2.6f;
+    bool first = true;
     int shade = SH_LIT;
     bool info = true, redraw = true;
     for (;;) {
         if (redraw) {
+            if (first) render(&m, yaw, pitch, dist, shade);  /* the first copy after GX starts up doesn't reach the screen */
+            first = false;
             render(&m, yaw, pitch, dist, shade);
             ui_color(C_WHITE, true);
             ui_field(0, 0, ui_cols() - 1, " MODEL  %s  [%d/%d] %s", vfs_basename(path), cur + 1, count, m.name);
             if (info)
-                ui_field(1, 0, ui_cols() - 1, " %s  %u triangles  %d meshes  %d bones  %s", m.kind, (unsigned)(m.n / 3), m.meshes,
-                         m.bones, shade == SH_LIT ? "lit" : shade == SH_FLAT ? "unlit" : "wireframe");
+                ui_field(1, 0, ui_cols() - 1, " %s  %u triangles  %d meshes (%d textured, %d textures)  %d bones  %s", m.kind,
+                         (unsigned)(m.n / 3), m.meshes, m.textured, m.ntex, m.bones,
+                         shade == SH_LIT ? "lit" : shade == SH_FLAT ? "unlit" : "wireframe");
             ui_color(C_CYAN, true);
             ui_field(ui_rows() - 1, 0, ui_cols() - 1, " D-Pad Rotate  +/- Zoom  A Shading  1 Next model  2 Info  B Close");
             ui_reset();
             redraw = false;
+            UI_TEST_SHOT();
         }
         u32 p = DetectInput(IN_DOWN), h = INPUT_ButtonsHeld();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
@@ -825,7 +1085,8 @@ bool model_view(const char *path)
             redraw = true;
         }
     }
-    free(m.v);
+    if (gx_fifo) GX_DrawDone();
+    free_model(&m);
     free(b);
     ui_clear();
     return true;
