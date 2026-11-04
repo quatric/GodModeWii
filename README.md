@@ -93,8 +93,9 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   archive's `timg` folder), texture SRTs, TEV stages and colours, swap tables, alpha compare and blend modes, playing the
   layout's BRLAN animations (pane position / rotation / scale / size, vertex colours and alpha, visibility, material colours,
   texture SRT and texture pattern). A banner plays its Start animation into its Loop one, as on the Wii Menu. Opening a BRLAN
-  plays it on its layout. **A** pause, D-Pad **Left / Right** step a frame while paused, **1** next animation, **+** / **-** zoom,
-  **2** info, **B** close. Text boxes are not drawn; a layout the viewer can't draw falls back to the text view.
+  plays it on its layout. Animations play once and stop on their last frame: **A** play / pause (and again from the start
+  once it has ended), D-Pad **Left / Right** step a frame while paused, **Up / Down** previous / next animation, **1** loop
+  on / off, **+** / **-** zoom, **2** info, **B** close. Text boxes are not drawn; a layout the viewer can't draw falls back to the text view.
 * **Text views**: BMG and MSBT messages, BREFF effect sets (their emitter list), BRLYT layouts (canvas, textures, fonts,
   materials and the pane tree with each text box's text), BRLAN animations (length and what they animate) and Mario Kart Wii
   KMP course data (sections, counts, laps).

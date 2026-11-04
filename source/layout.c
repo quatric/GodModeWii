@@ -10,7 +10,8 @@
  * Animations: RLPA (position, rotation, scale, size), RLVC (vertex colours, pane alpha), RLVI
  * (visibility), RLMC (material / TEV colours), RLTS (texture SRT) and RLTP (texture pattern), with
  * hermite and step curves. A layout opens with its "_Start" animation, which leads into "_Loop" as
- * on the Wii Menu; a BRLAN opens with its layout. Only the canvas shows (+/- zoom in and out of
+ * on the Wii Menu; a BRLAN opens with its layout. Animations play once and stop on their last
+ * frame unless looping is switched on. Only the canvas shows (+/- zoom in and out of
  * it). Text boxes are not drawn. View only.
  */
 #include <stdio.h>
@@ -966,6 +967,7 @@ bool lyt_view(const char *path)
 
     float frame = 0, zoom = 1;
     bool paused = false, info = true, first = true;
+    bool looping = false, at_end = false;       /* animations play once and stop on their last frame */
     int ntex_ok = -1;
     for (;;) {
         /* the layout at this frame */
@@ -992,27 +994,39 @@ bool lyt_view(const char *path)
                      L->npane, ntex_ok, L->ntex);
             if (a)
                 ui_field(1, 0, ui_cols() - 1, " [%d/%d] %s  frame %d/%d%s%s", cur + 1, L->nanim, a->name, (int)frame, a->frames,
-                         a->loop ? "  loop" : "", paused ? "  PAUSED" : "");
+                         looping ? "  LOOP" : "", paused ? "  PAUSED" : at_end ? "  END (A: again)" : "");
             else
                 ui_field(1, 0, ui_cols() - 1, " no animation");
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " A Pause  <> Step  1 Next animation  +/- Zoom  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " A Play/Pause  <> Step  ^v Animation  1 Loop  +/- Zoom  2 Info  B Close");
             ui_reset();
         }
-        UI_TEST_SHOT();
+#ifdef GMW_AUTOTEST
+        static int test_polls;
+        if (++test_polls == 240) { test_polls = 0; UI_TEST_SHOT(); }   /* test builds: the screen 4 s in */
+#endif
 
         u32 p = DetectInput(IN_DOWN);
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
-        if (p & WPAD_BUTTON_A) paused = !paused;
+        if (p & WPAD_BUTTON_A) {
+            if (at_end) { frame = 0; at_end = false; paused = false; }   /* finished: play it again */
+            else paused = !paused;
+        }
         if (p & WPAD_BUTTON_2) info = !info;
         if ((p & WPAD_BUTTON_PLUS) && zoom < 8) zoom *= 1.25f;
         if ((p & WPAD_BUTTON_MINUS) && zoom > 0.3f) zoom /= 1.25f;
-        if ((p & WPAD_BUTTON_1) && L->nanim) { cur = (cur + 1) % L->nanim; frame = 0; }
-        if (a && paused) {
-            if (p & WPAD_BUTTON_RIGHT) frame = frame + 1 < a->frames ? frame + 1 : 0;
-            if (p & WPAD_BUTTON_LEFT) frame = frame >= 1 ? frame - 1 : a->frames - 1;
+        if (p & WPAD_BUTTON_1) looping = !looping;
+        if ((p & (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN)) && L->nanim) {
+            cur = (cur + (p & WPAD_BUTTON_UP ? L->nanim - 1 : 1)) % L->nanim;
+            frame = 0;
+            at_end = false;
         }
-        if (a && !paused && !(p & WPAD_BUTTON_1)) {
+        if (a && paused) {
+            if (p & WPAD_BUTTON_RIGHT) frame = frame + 1 <= a->frames ? frame + 1 : 0;
+            if (p & WPAD_BUTTON_LEFT) frame = frame >= 1 ? frame - 1 : a->frames;
+            at_end = false;
+        }
+        if (a && !paused && !at_end && !(p & (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN))) {
             frame += 1;
             if (frame >= a->frames) {
                 /* x_Start leads into x_Loop, as on the Wii Menu */
@@ -1024,8 +1038,9 @@ bool lyt_view(const char *path)
                     for (int i = 0; i < L->nanim; i++)
                         if (!strcasecmp(L->anim[i].name, want)) next = i;
                 }
-                if (next >= 0) cur = next;
-                frame = 0;                      /* the rest play again from the start */
+                if (next >= 0) { cur = next; frame = 0; }
+                else if (looping) frame = 0;
+                else { frame = a->frames; at_end = true; }   /* stays on its last frame */
             }
         }
     }
