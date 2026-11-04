@@ -891,29 +891,33 @@ static void wad_menu(const vfs_entry *en)
         if (marks[i] && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             marked_wads++;
 
-    char install[48] = "Install to NAND";
-    if (marked_wads > 1)
+    char install[48] = "Install to NAND", sd[64] = "Install to SD card (wad2bin: content.bin)";
+    if (marked_wads > 1) {
         snprintf(install, sizeof(install), "Install %d marked WADs to NAND", marked_wads);
+        snprintf(sd, sizeof(sd), "Install %d marked WADs to SD card (wad2bin)", marked_wads);
+    }
 
-    const char *items[] = { install, "Browse decrypted contents", "More actions..." };
-    int r = ui_menu(en->name, items, NULL, 3, 0);
+    const char *items[] = { install, sd, "Browse decrypted contents", "More actions..." };
+    int r = ui_menu(en->name, items, NULL, 4, 0);
 
     char path[VFS_PATH_MAX];
-    if (r == 0 && marked_wads > 1) {
+    if ((r == 0 || r == 1) && marked_wads > 1) {
         int t;
         char **tp = targets(&t);
         if (t) {
-            wad_install_paths(tp, t);
+            if (r == 0) wad_install_paths(tp, t);
+            else wad_install_sd(tp, t);
             free_paths(tp, t);
             reload_keep();
         }
-    } else if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
+    } else if ((r == 0 || r == 1) && vfs_join(path, sizeof(path), cwd, en->name)) {
         char *one = path;
-        wad_install_paths(&one, 1);
+        if (r == 0) wad_install_paths(&one, 1);
+        else wad_install_sd(&one, 1);
         reload_keep();
-    } else if (r == 1) {
-        open_archive(en);
     } else if (r == 2) {
+        open_archive(en);
+    } else if (r == 3) {
         actions_menu();
     }
 }
@@ -1142,6 +1146,7 @@ static bool system_menu(void)
         case M_REMOUNT:
             ui_splash("Looking for drives...");
             vfs_remount();
+            input_flush();
             clip_clear();
             free_dir();
             cwd[0] = '\0';
@@ -1191,6 +1196,7 @@ static void open_drive(int dev)
     if (dev == DEV_DISC) {          /* discs come and go: re-check on every visit */
         ui_splash("Reading disc...");
         virt_refresh(DEV_DISC);
+        input_flush();              /* A pressed again while the drive was busy isn't another visit */
     }
 
     if (dev == DEV_MCA || dev == DEV_MCB) {  /* cards get swapped: re-check on every visit */

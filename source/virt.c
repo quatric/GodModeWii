@@ -101,13 +101,48 @@ static void refresh_seeprom(void)
 
 /* ---------------------------------------------------------------- disc I/O */
 
+/* One unencrypted read, one try. libogc's DI_UnencryptedRead tries 16 times, and on a disc the
+ * drive can't read each try takes seconds: the retrying is done here instead, a bounded number of
+ * times. */
+static bool unenc_once(void *buf, u32 len, u32 off4)
+{
+    static u32 cmd[8] ATTRIBUTE_ALIGN(32);
+    memset(cmd, 0, sizeof(cmd));
+    cmd[0] = (u32)DVD_READ_UNENCRYPTED << 24;
+    cmd[1] = len;
+    cmd[2] = off4;
+    return IOS_Ioctl(di_fd, DVD_READ_UNENCRYPTED, cmd, 0x20, buf, len) == 1;
+}
+
 /* off and len must be multiples of 32; buf 32-byte aligned. In the Wii data
- * partition IOS decrypts for us; on a GameCube disc this is a raw read. */
+ * partition IOS decrypts for us; on a GameCube disc this is a raw read. Copies that keep going
+ * past bad sectors (tol_on) use libogc's patient read, which gets more of a scratched disc back. */
 static bool raw_read(u64 off, void *buf, u32 len, bool in_partition)
 {
-    int ret = in_partition ? DI_Read(buf, len, (u32)(off >> 2))
-                           : DI_UnencryptedRead(buf, len, (u32)(off >> 2));
-    return ret == 0;
+    if (in_partition) return DI_Read(buf, len, (u32)(off >> 2)) == 0;
+    if (tol_on) return DI_UnencryptedRead(buf, len, (u32)(off >> 2)) == 0;
+    return unenc_once(buf, len, (u32)(off >> 2));
+}
+
+static u64 mounted_id;      /* disc ID (first 8 bytes) of the disc that is read in */
+
+/* Spins up the disc that is in the drive, the way libogc's DI_Mount does it (reset, identify,
+ * disc ID) but synchronously and a bounded number of times. DI_Mount runs as a chain of callbacks
+ * that retries every step 16 times and keeps going after its caller gave up waiting: a second
+ * DI_Mount then ran over the first, and the drive reset itself forever. */
+static bool drive_up(void)
+{
+    for (int t = 0; t < 2; t++) {
+        if (DI_Reset() != 0) continue;
+        DI_DriveID drv;
+        DI_Identify(&drv);
+        u64 id;
+        if (DI_ReadDiscID(&id) == 0) {
+            mounted_id = id;
+            return true;
+        }
+    }
+    return false;
 }
 
 static void drive_reset(void)
@@ -347,6 +382,16 @@ static bool load_fst(u64 fst_off, u32 fst_size)
 static void refresh_disc(void)
 {
     vfs_dev *d = &g_devs[DEV_DISC];
+
+    /* The disc that is already read in, still in the drive: nothing to do. */
+    if (d->mounted && disc_kind != DISC_NONE && di_fd >= 0) {
+        u32 cover = 0;
+        u64 id;
+        if (DI_GetCoverRegister(&cover) == 0 && (cover & DVD_COVER_DISC_INSERTED) && DI_ReadDiscID(&id) == 0 &&
+            id == mounted_id)
+            return;
+    }
+
     d->mounted = false;
     disc_forget();
 
@@ -380,7 +425,8 @@ static void refresh_disc(void)
         set_note(DEV_DISC, "no disc");
         return;
     }
-    if (!__io_wiidvd.startup()) {
+    if (!drive_up()) {
+        DI_StopMotor();
         set_note(DEV_DISC, "disc not readable");
         return;
     }
@@ -391,6 +437,7 @@ static void refresh_disc(void)
         return;
 
     if (!read_retry(0, di_buf, 0x440, false)) {
+        DI_StopMotor();
         set_note(DEV_DISC, "disc not readable");
         return;
     }

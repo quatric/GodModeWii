@@ -68,3 +68,9 @@ bool input_cancel_held(void)
     INPUT_Update();
     return (INPUT_ButtonsHeld() & WPAD_BUTTON_B) != 0;
 }
+
+void input_flush(void)
+{
+    for (int i = 0; i < 3; i++)
+        detect(IN_DOWN, true);
+}

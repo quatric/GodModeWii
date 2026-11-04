@@ -20,6 +20,9 @@ u32 input_pressed(void);
 /* Like DetectInput(IN_DOWN) but without waiting for vsync. */
 u32 input_poll_nowait(void);
 
+/* Drops presses made while the program was busy (so they don't act on what comes next). */
+void input_flush(void);
+
 /* Non-blocking check used by long operations to allow cancelling. */
 bool input_cancel_held(void);
 

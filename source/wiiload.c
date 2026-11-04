@@ -112,21 +112,26 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
              : dev == DEV_SD ? "SD card"
                              : g_devs[dev].tag);
     ui_color(C_WHITE, false);
-    ui_field(7, 1, cols - 2, "Archives install into apps, a .dol / .elf can run, a .wad installs.");
+    ui_field(7, 1, cols - 2, "Apps    :  .zip / .7z / .rar install into apps/; a .dol / .elf can run.");
+    ui_color(C_CYAN, true);
+    ui_field(8, 1, cols - 2, "WADs can be installed here, to the NAND or to the SD card (wad2bin:");
+    ui_color(C_WHITE, false);
+    ui_field(9, 1, cols - 2, "  a content.bin made with this Wii's keys, run from the SD card menu).");
+    ui_field(10, 1, cols - 2, "  A .wad, or an archive of WADs, asks which, one WAD at a time.");
 
     if (busy) {
         char a[24], b[24];
         ui_fmt_size(a, sizeof(a), done);
         ui_fmt_size(b, sizeof(b), total);
         ui_color(C_WHITE, true);
-        ui_field(9, 2, cols - 4, "%s", busy);
-        ui_bar(10, 2, cols - 4, total ? (int)(done * 100 / total) : 0, C_GREEN);
+        ui_field(12, 2, cols - 4, "%s", busy);
+        ui_bar(13, 2, cols - 4, total ? (int)(done * 100 / total) : 0, C_GREEN);
         ui_color(C_WHITE, false);
-        ui_field(11, 2, cols - 4, "%s / %s", a, b);
+        ui_field(14, 2, cols - 4, "%s / %s", a, b);
     } else {
-        ui_field(9, 2, cols - 4, "%s", "");
-        ui_field(10, 2, cols - 4, "%s", "");
-        ui_field(11, 2, cols - 4, "%s", "");
+        ui_field(12, 2, cols - 4, "%s", "");
+        ui_field(13, 2, cols - 4, "%s", "");
+        ui_field(14, 2, cols - 4, "%s", "");
     }
 
     int logrow = rows - 3 - LOG_LINES;
@@ -402,17 +407,31 @@ static void note_wad(const char *path, void *ctx)
     if ((w->paths[w->n] = strdup(path))) w->n++;
 }
 
-/* Installs WADs to the NAND (the installer asks first, and for the Konami code); true when all went in. */
-static bool install_wads(char **paths, int n)
+/* Each WAD: to the NAND, to the SD card (wad2bin), or left where it is. The installers ask for
+ * confirmation and the Konami code themselves. Returns how many went in somewhere. */
+static int install_wads(char **paths, int n)
 {
+    int ok = 0;
+    for (int i = 0; i < n; i++) {
+        char title[96];
+        snprintf(title, sizeof(title), "%s", vfs_basename(paths[i]));
 #ifdef GMW_AUTOTEST
-    for (int i = 0; i < n; i++) wl_log("Would install %s to the NAND", vfs_basename(paths[i]));
-    return false;
+        wl_log("Would ask: %s to the NAND, to the SD card (wad2bin), or keep it?", title);
+        continue;
 #endif
-    int ok = wad_install_paths(paths, n);
-    if (ok) wl_log("Installed %d of %d WAD%s to the NAND", ok, n, n == 1 ? "" : "s");
-    else wl_log("WAD%s not installed", n == 1 ? "" : "s");
-    return ok == n;
+        const char *items[] = { "Install to the NAND", "Install to the SD card (wad2bin: content.bin)",
+                                "Don't install it (keep the file)" };
+        int r = ui_menu(title, items, NULL, 3, 0);
+        int got = 0;
+        if (r == 0) got = wad_install_paths(&paths[i], 1);
+        else if (r == 1) got = wad_install_sd(&paths[i], 1);
+        if (got) {
+            ok++;
+            wl_log("Installed %s to the %s", title, r == 0 ? "NAND" : "SD card");
+        } else
+            wl_log("%s not installed", title);
+    }
+    return ok;
 }
 
 /* true when the user chose to start the program now */
@@ -445,7 +464,7 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
 
     if (ftype_sniff(head, headn, 0x100, name) == FT_WAD) {
         char *one = (char *)path;
-        if (install_wads(&one, 1)) {
+        if (install_wads(&one, 1) == 1) {
             vfs_remove(path, false);                    /* it's on the NAND now */
             vfs_update_space(dev);
         } else

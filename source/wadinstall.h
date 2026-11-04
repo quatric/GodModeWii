@@ -14,4 +14,9 @@
  * installed (0 when declined). */
 int wad_install_paths(char **paths, int n);
 
+/* Installs each WAD to the SD card instead (wad2bin): content.bin / <index>.bin made with this
+ * console's keys, then the ticket and TMD on the NAND. Asks first (and which key for DLC).
+ * Returns how many were installed. */
+int wad_install_sd(char **paths, int n);
+
 #endif

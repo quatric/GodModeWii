@@ -226,6 +226,14 @@ int main(int argc, char **argv)
                 g_lyt_test_frame = atoi(line + 7);
                 continue;
             }
+            /* "@wad2bin <wad> <keys> [null]": a wad2bin conversion with fixed keys */
+            if (!strncmp(line, "@wad2bin ", 9)) {
+                extern void wad2bin_autotest(const char *wad, const char *keyfile, bool null_key);
+                char wad[256], keyf[256], nk[8] = "";
+                if (sscanf(line + 9, "%255s %255s %7s", wad, keyf, nk) >= 2)
+                    wad2bin_autotest(wad, keyf, !strcmp(nk, "null"));
+                continue;
+            }
             /* one wiiload upload (sent from the PC), logged */
             if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);

@@ -26,6 +26,7 @@
 #include <gccore.h>
 #include <ogc/es.h>
 #include <ogc/isfs.h>
+#include <ogc/lwp_watchdog.h>
 
 #include "wadinstall.h"
 #include "vfs.h"
@@ -38,6 +39,9 @@
 #include "archive.h"
 #include "ftype.h"
 #include "runtimeiospatch.h"
+#include "wad2bin.h"
+#include "otp.h"
+#include "input.h"
 
 #define TID(hi, lo)   (((u64)(hi) << 32) | (u32)(lo))
 #define TID_HI(t)     ((u32)((t) >> 32))
@@ -393,7 +397,9 @@ static void progress(const char *name, const char *what, u64 done, u64 total)
 
 /* One WAD. Returns 0 on success or an ES / YAWM style error code; `msg` gets
  * a human-readable explanation for refusals. */
-static int install_one(const char *path, char *msg, size_t msz, char *note, size_t nsz)
+/* sd_mode: only the ticket and the TMD (the contents are in a content.bin on the SD card), the way a
+ * channel moved to the SD card is left on the NAND. */
+static int install_one(const char *path, char *msg, size_t msz, char *note, size_t nsz, bool sd_mode)
 {
     const char *name = vfs_basename(path);
     msg[0] = note[0] = '\0';
@@ -458,6 +464,11 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     }
 
     /* ---- brick checks (YAWM ModMii Edition) ---- */
+    if (sd_mode && TID_HI(tid) == 1) {
+        snprintf(msg, msz, "System titles (IOS, System Menu, BC, MIOS) can't run from the SD card.");
+        ret = -999;
+        goto out;
+    }
     if (tid == TID(1, 1)) {
         snprintf(msg, msz, "This is boot2. GodModeWii won't install it.");
         ret = -999;
@@ -528,7 +539,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     char backup[VFS_PATH_MAX] = "";
     u32 files_before = 0;
     bool had_title = title_installed(tid);
-    if (had_title && TID_HI(tid) != 1) {
+    if (had_title && TID_HI(tid) != 1 && !sd_mode) {
         int b = backup_save(tid, backup, sizeof(backup), &files_before);
         if (b < 0) {
             char q[300];
@@ -560,6 +571,27 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     ret = ES_AddTicket((signed_blob *)tik, h.tik_len, (signed_blob *)certs, h.certs_len,
                        (signed_blob *)crl, h.crl_len);
     if (ret < 0) goto out;
+    if (sd_mode) {
+        /* the TMD, with no contents: a title on the SD card. A title already on the NAND keeps
+         * what it has. */
+        if (had_title) {
+            snprintf(msg, msz, "Ticket installed; %08x-%08x is also installed on the NAND, which is left as it is.",
+                     TID_HI(tid), TID_LO(tid));
+        } else {
+            progress(name, "Installing the TMD...", 0, 1);
+            s32 r2 = ES_AddTitleStart((signed_blob *)tmd, h.tmd_len, (signed_blob *)certs, h.certs_len,
+                                      (signed_blob *)crl, h.crl_len);
+            if (r2 >= 0) r2 = ES_AddTitleFinish();
+            if (r2 < 0) {
+                ES_AddTitleCancel();
+                snprintf(msg, msz, "Ticket installed. The TMD wasn't kept (%d); the System Menu takes it from content.bin.",
+                         (int)r2);
+            } else
+                snprintf(msg, msz, "Ticket and TMD installed.");
+        }
+        ret = 0;
+        goto out;
+    }
     progress(name, "Installing title...", 0, total);
     ret = ES_AddTitleStart((signed_blob *)tmd, h.tmd_len, (signed_blob *)certs, h.certs_len,
                            (signed_blob *)crl, h.crl_len);
@@ -692,7 +724,7 @@ int wad_install_paths(char **paths, int n)
         if (ftype_detect(paths[i]) != FT_WAD)
             continue;
         char msg[200], note[300];
-        int r = install_one(paths[i], msg, sizeof(msg), note, sizeof(note));
+        int r = install_one(paths[i], msg, sizeof(msg), note, sizeof(note), false);
         done++;
         if (r == 0) ok++;
         if (wads == 1) {
@@ -714,3 +746,244 @@ int wad_install_paths(char **paths, int n)
     ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
     return ok;
 }
+
+/* ---------------------------------------------------------------- to the SD card (wad2bin) */
+
+static bool console_keys(w2b_keys_t *k, char *why, size_t wn)
+{
+    memset(k, 0, sizeof(*k));
+    u8 otp[OTP_SIZE] ATTRIBUTE_ALIGN(32);
+    if (!AHBPROT_DISABLED || !otp_read_all(otp)) {
+        snprintf(why, wn, "Can't read this console's keys: start GodModeWii from the Homebrew Channel (HW_AHBPROT off).");
+        return false;
+    }
+    const otp_t *o = (const otp_t *)otp;
+    k->console_id = be32(o->ng_id);
+    memcpy(k->ng_priv, o->ng_priv, sizeof(k->ng_priv));
+    memcpy(k->prng_key, o->rng_key, sizeof(k->prng_key));
+    memset(otp, 0, sizeof(otp));
+    u8 *cert = memalign(32, 0x200);
+    bool ok = cert && ES_GetDeviceCert(cert) >= 0;
+    if (ok) memcpy(k->device_cert, cert, sizeof(k->device_cert));
+    free(cert);
+    if (!ok) {
+        memset(k, 0, sizeof(*k));
+        snprintf(why, wn, "Can't read this console's device certificate.");
+    }
+    return ok;
+}
+
+/* the WAD, read through the vfs (which wants 32-byte aligned buffers) */
+static int32_t vsrc_read(void *ctx, uint64_t off, void *buf, uint32_t len)
+{
+    vfs_file *f = ctx;
+    static u8 *bounce;
+    if (!bounce && !(bounce = memalign(32, CHUNK))) return -1;
+    uint32_t done = 0;
+    if (!vfs_seek(f, off)) return -1;
+    while (done < len) {
+        uint32_t n = len - done > CHUNK ? CHUNK : len - done;
+        s32 r = vfs_read(f, bounce, n);
+        if (r <= 0) break;
+        memcpy((u8 *)buf + done, bounce, (size_t)r);
+        done += (uint32_t)r;
+        if ((uint32_t)r < n) break;
+    }
+    return (int32_t)done;
+}
+static void vsrc_close(void *ctx) { (void)ctx; }
+
+static bool vio_mkdirs(void *ctx, const char *dir) { (void)ctx; return mkdirs(dir); }
+static void *vio_open(void *ctx, const char *path)
+{
+    (void)ctx;
+    vfs_file *f = calloc(1, sizeof(*f));
+    if (f && !vfs_open_write(f, path)) {
+        free(f);
+        f = NULL;
+    }
+    if (f) vfs_unbuffered(f);
+    return f;
+}
+static bool vio_write(void *ctx, void *fh, const void *p, uint32_t n)
+{
+    static u8 *wb;
+    if (!wb && !(wb = memalign(32, CHUNK))) return false;
+    (void)ctx;
+    for (uint32_t done = 0; done < n;) {
+        uint32_t k = n - done > CHUNK ? CHUNK : n - done;
+        memcpy(wb, (const u8 *)p + done, k);
+        if (vfs_write(fh, wb, k) != (s32)k) return false;
+        done += k;
+    }
+    return true;
+}
+static bool vio_close(void *ctx, void *fh)
+{
+    (void)ctx;
+    bool ok = vfs_close_checked(fh);
+    free(fh);
+    return ok;
+}
+static void vio_remove(void *ctx, const char *path) { (void)ctx; vfs_remove(path, false); }
+static bool vio_progress(void *ctx, const char *what, uint64_t done, uint64_t total)
+{
+    static u64 last;
+    const char *name = ctx;
+    if (input_cancel_held()) return false;
+    u64 now = ticks_to_millisecs(gettime());
+    if (now - last < 200 && done != total) return true;
+    last = now;
+    char w[80];
+    snprintf(w, sizeof(w), "%s for the SD card...  (hold B to cancel)", what);
+    progress(name, w, done, total);
+    return true;
+}
+
+int wad_install_sd(char **paths, int n)
+{
+    int wads = 0, dlcs = 0;
+    for (int i = 0; i < n; i++)
+        if (ftype_detect(paths[i]) == FT_WAD) {
+            wads++;
+            vfs_file f;
+            if (vfs_open_read(&f, paths[i])) {
+                src_t s = { vsrc_read, vsrc_close, &f, f.size };
+                uint64_t tid;
+                if (w2b_peek(&s, &tid) && (tid >> 32) == 0x00010005) dlcs++;
+                vfs_close(&f);
+            }
+        }
+    if (!wads) {
+        ui_message("INSTALL TO SD", C_YELLOW, "Select one or more .wad files to install.");
+        return 0;
+    }
+    if (!g_devs[DEV_SD].mounted || vfs_is_readonly(vfs_dev_root(DEV_SD))) {
+        ui_message("INSTALL TO SD", C_RED, "Insert a writable SD card: titles on the SD card only run from the SD card.");
+        return 0;
+    }
+    char why[160];
+    w2b_keys_t keys;
+    if (!console_keys(&keys, why, sizeof(why))) {
+        ui_message("INSTALL TO SD", C_RED, why);
+        return 0;
+    }
+
+    char q[700];
+    snprintf(q, sizeof(q),
+             "Install %s%s%s to the SD card?\n\n"
+             "Converted the way wad2bin does it, with this console's keys: a channel becomes "
+             "private/wii/title/<ID>/content.bin and runs from the SD card menu (System Menu 4.0 or later); "
+             "DLC becomes private/wii/data/<ID>/<index>.bin. The files only work on this Wii.\n\n"
+             "Its ticket and TMD are then put on the NAND (asks for the Konami code). A WAD whose ticket "
+             "isn't for this console needs a System Menu IOS with the signing bug (or a cIOS for DLC).",
+             wads == 1 ? "\"" : "", wads == 1 ? vfs_basename(paths[0]) : "these WADs", wads == 1 ? "\"" : "");
+    if (wads > 1) {
+        char cnt[32];
+        snprintf(cnt, sizeof(cnt), "%d WADs", wads);
+        char *p = strstr(q, "these WADs");
+        if (p) {
+            char rest[700];
+            snprintf(rest, sizeof(rest), "%s", p + strlen("these WADs"));
+            snprintf(p, sizeof(q) - (size_t)(p - q), "%s%s", cnt, rest);
+        }
+    }
+    if (!ui_confirm("INSTALL TO SD", C_YELLOW, q)) {
+        memset(&keys, 0, sizeof(keys));
+        return 0;
+    }
+    w2b_opts_t opt = { false, 0 };
+    if (dlcs) {
+        const char *items[] = { "This console's key (newer games, or any game through a cIOS)",
+                                "Null key (older games through the Disc Channel, like Rock Band 2)" };
+        int r = ui_menu("ENCRYPT THE DLC WITH", items, NULL, 2, 0);
+        if (r < 0) {
+            memset(&keys, 0, sizeof(keys));
+            return 0;
+        }
+        opt.dlc_null_key = r == 1;
+    }
+
+    int ok = 0, done = 0;
+    bool unlocked = false;
+    char report[1400] = "";
+    size_t rl = 0;
+    for (int i = 0; i < n; i++) {
+        if (ftype_detect(paths[i]) != FT_WAD) continue;
+        const char *name = vfs_basename(paths[i]);
+        char line[400];
+        w2b_result_t res;
+        int rc = -1;
+        vfs_file f;
+        if (vfs_open_read(&f, paths[i])) {
+            src_t s = { vsrc_read, vsrc_close, &f, f.size };
+            w2b_io_t io = { (void *)name, vio_mkdirs, vio_open, vio_write, vio_close, vio_remove, vio_progress };
+            progress(name, "Converting for the SD card...", 0, 1);
+            rc = w2b_convert(&s, vfs_dev_root(DEV_SD), &keys, &opt, &io, &res);
+            vfs_close(&f);
+        } else
+            snprintf(res.err, sizeof(res.err), "Can't open the file");
+        done++;
+        if (rc) {
+            snprintf(line, sizeof(line), "%s: %s", name, res.err);
+        } else {
+            char msg[200] = "", note[300] = "";
+            if (!unlocked) unlocked = risk_ensure_unlocked();
+            int r2 = unlocked ? install_one(paths[i], msg, sizeof(msg), note, sizeof(note), true) : -998;
+            if (!unlocked) snprintf(msg, sizeof(msg), "Ticket not installed (NAND locked). Install %s with a WAD manager.",
+                                    res.bogus[0] ? vfs_basename(res.bogus) : "its ticket");
+            if (r2 == 0) ok++;
+            snprintf(line, sizeof(line), "%s: %s %s. %s", name, res.dlc ? "DLC written to" : "Written to",
+                     res.path, msg);
+        }
+        if (wads == 1) {
+            memset(&keys, 0, sizeof(keys));
+            vfs_update_space(DEV_SD);
+            ui_message(rc ? "INSTALL TO SD FAILED" : "INSTALLED TO SD", rc ? C_RED : C_GREEN, line);
+            return ok;
+        }
+        if (rl < sizeof(report) - 1) rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", rc ? "FAIL" : "OK  ", line);
+        if (rl >= sizeof(report)) rl = sizeof(report) - 1;
+    }
+    memset(&keys, 0, sizeof(keys));
+    vfs_update_space(DEV_SD);
+    char title[48];
+    snprintf(title, sizeof(title), "INSTALLED %d OF %d TO SD", ok, done);
+    ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
+    return ok;
+}
+
+#ifdef GMW_AUTOTEST
+/* Test builds: convert `wad` with the keys in `keyfile` (console ID, NG key, PRNG key, device
+ * certificate) and log the outcome, with no questions asked. */
+void wad2bin_autotest(const char *wad, const char *keyfile, bool null_key)
+{
+    w2b_keys_t k;
+    FILE *kf = fopen(keyfile, "rb"), *lg;
+    u8 raw[4 + 30 + 16 + 0x180];
+    bool have = kf && fread(raw, 1, sizeof(raw), kf) == sizeof(raw);
+    if (kf) fclose(kf);
+    w2b_result_t res;
+    int rc = -1;
+    memset(&res, 0, sizeof(res));
+    if (have) {
+        k.console_id = be32(raw);
+        memcpy(k.ng_priv, raw + 4, 30);
+        memcpy(k.prng_key, raw + 34, 16);
+        memcpy(k.device_cert, raw + 50, 0x180);
+        vfs_file f;
+        if (vfs_open_read(&f, wad)) {
+            src_t s = { vsrc_read, vsrc_close, &f, f.size };
+            w2b_io_t io = { (void *)"test", vio_mkdirs, vio_open, vio_write, vio_close, vio_remove, NULL };
+            w2b_opts_t opt = { null_key, 0 };
+            rc = w2b_convert(&s, "sd:/", &k, &opt, &io, &res);
+            vfs_close(&f);
+        }
+    }
+    if ((lg = fopen("sd:/gmwtest.log", "a"))) {
+        fprintf(lg, "wad2bin %s: %s %s files=%d bogus=%s %s\n", wad, rc ? "FAILED" : "ok", res.path, res.files,
+                res.bogus, res.err);
+        fclose(lg);
+    }
+}
+#endif
