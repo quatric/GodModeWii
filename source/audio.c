@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <malloc.h>
 #include <gccore.h>
 #include <asndlib.h>
@@ -575,10 +576,10 @@ static void fmt_time(char *o, size_t n, u32 samples, int rate)
     snprintf(o, n, "%u:%02u", (unsigned)(t / 60), (unsigned)(t % 60));
 }
 
-static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool loop, int pair)
+static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool loop, int pair, bool full)
 {
     int cols = ui_cols(), rows = ui_rows();
-    ui_clear();
+    if (full) ui_clear();           /* later redraws overwrite in place: clearing makes the screen flicker */
     ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
     ui_field(0, 0, cols - 1, " AUDIO  %s", name);
@@ -609,19 +610,36 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
 
 /* ---------------------------------------------------------------- output to ASND
  *
+ * The Wii mixes at 48 kHz, and ASND's own rate conversion is crude enough to be heard (a 44.1 kHz
+ * PCM tone came out about 20 - 35 dB above its noise). So everything is converted to 48 kHz here,
+ * with a 32-tap Kaiser-windowed sinc filter (256 phases, interpolated), and the voice plays at
+ * exactly 48 kHz, which ASND copies through untouched.
+ *
  * OQ_BUFS buffers of OUT_FRAMES stereo frames in a ring. The first starts the voice; after that
  * ASND calls oq_cb from its interrupt whenever the voice has no second buffer queued, and oq_cb
  * hands it the next filled one. With a callback set the voice never stops on its own, so running
- * dry for a moment only leaves a gap. A buffer is refilled only once ASND has moved past it: the
- * voice is playing buffer queued - 1 or queued - 2. */
-#define OQ_BUFS 6
+ * dry for a moment only leaves a gap. The voice plays buffer queued - 1 or queued - 2, so a
+ * buffer is written only once ASND is at least two past it. */
+#define OQ_BUFS   8
+#define OUT_RATE  48000
+#define RS_TAPS   32
+#define RS_HALF   (RS_TAPS / 2)
+#define RS_PHASES 256
+#define RS_INCAP  (OUT_FRAMES + RS_TAPS * 2)
 
 static struct {
     s16 *buf[OQ_BUFS];
     s32 voice;
     volatile u32 filled, queued;    /* buffers filled by the player / handed to ASND */
     volatile u32 idle;              /* callbacks since the last hand-off that had nothing to hand over */
-    bool started, padded;
+    bool started;
+    int drain;                      /* 0 playing, 1 tail flushed, 2 silence queued behind it */
+    u32 rate, part;                 /* source rate; frames already in the buffer being filled */
+    /* resampler */
+    float *coef;                    /* (RS_PHASES + 1) x RS_TAPS */
+    s16 *in;                        /* source frames, stereo */
+    u32 in_n, ipos, fpos;           /* frames in `in`; read position, 32.32 fixed point */
+    u32 step_i, step_f;
 } oq;
 
 static void oq_cb(s32 voice)
@@ -633,11 +651,54 @@ static void oq_cb(s32 voice)
         oq.idle++;
 }
 
-static bool oq_open(void)
+static double bessel_i0(double x)
+{
+    double sum = 1, term = 1;
+    for (int k = 1; k < 40; k++) {
+        term *= (x / (2 * k)) * (x / (2 * k));
+        sum += term;
+        if (term < 1e-12 * sum) break;
+    }
+    return sum;
+}
+
+static bool rs_init(u32 rate)
+{
+    oq.in = malloc(RS_INCAP * 4);
+    if (!oq.in) return false;
+    memset(oq.in, 0, (RS_HALF - 1) * 4);       /* silence before the first sample */
+    oq.in_n = oq.ipos = RS_HALF - 1;
+    u64 step = ((u64)rate << 32) / OUT_RATE;
+    oq.step_i = (u32)(step >> 32);
+    oq.step_f = (u32)step;
+    if (rate == OUT_RATE) return true;          /* copied straight through */
+
+    oq.coef = malloc((RS_PHASES + 1) * RS_TAPS * sizeof(float));
+    if (!oq.coef) return false;
+    /* cut-off as a fraction of the source's Nyquist frequency: below the lower of the two rates */
+    double fc = 0.91 * (rate > OUT_RATE ? (double)OUT_RATE / rate : 1.0), beta = 8.0, ib = bessel_i0(beta);
+    for (int p = 0; p <= RS_PHASES; p++) {
+        float *c = oq.coef + p * RS_TAPS;
+        double sum = 0, frac = (double)p / RS_PHASES;
+        for (int k = 0; k < RS_TAPS; k++) {
+            double x = (k - (RS_HALF - 1)) - frac, r = x / RS_HALF;
+            double w = r * r < 1 ? bessel_i0(beta * sqrt(1 - r * r)) / ib : 0;
+            double y = M_PI * fc * x, h = x == 0 ? fc : fc * sin(y) / y;
+            c[k] = (float)(h * w);
+            sum += c[k];
+        }
+        for (int k = 0; k < RS_TAPS; k++) c[k] = (float)(c[k] / sum);
+    }
+    return true;
+}
+
+static bool oq_open(u32 rate)
 {
     memset(&oq, 0, sizeof(oq));
+    oq.rate = rate ? rate : OUT_RATE;
     for (int i = 0; i < OQ_BUFS; i++)
         if (!(oq.buf[i] = memalign(32, OUT_FRAMES * 4))) return false;
+    if (!rs_init(oq.rate)) return false;
     ASND_Init();
     ASND_Pause(0);
     oq.voice = ASND_GetFirstUnusedVoice();
@@ -649,39 +710,100 @@ static void oq_close(void)
     if (oq.started) ASND_StopVoice(oq.voice);
     ASND_End();
     for (int i = 0; i < OQ_BUFS; i++) free(oq.buf[i]);
+    free(oq.coef);
+    free(oq.in);
     memset(&oq, 0, sizeof(oq));
 }
 
-static bool oq_space(void) { return oq.filled < oq.queued + OQ_BUFS - 2; }
+/* Room for one more output buffer. */
+static bool oq_space(void) { return oq.filled + 3 < oq.queued + OQ_BUFS; }
 
-/* Queues `n` (at most OUT_FRAMES) frames, padded with silence; src NULL queues silence. */
-static void oq_push(const s16 *src, u32 n, u32 rate)
+/* Most source frames one oq_write may take: they never make more than one buffer's worth. */
+static u32 oq_chunk(void)
+{
+    u64 n = (u64)(OUT_FRAMES - 2) * oq.rate / OUT_RATE;
+    return n > OUT_FRAMES ? OUT_FRAMES : n ? (u32)n : 1;
+}
+
+static void oq_flush_buffer(void)
 {
     s16 *b = oq.buf[oq.filled % OQ_BUFS];
-    if (src) memcpy(b, src, n * 4);
-    else n = 0;
-    if (n < OUT_FRAMES) memset((u8 *)b + n * 4, 0, (OUT_FRAMES - n) * 4);
+    if (oq.part < OUT_FRAMES) memset((u8 *)b + oq.part * 4, 0, (OUT_FRAMES - oq.part) * 4);
     DCFlushRange(b, OUT_FRAMES * 4);
     u32 level;
     _CPU_ISR_Disable(level);
     oq.filled++;
     if (!oq.started) {
-        ASND_SetVoice(oq.voice, VOICE_STEREO_16BIT, rate, 0, b, OUT_FRAMES * 4, 255, 255, oq_cb);
+        ASND_SetVoice(oq.voice, VOICE_STEREO_16BIT, OUT_RATE, 0, b, OUT_FRAMES * 4, 255, 255, oq_cb);
         oq.queued = oq.filled;
         oq.started = true;
     }
     _CPU_ISR_Restore(level);
+    oq.part = 0;
 }
 
-/* After the last frames: true once they have played. Queues one buffer of silence behind them;
- * when ASND moves on to it, the real ones are done. */
-static bool oq_drained(u32 rate)
+static inline s16 clip16(float v)
 {
-    if (!oq.started) return true;
-    if (!oq.padded) {
-        if (!oq_space()) return false;
-        oq_push(NULL, 0, rate);
-        oq.padded = true;
+    v += v < 0 ? -0.5f : 0.5f;
+    return v > 32767.f ? 32767 : v < -32768.f ? -32768 : (s16)v;
+}
+
+static void oq_out(s16 l, s16 r)
+{
+    s16 *d = oq.buf[oq.filled % OQ_BUFS] + oq.part * 2;
+    d[0] = l;
+    d[1] = r;
+    if (++oq.part == OUT_FRAMES) oq_flush_buffer();
+}
+
+/* Queues n (at most oq_chunk()) stereo frames at the source rate; src NULL means silence.
+ * Check oq_space() first. */
+static void oq_write(const s16 *src, u32 n)
+{
+    if (src) memcpy(oq.in + oq.in_n * 2, src, n * 4);
+    else memset(oq.in + oq.in_n * 2, 0, n * 4);
+    oq.in_n += n;
+    if (!oq.coef) {                              /* 48 kHz already */
+        for (; oq.ipos < oq.in_n; oq.ipos++) oq_out(oq.in[oq.ipos * 2], oq.in[oq.ipos * 2 + 1]);
+    } else {
+        float c[RS_TAPS];
+        while (oq.ipos + RS_HALF < oq.in_n) {
+            u32 ph = oq.fpos >> 24;                  /* 256 phases */
+            float f = (float)(oq.fpos & 0xFFFFFF) * (1.0f / 16777216.0f);
+            const float *c0 = oq.coef + ph * RS_TAPS, *c1 = c0 + RS_TAPS;
+            for (int k = 0; k < RS_TAPS; k++) c[k] = c0[k] + f * (c1[k] - c0[k]);
+            const s16 *x = oq.in + (oq.ipos - (RS_HALF - 1)) * 2;
+            float l = 0, r = 0;
+            for (int k = 0; k < RS_TAPS; k++) { l += c[k] * x[k * 2]; r += c[k] * x[k * 2 + 1]; }
+            oq_out(clip16(l), clip16(r));
+            u32 nf = oq.fpos + oq.step_f;
+            oq.ipos += oq.step_i + (nf < oq.fpos);
+            oq.fpos = nf;
+        }
+    }
+    /* keep the frames the filter still needs */
+    u32 keep_from = oq.ipos >= RS_HALF - 1 ? oq.ipos - (RS_HALF - 1) : 0;
+    if (keep_from > oq.in_n) keep_from = oq.in_n;
+    memmove(oq.in, oq.in + keep_from * 2, (oq.in_n - keep_from) * 4);
+    oq.in_n -= keep_from;
+    oq.ipos -= keep_from;
+}
+
+/* After the last frames: true once they have played. Flushes the filter and the last partial
+ * buffer, then queues a buffer of silence: when ASND moves on to it, the real sound is done. */
+static bool oq_drained(void)
+{
+    if (!oq.started && !oq.part && oq.in_n <= RS_HALF - 1) return true;
+    if (oq.drain < 2 && !oq_space()) return false;
+    if (oq.drain == 0) {
+        oq_write(NULL, RS_HALF + 1);
+        if (oq.part) oq_flush_buffer();
+        oq.drain = 1;
+        return false;
+    }
+    if (oq.drain == 1) {
+        oq_flush_buffer();                      /* part is 0: all silence */
+        oq.drain = 2;
         return false;
     }
     return oq.queued == oq.filled && oq.idle > 0;
@@ -689,10 +811,10 @@ static bool oq_drained(u32 rate)
 
 static void oq_pause(bool on) { if (oq.started) ASND_PauseVoice(oq.voice, on); }
 
-/* Frames already heard, roughly: everything before the buffer now playing. */
+/* Source frames already heard, roughly: everything before the buffer now playing. */
 static u64 oq_played(u64 submitted)
 {
-    u64 q = oq.queued > 1 ? (u64)(oq.queued - 1) * OUT_FRAMES : 0;
+    u64 q = oq.queued > 1 ? (u64)(oq.queued - 1) * OUT_FRAMES * oq.rate / OUT_RATE : 0;
     return q < submitted ? q : submitted;
 }
 
@@ -712,7 +834,7 @@ static bool play(const char *path)
     if (s.layout == L_INTERLEAVED && s.last_samples > maxn) maxn = s.last_samples;
     s16 *pl[3] = { malloc(maxn * 2 + 64), malloc(maxn * 2 + 64), malloc(maxn * 2 + 64) };
     s16 *fifo = malloc(FIFO_FRAMES * 4);
-    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || maxn > FIFO_FRAMES - OUT_FRAMES || !oq_open()) {
+    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || maxn > FIFO_FRAMES - OUT_FRAMES || !oq_open(s.rate)) {
         oq_close();
         free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo);
         snd_close(&s);
@@ -729,6 +851,7 @@ static bool play(const char *path)
     if (s.loop)
         for (loop_block = 0; loop_block + 1 < s.nblocks && block_first(&s, loop_block + 1) <= s.loop_start; loop_block++) ;
     int frame = 0;
+    bool drawn = false;
     const char *name = vfs_basename(path);
 
     for (;;) {
@@ -764,15 +887,16 @@ static bool play(const char *path)
         }
 
         /* hand full buffers to ASND */
-        if (!paused && (fifo_n >= OUT_FRAMES || (ended && fifo_n)) && oq_space()) {
-            u32 take = fifo_n < OUT_FRAMES ? fifo_n : OUT_FRAMES;
-            oq_push(fifo, take, s.rate);
+        u32 chunk = oq_chunk();
+        if (!paused && (fifo_n >= chunk || (ended && fifo_n)) && oq_space()) {
+            u32 take = fifo_n < chunk ? fifo_n : chunk;
+            oq_write(fifo, take);
             memmove(fifo, fifo + take * 2, (fifo_n - take) * 4);
             fifo_n -= take;
             submitted += take;
             continue;               /* fill the next buffer straight away */
         }
-        if (ended && !fifo_n && oq_drained(s.rate))
+        if (ended && !fifo_n && oq_drained())
             break;
 
         u32 p = DetectInput(IN_DOWN);
@@ -794,7 +918,8 @@ static bool play(const char *path)
             u32 played = (u32)oq_played(submitted);
             if (s.loop && loop && played > s.total)
                 played = s.loop_start + (played - s.total) % (s.total - s.loop_start ? s.total - s.loop_start : 1);
-            draw(&s, name, played > s.total ? s.total : played, paused, loop, pair);
+            draw(&s, name, played > s.total ? s.total : played, paused, loop, pair, !drawn);
+            drawn = true;
         }
     }
 
@@ -806,10 +931,10 @@ static bool play(const char *path)
 
 /* ---------------------------------------------------------------- common formats */
 
-static void draw_gen(const gen_info *in, const char *name, u64 played, bool paused, bool repeat, int pair)
+static void draw_gen(const gen_info *in, const char *name, u64 played, bool paused, bool repeat, int pair, bool full)
 {
     int cols = ui_cols(), rows = ui_rows();
-    ui_clear();
+    if (full) ui_clear();           /* later redraws overwrite in place: clearing makes the screen flicker */
     ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
     ui_field(0, 0, cols - 1, " AUDIO  %s", name);
@@ -844,7 +969,7 @@ static bool play_gen(const char *path)
     int nch = in->channels;
     s16 *dec = malloc(OUT_FRAMES * nch * 2);
     s16 *fifo = malloc(FIFO_FRAMES * 4);
-    if (!dec || !fifo || !oq_open()) {
+    if (!dec || !fifo || !oq_open(in->rate)) {
         oq_close();
         free(dec); free(fifo);
         gen_close(g);
@@ -856,7 +981,7 @@ static bool play_gen(const char *path)
     bool repeat = false, paused = false, ended = false;
     int pair = 0, chans[2] = { 0, nch > 1 ? 1 : 0 }, frame = 0;
     const char *name = vfs_basename(path);
-    draw_gen(in, name, 0, false, repeat, pair);
+    draw_gen(in, name, 0, false, repeat, pair, true);
 #ifdef GMW_AUTOTEST
     u64 t_start = gettime();
 #endif
@@ -879,15 +1004,16 @@ static bool play_gen(const char *path)
             since_rewind += n;
         }
         /* hand full buffers to ASND */
-        if (!paused && (fifo_n >= OUT_FRAMES || (ended && fifo_n)) && oq_space()) {
-            u32 take = fifo_n < OUT_FRAMES ? fifo_n : OUT_FRAMES;
-            oq_push(fifo, take, in->rate);
+        u32 chunk = oq_chunk();
+        if (!paused && (fifo_n >= chunk || (ended && fifo_n)) && oq_space()) {
+            u32 take = fifo_n < chunk ? fifo_n : chunk;
+            oq_write(fifo, take);
             memmove(fifo, fifo + take * 2, (fifo_n - take) * 4);
             fifo_n -= take;
             submitted += take;
             continue;               /* fill the next buffer straight away */
         }
-        if (ended && !fifo_n && oq_drained(in->rate))
+        if (ended && !fifo_n && oq_drained())
             break;
 
         u32 p = DetectInput(IN_DOWN);
@@ -908,7 +1034,7 @@ static bool play_gen(const char *path)
         if (p || ++frame % 15 == 0) {
             u64 played = oq_played(submitted);
             if (in->total) played %= in->total + 1;
-            draw_gen(in, name, played, paused, repeat, pair);
+            draw_gen(in, name, played, paused, repeat, pair, false);
         }
     }
     (void)decoded;
