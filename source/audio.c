@@ -30,6 +30,7 @@
 #include "input.h"
 #include "archive.h"
 #include "audio_gen.h"
+#include "seqsynth.h"
 
 #define MAXCH      16
 #define OUT_FRAMES 4096                     /* frames per ASND buffer */
@@ -1055,9 +1056,105 @@ static bool play_gen(const char *path)
     return true;
 }
 
+/* ---------------------------------------------------------------- BRSAR sequences */
+
+typedef struct { vfs_file f; u8 *bounce; } seq_src;
+
+static bool seq_rd(void *ctx, uint64_t off, void *buf, uint32_t len)
+{
+    seq_src *q = ctx;
+    if (!vfs_seek(&q->f, off)) return false;
+    u8 *d = buf;
+    while (len) {
+        u32 n = len > 0x10000 ? 0x10000 : len;
+        s32 r = vfs_read(&q->f, q->bounce, n);   /* vfs_read wants an aligned buffer */
+        if (r <= 0) return false;
+        memcpy(d, q->bounce, r);
+        d += r;
+        len -= r;
+    }
+    return true;
+}
+
+static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool full)
+{
+    int cols = ui_cols(), rows = ui_rows();
+    if (full) ui_clear();
+    ui_bg(C_BLUE);
+    ui_color(C_WHITE, true);
+    ui_field(0, 0, cols - 1, " AUDIO  %s", name);
+    ui_reset();
+    ui_color(C_WHITE, false);
+    ui_fill(1, 0, cols - 1, '-');
+    ui_color(C_WHITE, true);
+    ui_field(3, 2, cols - 4, "Format:    RSEQ sequence (synthesized at 48 kHz)");
+    ui_field(4, 2, cols - 4, "Bank:      %s", seq_bank_name(sq));
+    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Tracks: %d   Notes: %2d", seq_tempo(sq), seq_tracks(sq), seq_voices(sq));
+    char t1[16];
+    fmt_time(t1, sizeof(t1), (u32)(seq_frames(sq) / SEQ_RATE), 1);
+    ui_field(7, 2, cols - 4, "%s  %s   %s", paused ? "PAUSED " : "PLAYING", t1, repeat ? "(repeat)" : "");
+    ui_color(C_CYAN, true);
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat on/off (else: the loop twice, then fade)");
+    ui_reset();
+}
+
+/* "x.brsar|/Sequences/NAME.seq": sequence NAME of x.brsar, with its bank. */
+static bool play_seq(const char *path)
+{
+    if (!arc_name_has_ext(path, ".seq")) return false;
+    const char *bar = NULL;
+    for (const char *q = path; (q = strstr(q, "|/")); q += 2) bar = q;
+    if (!bar) return false;
+    char outer[VFS_PATH_MAX], name[256];
+    snprintf(outer, sizeof(outer), "%.*s", (int)(bar - path), path);
+    snprintf(name, sizeof(name), "%s", vfs_basename(path));
+    name[strlen(name) - 4] = 0;
+
+    ui_splash("Loading sequence and its bank...");
+    seq_src q = { .bounce = memalign(32, 0x10000) };
+    if (!q.bounce || !vfs_open_read(&q.f, outer)) { free(q.bounce); return false; }
+    const char *err = NULL;
+    seq_t *sq = seq_open(seq_rd, &q, q.f.size, name, &err);
+    vfs_close(&q.f);
+    free(q.bounce);
+    if (!sq) {
+        ui_message("AUDIO", C_YELLOW, err ? err : "This sequence couldn't be played.");
+        return true;
+    }
+    s16 *buf = malloc(OUT_FRAMES * 4);
+    if (!buf || !oq_open(SEQ_RATE)) {
+        oq_close();
+        free(buf);
+        seq_close(sq);
+        ui_message("AUDIO", C_RED, "Not enough memory to play this sequence.");
+        return true;
+    }
+    bool paused = false, repeat = false, ended = false;
+    int frame = 0;
+    const char *shown = vfs_basename(path);
+    draw_seq(sq, shown, paused, repeat, true);
+    for (;;) {
+        if (!paused && !ended && oq_space()) {
+            u32 n = seq_render(sq, buf, oq_chunk());
+            if (n) { oq_write(buf, n); continue; }
+            ended = true;
+        }
+        if (ended && oq_drained()) break;
+        u32 p = DetectInput(IN_DOWN);
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
+        if (p & WPAD_BUTTON_A) { paused = !paused; oq_pause(paused); }
+        if (p & WPAD_BUTTON_1) { repeat = !repeat; seq_set_repeat(sq, repeat); }
+        if (p || ++frame % 15 == 0) draw_seq(sq, shown, paused, repeat, false);
+    }
+    oq_close();
+    free(buf);
+    seq_close(sq);
+    return true;
+}
+
 bool audio_is_name(const char *name)
 {
-    if (gen_is_name(name)) return true;
+    if (gen_is_name(name) || arc_name_has_ext(name, ".seq")) return true;
     static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav", ".bcwav", ".cwav", ".bfwav",
                                        ".fwav", ".bns", ".dsp", ".ast", ".btsnd", NULL };
     for (int i = 0; ext[i]; i++)
@@ -1068,5 +1165,5 @@ bool audio_is_name(const char *name)
 
 bool audio_play(const char *path)
 {
-    return play(path) || play_gen(path);
+    return play_seq(path) || play(path) || play_gen(path);
 }

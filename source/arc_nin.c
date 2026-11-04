@@ -689,6 +689,34 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
             }
         }
     }
+    /* Sequences: every sequence sound, playable with its bank (A in the browser). Each entry is
+     * its RSEQ file; the player finds the sound again by name. */
+    int si = -1;
+    for (uint32_t i = 0; i < scnt; i++) {
+        uint32_t e = bu32(&in, stab + 8 + i * 8ull);
+        if ((e + 0x17ull > in.n) || in.b[e + 0x16] != 1) continue;
+        uint32_t fid = bu32(&in, e + 4ull);
+        if (fid >= fcnt) continue;
+        uint32_t fe = bu32(&in, ftab + 8 + fid * 8ull);
+        uint32_t pt = bu32(&in, fe + 0x18ull), pc = bu32(&in, pt);
+        if (!pc || pc == 0xFFFFFFFFu) continue;
+        uint32_t pe = bu32(&in, pt + 8ull), gid = bu32(&in, pe), idx = bu32(&in, pe + 4ull);
+        if (gid >= gcnt) continue;
+        uint32_t ge = bu32(&in, gtab + 8 + gid * 8ull);
+        uint32_t it = bu32(&in, ge + 0x24ull), ic = bu32(&in, it);
+        if (idx >= ic || ic > in.n / 8) continue;
+        uint32_t ie = bu32(&in, it + 8 + idx * 8ull);
+        uint64_t off = (uint64_t)bu32(&in, ge + 0x10ull) + bu32(&in, ie + 4ull);
+        uint32_t sz = bu32(&in, ie + 8ull);
+        if (!sz || sz == 0xFFFFFFFFu || off + sz > f->size) continue;
+        const char *sn = rsar_name(&sy, bu32(&in, e));
+        char nm[180];
+        if (sn) snprintf(nm, sizeof(nm), "%s.seq", sn);
+        else snprintf(nm, sizeof(nm), "sound%04u.seq", (unsigned)i);
+        tree_clean_name(nm);
+        if (si < 0 && (si = tree_add(&a->tree, 0, "Sequences", true, 0, 0, 0, 0)) < 0) break;
+        tree_add(&a->tree, si, nm, false, sz, off, 0, 0);
+    }
     free(fname);
     if (a->tree.count <= 1) a = raw_fail(a);
 out:
