@@ -112,6 +112,11 @@ bool arc_ccf_probe(const src_t *file, const char *name);
 archive_t *arc_ccf_open(const src_t *file, const char *name);
 bool arc_pac_probe(const src_t *file, const char *name);
 archive_t *arc_pac_open(const src_t *file, const char *name);
+bool arc_retro_probe(const src_t *file, const char *name);     /* Retro Studios .pak (Metroid Prime, DKC Returns) */
+archive_t *arc_retro_open(const src_t *file, const char *name);
+bool arc_lzop_probe(const src_t *file, const char *name);      /* lzop .lzo */
+archive_t *arc_lzop_open(const src_t *file, const char *name);
+long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap);
 bool arc_gfa_probe(const src_t *file, const char *name);
 archive_t *arc_gfa_open(const src_t *file, const char *name);
 bool arc_wad_probe(const src_t *file, const char *name);

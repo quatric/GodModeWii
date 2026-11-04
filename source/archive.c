@@ -836,6 +836,8 @@ static const fmt_t formats[] = {
     { "BRSAR",       arc_brsar_probe,      arc_brsar_open },
     { "CCF",         arc_ccf_probe,        arc_ccf_open },
     { "PAC",         arc_pac_probe,        arc_pac_open },
+    { "Retro PAK",   arc_retro_probe,      arc_retro_open },
+    { "LZO",         arc_lzop_probe,       arc_lzop_open },
     { "disc image",  arc_disc_probe,       arc_disc_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
