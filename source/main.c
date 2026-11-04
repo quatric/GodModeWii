@@ -22,6 +22,7 @@
 #include "ftp.h"
 #include "runtimeiospatch.h"
 #include "launch.h"
+#include "arcfs.h"
 
 /* Stay on the IOS the loader started us with (IOS58 under the Homebrew
  * Channel). Reloading IOS would drop the HW_AHBPROT access the NAND
@@ -140,6 +141,7 @@ int main(int argc, char **argv)
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
 #ifdef GMW_AUTOTEST
     bool update = false;
+    (void)check_for_update;
 #else
     bool update = check_for_update();
 #endif
@@ -172,7 +174,26 @@ int main(int argc, char **argv)
         char line[512];
         while (tf && fgets(line, sizeof line, tf)) {
             line[strcspn(line, "\r\n")] = 0;
-            if (line[0]) media_open(line);
+            if (!line[0]) continue;
+            bool ok = media_open(line);
+            /* note how far into the path it got: each archive level, then the file */
+            FILE *lg = fopen("sd:/gmwtest.log", "a");
+            if (lg) {
+                char part[512];
+                for (char *bar = strchr(line, '|'); bar; bar = strchr(bar + 1, '|')) {
+                    snprintf(part, sizeof part, "%.*s|/", (int)(bar - line), line);
+                    vfs_entry *list; int n = -1;
+                    bool listed = vfs_list_visible(part, &list, &n);
+                    fprintf(lg, "  list %s: %s (%d)%s%s\n", part, listed ? "ok" : "failed", n,
+                            listed ? "" : " ", listed ? "" : arcfs_error());
+                    if (listed) free(list);
+                }
+                vfs_file vf;
+                bool rd = vfs_open_read(&vf, line);
+                if (rd) vfs_close(&vf);
+                fprintf(lg, "%s: viewer %s, file %s\n", line, ok ? "opened" : "failed", rd ? "readable" : "unreadable");
+                fclose(lg);
+            }
         }
         if (tf) fclose(tf);
         FILE *done = fopen("sd:/gmwtest.done", "w");

@@ -3,6 +3,7 @@
  *   .iso / .gcm   plain disc image (GameCube, or Wii with encrypted partitions)
  *   .wbfs         a single-game WBFS file (USB loader format; split .wbf1 parts are not joined)
  *   .ciso         compact ISO (block map, 0x8000 byte header)
+ *   .rvz / .wia   Dolphin / wit compressed images (rvz.c): Wii partition data is stored decrypted
  *
  * GameCube discs show sys/ and files/. Wii discs show one folder per
  * partition (DATA, UPDATE, CHANNEL, ...) holding ticket.bin, tmd.bin, sys/
@@ -16,6 +17,7 @@
 
 #include "archive.h"
 #include "aes.h"
+#include "rvz.h"
 
 bool arc_common_key(int index, uint8_t key[16]);
 
@@ -26,13 +28,14 @@ bool arc_common_key(int index, uint8_t key[16]);
 #define MAX_PARTS   8
 #define FST_MAX     (16u * 1024 * 1024)
 
-enum { C_RAW, C_WBFS, C_CISO };
+enum { C_RAW, C_WBFS, C_CISO, C_RVZ };
 
 typedef struct {
     uint64_t data_off, data_size;   /* raw disc offset / size of the cluster area */
     uint64_t raw_off;               /* partition start (ticket) */
     bool clustered;                 /* Wii: 0x8000 byte clusters with a 0x400 byte hash block */
     bool encrypted;
+    int rvz;                        /* RVZ / WIA partition whose stored (decrypted) data this is, or -1 */
     aes128_t key;
 } part_t;
 
@@ -44,6 +47,7 @@ typedef struct {
     uint32_t bs;                    /* CISO block size */
     uint32_t *cmap;                 /* CISO: block -> stored index, or ~0 */
     uint32_t ncmap;
+    rvz_t *rvz;
     uint64_t disc_size;
     part_t part[MAX_PARTS];
     int nparts;
@@ -56,6 +60,7 @@ typedef struct {
 
 static bool disc_read(const src_t *s, disc_t *d, uint64_t off, uint8_t *buf, uint32_t len)
 {
+    if (d->kind == C_RVZ) return rvz_read_raw(d->rvz, off, buf, len);
     while (len) {
         uint64_t unit, phys;
         bool hole = false;
@@ -88,6 +93,7 @@ static bool disc_read(const src_t *s, disc_t *d, uint64_t off, uint8_t *buf, uin
 static bool part_read(const src_t *s, disc_t *d, int pi, uint64_t off, uint8_t *buf, uint32_t len)
 {
     part_t *p = &d->part[pi];
+    if (p->rvz >= 0) return rvz_read_part(d->rvz, p->rvz, off, buf, len);
     if (!p->clustered) return disc_read(s, d, p->data_off + off, buf, len);
     while (len) {
         uint64_t cl = off / CL_DATA;
@@ -127,6 +133,7 @@ static void disc_destroy(archive_t *a)
     free(d->cmap);
     free(d->enc);
     free(d->dec);
+    rvz_close(d->rvz);
     free(d);
 }
 
@@ -136,6 +143,7 @@ static int container_of(const uint8_t *h, uint64_t size)
 {
     if (!memcmp(h, "WBFS", 4)) return C_WBFS;
     if (!memcmp(h, "CISO", 4)) return C_CISO;
+    if (rvz_probe(h)) return C_RVZ;
     if (be32(h + 0x18) == WII_MAGIC || be32(h + 0x1C) == GC_MAGIC) return C_RAW;
     (void)size;
     return -1;
@@ -157,6 +165,13 @@ static bool setup_container(const src_t *f, disc_t *d)
     if (!src_read_full(f, 0, h, sizeof(h))) return false;
     d->kind = container_of(h, f->size);
     if (d->kind == C_RAW) { d->disc_size = f->size; return true; }
+    if (d->kind == C_RVZ) {
+        const char *err;
+        d->rvz = rvz_open(f, &err);
+        if (!d->rvz) { g_archive_err = err; return false; }
+        d->disc_size = rvz_iso_size(d->rvz);
+        return true;
+    }
     if (d->kind == C_WBFS) {
         uint32_t hd_shift = h[8], wb_shift = h[9];
         if (hd_shift < 9 || hd_shift > 16 || wb_shift < 15 || wb_shift > 30) return false;
@@ -200,6 +215,7 @@ static void add_part(disc_t *d, uint64_t data_off, uint64_t data_size, uint64_t 
     p->data_size = data_size;
     p->raw_off = raw_off;
     p->clustered = clustered;
+    p->rvz = -1;
 }
 
 /* sys/: boot.bin, bi2.bin, apploader.img, main.dol and fst.bin, sized from their headers. */
@@ -299,7 +315,11 @@ static bool open_wii(archive_t *a, disc_t *d)
             /* Hash and encryption can be turned off on development discs (header 0x60 / 0x61). */
             uint8_t flags[2];
             p->encrypted = !(disc_read(&a->src, d, 0x60, flags, 2) && flags[1]);
-            if (p->encrypted) {
+            if (d->kind == C_RVZ) {             /* stored decrypted, without hashes */
+                p->encrypted = false;
+                for (int k = 0; k < rvz_partitions(d->rvz); k++)
+                    if (rvz_part_disc_offset(d->rvz, k) == doff) { p->rvz = k; p->data_size = rvz_part_size(d->rvz, k); }
+            } else if (p->encrypted) {
                 uint8_t ck[16], iv[16] = { 0 }, tk[16];
                 if (!arc_common_key(ph[0x1F1], ck)) { d->nparts--; continue; }
                 aes128_t c;
@@ -322,6 +342,7 @@ static bool open_wii(archive_t *a, disc_t *d)
             uint64_t tmd_off = (uint64_t)be32(ph + 0x2A8) << 2;
             if (tmd_sz && tmd_sz < 0x10000) tree_add(&a->tree, dir, "tmd.bin", false, tmd_sz, po + tmd_off, pi, 1);
             uint8_t chk[0x20];
+            if (d->kind == C_RVZ && p->rvz < 0) continue;                     /* no data stored for it */
             if (!part_read(&a->src, d, pi, 0, chk, sizeof(chk))) continue;   /* unreadable: show the ticket only */
             add_sys(a, d, pi, dir, 2);
             add_files(a, d, pi, dir, 2);
@@ -335,7 +356,8 @@ archive_t *arc_disc_open(const src_t *f, const char *name)
     (void)name;
     disc_t *d = calloc(1, sizeof(*d));
     archive_t *a = NULL;
-    if (!d || !setup_container(f, d)) goto fail;
+    if (!d) goto fail;
+    if (!setup_container(f, d)) goto fail;
     d->enc = malloc(CLUSTER);
     d->dec = malloc(CL_DATA);
     d->cache_part = -1;
@@ -365,6 +387,6 @@ fail_a:
     archive_close(a);
     return NULL;
 fail:
-    if (d) { free(d->wlba); free(d->cmap); free(d->enc); free(d->dec); free(d); }
+    if (d) { free(d->wlba); free(d->cmap); free(d->enc); free(d->dec); rvz_close(d->rvz); free(d); }
     return NULL;
 }

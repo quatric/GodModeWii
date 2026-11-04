@@ -4,6 +4,10 @@
 #
 #   scripts/autotest.sh OUTDIR FILE...
 #
+# FILE::INNER opens a file inside an archive or disc image, e.g. game.rvz::DATA/files/x.brres
+# (INNER may itself go through archives: a.rvz::DATA/files/b.szs|/c.brres). SDSIZE sets the
+# card's size in MiB (256 by default; make it larger than the files).
+#
 # Needs: a test build (make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1),
 # mtools (mformat, mcopy) and Dolphin. DOLPHIN=/path/to/Dolphin overrides where Dolphin is.
 # The 3D model viewer draws with the GPU: run it with GFX=Vulkan (or OGL / Metal) so Dolphin renders,
@@ -19,13 +23,16 @@ work="$out/.dolphin"
 rm -rf "$work"; mkdir -p "$work/user/Config"
 sd="$work/sd.img"
 
-dd if=/dev/zero of="$sd" bs=1m count=256 2>/dev/null
+dd if=/dev/zero of="$sd" bs=1m count=0 seek="${SDSIZE:-256}" 2>/dev/null
 mformat -i "$sd" -F ::
 : > "$work/gmwtest.txt"
-for f in "$@"; do
-    name=$(basename "$f")
-    mcopy -i "$sd" "$f" "::/$name"
-    echo "sd:/$name" >> "$work/gmwtest.txt"
+for arg in "$@"; do
+    f=${arg%%::*}
+    inner=
+    case "$arg" in *::*) inner="|/${arg#*::}" ;; esac
+    name=$(basename "$f" | tr -c 'A-Za-z0-9._\n-' '_')      # plain names: mtools rewrites some characters
+    mdir -i "$sd" "::/$name" >/dev/null 2>&1 || mcopy -i "$sd" "$f" "::/$name"
+    echo "sd:/$name$inner" >> "$work/gmwtest.txt"
 done
 mcopy -i "$sd" "$work/gmwtest.txt" ::/gmwtest.txt
 

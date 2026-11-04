@@ -8,9 +8,9 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
-SOURCES		:=	source source/mobiclip libwiiinput/source $(UNARR)
+SOURCES		:=	source source/mobiclip source/zstd libwiiinput/source $(UNARR)
 DATA		:=	data
-INCLUDES	:=	source source/mobiclip $(UNARR)
+INCLUDES	:=	source source/mobiclip source/zstd $(UNARR)
 
 CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
 # make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1: a test build that opens the files listed
@@ -21,7 +21,7 @@ endif
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
-LIBS	:=	-lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -lvorbisidec -logg -logc -lm
+LIBS	:=	-lbz2 -lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -lvorbisidec -logg -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)
 LIBDIRS	:=	$(CURDIR)/libwiiinput # headers: <input_wii.h>
 LIBDIRS	+=	$(CURDIR)/libwiiupdate
