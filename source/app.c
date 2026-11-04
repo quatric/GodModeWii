@@ -18,6 +18,7 @@
 #include "arcfs.h"
 #include "wadinstall.h"
 #include "launch.h"
+#include "archive.h"
 #include "saves.h"
 #include "media.h"
 #include "ftype.h"
@@ -852,7 +853,9 @@ static void actions_menu(void)
         if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             any_wad = true;
     items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
-    items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
+    if (!(on_entry && arc_name_has_ext(ents[e].name, ".app"))) {   /* channel contents are never launched */
+        items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
+    }
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
