@@ -716,15 +716,17 @@ static void u8_destroy(archive_t *a) { free(a->priv); }
 /* Where the U8 data starts: directly, behind an IMET header, or behind an IMD5 header. */
 static bool u8_locate(const src_t *file, uint64_t *base)
 {
-    uint8_t h[0x50];
+    uint8_t h[0x90];
     uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
     if (n < 0x20 || !src_read_full(file, 0, h, n)) return false;
     if (be32(h) == U8_MAGIC) { *base = 0; return true; }
     uint8_t m[4];
-    if (n >= 0x44 && !memcmp(h + 0x40, "IMET", 4) && src_read_full(file, 0x640, m, 4) && be32(m) == U8_MAGIC) {
-        *base = 0x640;
-        return true;
-    }
+    /* IMET at 0x40 (a disc's opening.bnr): U8 at 0x600; at 0x80 (a channel's 00000000.app): 0x640 */
+    for (uint32_t at = 0x40; at <= 0x80; at += 0x40)
+        if (n >= at + 4 && !memcmp(h + at, "IMET", 4) && src_read_full(file, at + 0x5C0, m, 4) && be32(m) == U8_MAGIC) {
+            *base = at + 0x5C0;
+            return true;
+        }
     if (!memcmp(h, "IMD5", 4) && src_read_full(file, 0x20, m, 4) && be32(m) == U8_MAGIC) {
         *base = 0x20;
         return true;

@@ -13,34 +13,33 @@
 #include "archive.h"
 #include "mc_player.h"
 
-bool media_is_name(const char *name)
+bool media_open_type(const char *path, ftype_t t)
 {
-    return audio_is_name(name) || video_is_name(name) || image_is_name(name) || model_is_name(name) || arc_name_has_ext(name, ".bmg") ||
-           arc_name_has_ext(name, ".breff") || arc_name_has_ext(name, ".msbt") || arc_name_has_ext(name, ".brlyt") ||
-           arc_name_has_ext(name, ".brlan") || arc_name_has_ext(name, ".kmp");
+    switch (t) {
+    case FT_STREAM: case FT_AUDIO: case FT_MIDI: case FT_SEQ:
+        if (audio_play(path)) return true;
+        ui_message("AUDIO", C_YELLOW, "This file couldn't be played: its format or layout isn't supported.");
+        return true;
+    case FT_VIDEO:
+        if (video_play(path)) return true;
+        ui_message("VIDEO", C_YELLOW, "This file couldn't be played: it isn't a video this player understands.");
+        return true;
+    case FT_MODEL:                              /* a BRRES with no model may still hold textures */
+        return model_view(path) || image_view(path);
+    case FT_IMAGE:  return image_view(path);
+    case FT_BMG:    return bmg_view(path);
+    case FT_BREFF:  return breff_view(path);
+    case FT_MSBT:   return msbt_view(path);
+    case FT_LAYOUT:
+    case FT_ANIM:   return lyt_view(path) || layout_view(path);
+    case FT_KMP:    return kmp_view(path);
+    default:        return false;
+    }
 }
 
 bool media_open(const char *path)
 {
-    const char *name = vfs_basename(path);
-    if (audio_is_name(name)) {
-        if (audio_play(path)) return true;
-        ui_message("AUDIO", C_YELLOW, "This file couldn't be played: its format or layout isn't supported.");
-        return true;
-    }
-    if (video_is_name(name)) {
-        if (video_play(path)) return true;
-        ui_message("VIDEO", C_YELLOW, "This file couldn't be played: it isn't a video this player understands.");
-        return true;
-    }
-    if (model_is_name(name) && model_view(path)) return true;
-    if (image_is_name(name) && image_view(path)) return true;
-    if (arc_name_has_ext(name, ".bmg") && bmg_view(path)) return true;
-    if (arc_name_has_ext(name, ".breff") && breff_view(path)) return true;
-    if (arc_name_has_ext(name, ".msbt") && msbt_view(path)) return true;
-    if ((arc_name_has_ext(name, ".brlyt") || arc_name_has_ext(name, ".brlan")) && layout_view(path)) return true;
-    if (arc_name_has_ext(name, ".kmp") && kmp_view(path)) return true;
-    return false;
+    return media_open_type(path, ftype_detect(path));
 }
 
 /* ---------------------------------------------------------------- BMG */

@@ -36,6 +36,7 @@
 #include "sha1.h"
 #include "seeprom.h"
 #include "archive.h"
+#include "ftype.h"
 #include "runtimeiospatch.h"
 
 #define TID(hi, lo)   (((u64)(hi) << 32) | (u32)(lo))
@@ -602,7 +603,7 @@ void wad_install_paths(char **paths, int n)
 {
     int wads = 0;
     for (int i = 0; i < n; i++)
-        if (wad_is_name(paths[i]))
+        if (ftype_detect(paths[i]) == FT_WAD)
             wads++;
     if (!wads) {
         ui_message("INSTALL WAD", C_YELLOW, "Select one or more .wad files to install.");
@@ -612,7 +613,7 @@ void wad_install_paths(char **paths, int n)
     if (wads == 1) {
         const char *one = NULL;
         for (int i = 0; i < n && !one; i++)
-            if (wad_is_name(paths[i])) one = paths[i];
+            if (ftype_detect(paths[i]) == FT_WAD) one = paths[i];
         snprintf(q, sizeof(q), "Install \"%s\" to the NAND?\n\nSave data is kept, and backed up to the SD card first when "
                  "the title is already installed. Don't turn the console off while installing.", vfs_basename(one));
     } else {
@@ -628,7 +629,7 @@ void wad_install_paths(char **paths, int n)
     char report[1200] = "";
     size_t rl = 0;
     for (int i = 0; i < n; i++) {
-        if (!wad_is_name(paths[i]))
+        if (ftype_detect(paths[i]) != FT_WAD)
             continue;
         char msg[200], note[300];
         int r = install_one(paths[i], msg, sizeof(msg), note, sizeof(note));

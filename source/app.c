@@ -20,6 +20,7 @@
 #include "launch.h"
 #include "saves.h"
 #include "media.h"
+#include "ftype.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -790,6 +791,13 @@ static bool open_archive(const vfs_entry *en)
 
 static bool launch_requested;
 
+/* What a listed file is, from its first bytes. */
+static ftype_t entry_type(const vfs_entry *en)
+{
+    char path[VFS_PATH_MAX];
+    return vfs_join(path, sizeof(path), cwd, en->name) ? ftype_detect(path) : FT_NONE;
+}
+
 static void do_launch(const vfs_entry *en)
 {
     char path[VFS_PATH_MAX], q[VFS_PATH_MAX + 128];
@@ -840,10 +848,10 @@ static void actions_menu(void)
     items[n] = "Open as archive"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_OPEN;
     bool any_wad = false;
     for (int i = 0; i < nents && !any_wad; i++)
-        if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && wad_is_name(ents[i].name))
+        if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             any_wad = true;
     items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
-    items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && launch_is_name(ents[e].name); code[n++] = A_LAUNCH;
+    items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
@@ -1102,11 +1110,12 @@ int app_run(void)
                 } else {
                     char path[VFS_PATH_MAX];
                     bool joined = vfs_join(path, sizeof(path), cwd, en->name);
-                    if (joined && wad_is_name(en->name) && !vfs_is_archive(cwd) && arcfs_can_open(path))
+                    ftype_t ft = joined ? ftype_detect(path) : FT_NONE;     /* by its magic, not its name */
+                    if (ft == FT_WAD && !vfs_is_archive(cwd) && arcfs_can_open(path))
                         wad_menu(en);
-                    else if (joined && launch_is_name(en->name))
+                    else if (ft == FT_PROGRAM)
                         do_launch(en);
-                    else if (joined && media_is_name(en->name) && media_open(path))
+                    else if (ftype_is_media(ft) && media_open_type(path, ft))
                         ;
                     else if (joined && arcfs_can_open(path))
                         open_archive(en);

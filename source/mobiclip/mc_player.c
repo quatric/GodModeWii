@@ -417,8 +417,15 @@ static void play_rgb(RgbSource *src)
 
 bool video_play(const char *path)
 {
-    const char *name = vfs_basename(path);
-    if (!video_is_name(name)) return false;
+    /* which decoder: by the file's magic */
+    u8 head[4] = { 0 };
+    vfs_file vf;
+    if (!vfs_open_read(&vf, path)) return false;
+    s32 hn = vfs_read(&vf, head, 4);
+    vfs_close(&vf);
+    if (hn < 3) return false;
+    bool mo = !memcmp(head, "MOC5", 4), kwz = !memcmp(head, "KFH", 3), ppm = !memcmp(head, "PARA", 4);
+    if (!mo && !kwz && !ppm && memcmp(head, "THP", 4)) return false;
 
     ui_clear();
     ui_goto(ui_rows() / 2, ui_cols() / 2 - 5);
@@ -426,10 +433,10 @@ bool video_play(const char *path)
     VIDEO_WaitVSync();
 
     RgbSource src;
-    int rgb = !has_ext(name, ".mo");
+    int rgb = !mo;
     if (rgb) {
-        int r = has_ext(name, ".kwz") ? kwz_open(&src, path)
-              : has_ext(name, ".ppm") ? ppm_open(&src, path)
+        int r = kwz ? kwz_open(&src, path)
+              : ppm ? ppm_open(&src, path)
               : thp_open(&src, path);
         if (r != 0) return false;
     } else {

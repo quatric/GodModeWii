@@ -31,6 +31,8 @@
 #include "archive.h"
 #include "audio_gen.h"
 #include "seqsynth.h"
+#include "midisynth.h"
+#include "ftype.h"
 
 #define MAXCH      16
 #define OUT_FRAMES 4096                     /* frames per ASND buffer */
@@ -1206,9 +1208,291 @@ static bool play_seq(const char *path)
     return true;
 }
 
+/* ---------------------------------------------------------------- MIDI */
+
+/* Standard MIDI files (and RIFF RMID), played by TinySoundFont with the soundfont of the same name
+ * next to the file (x.mid + x.sf2) or else the built-in General MIDI one. */
+#define MIDI_RATE 32000                     /* the synth's rate; the output resamples to 48 kHz */
+#define MIDI_MAX  (8u << 20)
+
+static bool midi_is_name(const char *n)
+{
+    return arc_name_has_ext(n, ".mid") || arc_name_has_ext(n, ".midi") || arc_name_has_ext(n, ".rmi") ||
+           arc_name_has_ext(n, ".smf") || arc_name_has_ext(n, ".kar");
+}
+
+static u8 *slurp(const char *path, u32 max, u32 *len)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return NULL;
+    if (f.size > max || !f.size) { vfs_close(&f); return NULL; }
+    u32 n = (u32)f.size, got = 0;
+    u8 *b = memalign(32, (n + 31) & ~31u);
+    while (b && got < n) {
+        s32 r = vfs_read(&f, b + got, n - got > 0x40000 ? 0x40000 : n - got);
+        if (r <= 0) break;
+        got += r;
+    }
+    vfs_close(&f);
+    if (b && got != n) { free(b); b = NULL; }
+    *len = n;
+    return b;
+}
+
+typedef struct {
+    tsf *f;
+    tml_message *song, *at;
+    u32 len_ms;
+    u64 frames;                             /* rendered */
+    int tempo;                              /* BPM */
+    int notes[16];
+    float level[16];
+    u8 cc7[16], cc39[16];
+    u16 used;                               /* channels that have played a note */
+    u32 muted;
+    char font[64];
+} midi_t;
+
+static void midi_mute_apply(midi_t *m, int ch)
+{
+    if (m->muted >> ch & 1) tsf_channel_set_volume(m->f, ch, 0);
+    else {                                  /* back to what the song set (its expression is kept by the synth) */
+        tsf_channel_midi_control(m->f, ch, 7, m->cc7[ch]);
+        tsf_channel_midi_control(m->f, ch, 39, m->cc39[ch]);
+    }
+}
+
+static void midi_start(midi_t *m)
+{
+    tsf_reset(m->f);
+    for (int ch = 0; ch < 16; ch++) {
+        tsf_channel_set_presetnumber(m->f, ch, 0, ch == 9);    /* channel 10: drums */
+        m->cc7[ch] = 127;
+        m->cc39[ch] = 127;
+        m->notes[ch] = 0;
+        midi_mute_apply(m, ch);
+    }
+    m->at = m->song;
+    m->frames = 0;
+    m->tempo = 120;
+}
+
+#ifdef GMW_AUTOTEST
+#define MLOG(...) do { FILE *lf_ = fopen("sd:/gmwtest.log", "a"); if (lf_) { fprintf(lf_, __VA_ARGS__); fclose(lf_); } } while (0)
+#else
+#define MLOG(...) do { } while (0)
+#endif
+
+/* Everything due by `ms`. */
+static void midi_events(midi_t *m, u32 ms)
+{
+    for (; m->at && m->at->time <= ms; m->at = m->at->next) {
+        tml_message *e = m->at;
+        int ch = e->channel & 15;
+        switch (e->type) {
+        case TML_PROGRAM_CHANGE: tsf_channel_set_presetnumber(m->f, ch, (u8)e->program, ch == 9); break;
+        case TML_NOTE_ON:
+            if ((u8)e->velocity) {
+                tsf_channel_note_on(m->f, ch, (u8)e->key, (u8)e->velocity / 127.0f);
+                m->notes[ch]++;
+                m->used |= 1u << ch;
+                float lv = (u8)e->velocity / 127.0f;
+                if (lv > m->level[ch]) m->level[ch] = lv;
+                break;
+            }
+            /* fall through: velocity 0 is a note off */
+        case TML_NOTE_OFF:
+            tsf_channel_note_off(m->f, ch, (u8)e->key);
+            if (m->notes[ch] > 0) m->notes[ch]--;
+            break;
+        case TML_PITCH_BEND: tsf_channel_set_pitchwheel(m->f, ch, e->pitch_bend); break;
+        case TML_CONTROL_CHANGE: {
+            int c = (u8)e->control, v = (u8)e->control_value;
+            if (c == 7) m->cc7[ch] = v;
+            if (c == 39) m->cc39[ch] = v;
+            if (c == 121) { m->cc7[ch] = 100; m->cc39[ch] = 0; }  /* reset all controllers */
+            if (c == 120 || c == 123) m->notes[ch] = 0;          /* all sound / notes off */
+            tsf_channel_midi_control(m->f, ch, c, v);
+            if ((m->muted >> ch & 1) && (c == 7 || c == 39 || c == 11 || c == 43 || c == 121)) tsf_channel_set_volume(m->f, ch, 0);
+            break;
+        }
+        case TML_SET_TEMPO: {
+            int us = tml_get_tempo_value(e);
+            if (us > 0) m->tempo = (60000000 + us / 2) / us;
+            break;
+        }
+        }
+    }
+}
+
+/* Renders n frames, in steps of 64 so notes start close to their time. */
+static void midi_render(midi_t *m, s16 *out, u32 n)
+{
+    for (u32 done = 0; done < n;) {
+        u32 k = n - done > 64 ? 64 : n - done;
+        midi_events(m, (u32)(m->frames * 1000 / MIDI_RATE));
+        tsf_render_short(m->f, out + done * 2, k, 0);
+        m->frames += k;
+        done += k;
+    }
+}
+
+static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, bool full, int sel)
+{
+    int cols = ui_cols(), rows = ui_rows();
+    if (full) ui_clear();
+    ui_bg(C_BLUE);
+    ui_color(C_WHITE, true);
+    ui_field(0, 0, cols - 1, " AUDIO  %s", name);
+    ui_reset();
+    ui_color(C_WHITE, false);
+    ui_fill(1, 0, cols - 1, '-');
+    ui_color(C_WHITE, true);
+    ui_field(3, 2, cols - 4, "Format:    MIDI (TinySoundFont, %d kHz)", MIDI_RATE / 1000);
+    ui_field(4, 2, cols - 4, "Soundfont: %s", m->font);
+    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Notes: %2d", m->tempo, tsf_active_voice_count(m->f));
+    char t1[16], t2[16];
+    fmt_time(t1, sizeof(t1), (u32)(m->frames / MIDI_RATE), 1);
+    fmt_time(t2, sizeof(t2), m->len_ms / 1000, 1);
+    ui_field(6, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2, repeat ? "(repeat)" : "");
+    int top = 8, n = 16;
+    if (top + n > rows - 3) n = rows - 3 - top;
+    for (int ch = 0; ch < n; ch++) {
+        bool off = m->muted >> ch & 1, used = m->used >> ch & 1;
+        int pi = tsf_channel_get_preset_index(m->f, ch);
+        const char *pn = pi >= 0 ? tsf_get_presetname(m->f, pi) : NULL;
+        char meter[20], pname[24];
+        int mt = off || !used ? 0 : (int)(m->level[ch] * 16);
+        if (mt > 16) mt = 16;
+        for (int k = 0; k < 16; k++) meter[k] = k < mt ? '#' : '.';
+        meter[16] = 0;
+        m->level[ch] *= 0.7f;
+        ui_ascii(pname, sizeof(pname), pn ? pn : "");
+        if (ch == sel) ui_bg(C_CYAN);
+        ui_color(off ? C_RED : !used ? C_BLUE : C_WHITE, off || used);
+        ui_field(top + ch, 2, cols - 4, "%c Ch %2d  [%s]  %3d %-20.20s %2d notes  %s", ch == sel ? '>' : ' ', ch + 1,
+                 off ? "off" : " on", tsf_channel_get_preset_number(m->f, ch), ch == 9 ? "(drums)" : pname,
+                 m->notes[ch], used ? meter : "");
+        ui_reset();
+    }
+    ui_color(C_CYAN, true);
+    ui_field(rows - 2, 1, cols - 2, "Up/Down Ch  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
+    ui_reset();
+}
+
+static bool play_midi(const char *path)
+{
+    if (ftype_detect(path) != FT_MIDI) return false;
+    ui_splash("Loading MIDI and its soundfont...");
+    u32 n;
+    u8 *b = slurp(path, MIDI_MAX, &n);
+    MLOG("midi: open %s -> %p\n", path, (void *)b);
+    if (!b) return false;
+    u32 o = 0;
+    while (o + 4 <= n && o < 64 && memcmp(b + o, "MThd", 4)) o++;  /* RIFF RMID: the SMF inside */
+    if (o + 4 > n || o >= 64) o = 0;
+    midi_t m = { 0 };
+    m.song = tml_load_memory(b + o, (int)(n - o));
+    free(b);
+    MLOG("midi: %u bytes, song %p\n", (unsigned)n, (void *)m.song);
+    if (!m.song) { ui_message("AUDIO", C_YELLOW, "This isn't a MIDI file that can be played."); return true; }
+    tml_get_info(m.song, NULL, NULL, NULL, NULL, &m.len_ms);
+
+    /* x.mid's own x.sf2 if there's one, else the built-in General MIDI set */
+    char sfp[VFS_PATH_MAX];
+    snprintf(sfp, sizeof(sfp), "%s", path);
+    char *dot = strrchr(sfp, '.');
+    u32 sn = 0;
+    u8 *sf = NULL;
+    if (dot && (size_t)(dot - sfp) + 5 < sizeof(sfp)) {
+        strcpy(dot, ".sf2");
+        ui_busy_begin(vfs_basename(sfp));
+        sf = slurp(sfp, 64u << 20, &sn);
+        ui_busy_end();
+        if (sf) ui_ascii(m.font, sizeof(m.font), vfs_basename(sfp));
+    }
+    if (!sf) {
+        sf = midi_default_soundfont(&sn);
+        snprintf(m.font, sizeof(m.font), "built-in General MIDI (Gervill)");
+    }
+    if (sf) {
+        ui_busy_begin(m.font);
+        ui_busy_tick();
+        m.f = tsf_load_memory(sf, (int)sn);
+        ui_busy_end();
+        free(sf);
+    }
+    if (!m.f) {
+        tml_free(m.song);
+        ui_message("AUDIO", C_RED, "The soundfont couldn't be loaded (out of memory?).");
+        return true;
+    }
+    MLOG("midi: soundfont %s %u bytes -> %p\n", m.font, (unsigned)sn, (void *)m.f);
+    tsf_set_output(m.f, TSF_STEREO_INTERLEAVED, MIDI_RATE, -6.0f);
+    tsf_set_max_voices(m.f, 64);
+    midi_start(&m);
+
+    s16 *buf = malloc(OUT_FRAMES * 4);
+    if (!buf || !oq_open(MIDI_RATE)) {
+        oq_close();
+        free(buf);
+        tsf_close(m.f);
+        tml_free(m.song);
+        ui_message("AUDIO", C_RED, "Not enough memory to play this MIDI file.");
+        return true;
+    }
+    bool paused = false, repeat = false, ended = false;
+    int frame = 0, sel = 0;
+    u64 tail = 0;                           /* frames rendered after the last event */
+    const char *shown = vfs_basename(path);
+    draw_midi(&m, shown, paused, repeat, true, sel);
+    for (;;) {
+        if (!paused && !ended && oq_space()) {
+            u32 k = oq_chunk();
+            midi_render(&m, buf, k);
+            oq_write(buf, k);
+            if (!m.at) {                    /* past the last event: let the notes ring out (up to 5 s) */
+                tail += k;
+                if (!tsf_active_voice_count(m.f) || tail > 5u * MIDI_RATE) {
+                    if (repeat) { midi_start(&m); tail = 0; }
+                    else ended = true;
+                }
+            }
+            continue;
+        }
+        if (ended && oq_drained()) break;
+        u32 p = input_pressed();
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
+        if (p & WPAD_BUTTON_PLUS) { paused = !paused; oq_pause(paused); }
+        if (p & WPAD_BUTTON_1) repeat = !repeat;
+        if (p & WPAD_BUTTON_UP) sel = (sel + 15) % 16;
+        if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % 16;
+        u32 was = m.muted;
+        if (p & WPAD_BUTTON_A) m.muted ^= 1u << sel;
+        if (p & WPAD_BUTTON_2) m.muted = m.muted == (0xFFFFu & ~(1u << sel)) ? 0 : 0xFFFFu & ~(1u << sel);
+        if (p & WPAD_BUTTON_MINUS) m.muted = 0;
+        for (int ch = 0; ch < 16; ch++)
+            if ((was ^ m.muted) >> ch & 1) midi_mute_apply(&m, ch);
+        if (p || ++frame % 6 == 0) draw_midi(&m, shown, paused, repeat, false, sel);
+#ifdef GMW_AUTOTEST
+        if (frame == 300) {                         /* test builds: a picture of the player after 5 s */
+            MLOG("midi: %llu frames rendered after 300 polls\n", (unsigned long long)m.frames);
+            sel = 9;
+            draw_midi(&m, shown, paused, repeat, false, sel);
+            if (ui_test_dump()) break;
+        }
+#endif
+    }
+    oq_close();
+    free(buf);
+    tsf_close(m.f);
+    tml_free(m.song);
+    return true;
+}
+
 bool audio_is_name(const char *name)
 {
-    if (gen_is_name(name) || arc_name_has_ext(name, ".seq")) return true;
+    if (gen_is_name(name) || arc_name_has_ext(name, ".seq") || midi_is_name(name)) return true;
     static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav", ".bcwav", ".cwav", ".bfwav",
                                        ".fwav", ".bns", ".dsp", ".ast", ".btsnd", NULL };
     for (int i = 0; ext[i]; i++)
@@ -1219,5 +1503,5 @@ bool audio_is_name(const char *name)
 
 bool audio_play(const char *path)
 {
-    return play_seq(path) || play(path) || play_gen(path);
+    return play_seq(path) || play_midi(path) || play(path) || play_gen(path);
 }

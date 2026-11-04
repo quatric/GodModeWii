@@ -63,10 +63,13 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   console (DSP-ADPCM, AFC, PCM8 / PCM16), with looping, and the common formats: **WAV** (PCM, float, IMA / MS ADPCM, A-law, µ-law,
   RF64), **AIFF**, **MP3**, **FLAC** (also in Ogg) and **Ogg Vorbis**. **A** pause, **1** loop / repeat on / off, **+** / **-** pick
   channels on multi-track streams, **B** stop.
+* **MIDI player** (press **A**): standard MIDI files (`.mid`, RIFF `.rmi`, `.kar`), played with the SoundFont of the same name next
+  to the file (`song.mid` + `song.sf2`) or else a built-in General MIDI set. Each channel shows its instrument, note count and
+  level: Up / Down pick one, **A** turns it on / off, **2** plays it alone, **-** all on, **+** pause, **1** repeat, **B** stop.
 * **Image viewer** (press **A**): TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT effect textures, the textures inside J3D models,
   and PNG, JPEG and WebP. Every GX texture format (I4 to CMPR, with palettes). Images open pixel for pixel (1:1) in their real
   colours. **1** scale to fit / back to 1:1, **+** / **-** zoom, D-Pad pans, and when the whole image is on
-  screen D-Pad **Left / Right** go to the previous / next image; **A** background, **2** info.
+  screen each press of D-Pad **Left / Right** goes to the previous / next image (holding repeats); **A** background, **2** info.
 * **3D model viewer** (press **A**): MDL0 models in a `.brres` and J3D `.bmd` / `.bdl`, drawn with GX and lit, with bone / joint
   placement and their textures (each material's first texture, with its wrap mode and cut-out alpha; a missing texture leaves
   the mesh plain). D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
@@ -85,9 +88,20 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 * **Retro Studios PAK** archives (Metroid Prime 1 - 3, Metroid Prime Trilogy, Donkey Kong Country Returns; compressed resources
   included) and
   **LZO** (`.lzo`, lzop) files open like folders.
+* **Layout viewer** (press **A**): NW4R BRLYT layouts, such as a channel's or disc's banner and icon (`opening.bnr` ›
+  `meta/banner.bin` › `arc/blyt/banner.brlyt`), drawn with GX: every picture and window pane with its textures (the TPLs in the
+  archive's `timg` folder), texture SRTs, TEV stages and colours, swap tables, alpha compare and blend modes, playing the
+  layout's BRLAN animations (pane position / rotation / scale / size, vertex colours and alpha, visibility, material colours,
+  texture SRT and texture pattern). A banner plays its Start animation into its Loop one, as on the Wii Menu. Opening a BRLAN
+  plays it on its layout. **A** pause, D-Pad **Left / Right** step a frame while paused, **1** next animation, **+** / **-** zoom,
+  **2** info, **B** close. Text boxes are not drawn; a layout the viewer can't draw falls back to the text view.
 * **Text views**: BMG and MSBT messages, BREFF effect sets (their emitter list), BRLYT layouts (canvas, textures, fonts,
   materials and the pane tree with each text box's text), BRLAN animations (length and what they animate) and Mario Kart Wii
   KMP course data (sections, counts, laps).
+* **Files are recognised by what is in them**, not their names: **A** reads the first bytes of a file (its magic, after
+  nintoolbox's file-type detection) to pick the viewer or player, so a renamed or extensionless file still opens, and a file with a
+  misleading extension isn't handed to the wrong one. Only formats with no magic of their own (DSP, BTSND, BTI, TXTR, MP3 without
+  an ID3 tag, `.lz`-wrapped files) go by extension. WADs to install and programs to launch are recognised the same way.
 * **Folders**: **Yaz0 / SZS**, **Yay0**, **ASH0**, the Nintendo SDK codecs (**LZ10**, **LZ11**, **Huffman**, **run length**,
   **LZH8** — recognised by extension or by what they decompress to, like the HOME Menu's compressed files), **RARC**, **BRRES**,
   Virtual Console **CCF**, Super Smash Bros. Brawl **PAC** and Good-Feel **GFA** archives. A **BRSAR** sound archive opens as its groups, with each sequence,
@@ -305,6 +319,9 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
   and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
 * **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
 * **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
+* **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
+  play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). The built-in General
+  MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
 * **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC.
 * **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ.
 * **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.

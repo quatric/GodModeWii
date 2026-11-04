@@ -845,7 +845,7 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
 
 static void *gx_fifo;
 
-static void gx_setup(void)
+void model_gx_setup(void)
 {
     int fw, fh;
     void *xfb = ui_framebuffer(&fw, &fh);
@@ -1110,7 +1110,7 @@ bool model_view(const char *path)
         return false;
     }
 
-    gx_setup();
+    model_gx_setup();
     float yaw = 30, pitch = 15, dist = 2.6f;
     bool first = true;
     int shade = SH_LIT;

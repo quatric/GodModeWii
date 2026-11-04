@@ -9,7 +9,7 @@ TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
 SOURCES		:=	source source/mobiclip source/zstd libwiiinput/source $(UNARR)
-DATA		:=	data
+DATA		:=	data res
 INCLUDES	:=	source source/mobiclip source/zstd $(UNARR)
 
 CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
@@ -96,7 +96,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=
 sFILES		:=
 SFILES		:=
-BINFILES	:=	appboot.bin
+BINFILES	:=	appboot.bin gmsf2.bin
 
 export LD	:=	$(CC)
 export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
@@ -169,6 +169,7 @@ $(OUTPUT).dol: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
 
 launch.o: appboot_bin.h
+midisynth.o: gmsf2_bin.h
 
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)

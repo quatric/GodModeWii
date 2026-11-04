@@ -30,6 +30,7 @@
 #include <input_wii.h>
 #include "archive.h"
 #include "arcfs.h"
+#include "ftype.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_IMAGES 512
@@ -755,7 +756,7 @@ static bool neighbour(const char *path, int dir, char *out, size_t outsz)
     bool ok = false;
     for (int k = 1; at >= 0 && k < n && !ok; k++) {
         int i = ((at + dir * k) % n + n) % n;
-        if (!e[i].is_dir && image_is_name(e[i].name) && vfs_join(out, outsz, parent, e[i].name)) ok = true;
+        if (!e[i].is_dir && vfs_join(out, outsz, parent, e[i].name) && ftype_detect(out) == FT_IMAGE) ok = true;
     }
     free(e);
     return ok;
@@ -869,21 +870,27 @@ static bool view(const char *start_path)
         /* Left / Right: a press flips to the previous / next image (in the file, then the folder's
          * next image file). On a picture bigger than the screen, holding the button pans instead. */
         int flip = 0;
-        if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) {
-            if (!lr_held) { lr_dir = p & WPAD_BUTTON_LEFT ? -1 : 1; lr_held = 1; lr_panned = false; }
-        } else if (lr_held && (held & (lr_dir < 0 ? WPAD_BUTTON_LEFT : WPAD_BUTTON_RIGHT))) {
-            lr_held++;
-            if (!whole && lr_held > TAP_FRAMES) {
+        if (whole) {
+            /* All of it is on screen: every press flips at once (holding repeats, as in the menus). */
+            lr_held = 0;
+            if (p & WPAD_BUTTON_LEFT) flip = -1;
+            else if (p & WPAD_BUTTON_RIGHT) flip = 1;
+        } else if (!lr_held) {
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) {
+                lr_dir = p & WPAD_BUTTON_LEFT ? -1 : 1;
+                lr_held = 1;
+                lr_panned = false;
+            }
+        } else if (held & (lr_dir < 0 ? WPAD_BUTTON_LEFT : WPAD_BUTTON_RIGHT)) {
+            if (++lr_held > TAP_FRAMES) {           /* held: pan the big picture */
                 panx += lr_dir * (step / 4 > 2 ? step / 4 : 2);
                 lr_panned = true;
                 redraw = true;
             }
-        } else if (lr_held) {                       /* released */
+        } else {                                    /* let go: a tap flips */
             if (!lr_panned) flip = lr_dir;
             lr_held = 0;
         }
-        if (whole && lr_held == 1) { flip = lr_dir; lr_held = -1000; }   /* whole picture: flip at once, no hold */
-        if (lr_held < 0 && !(held & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT))) lr_held = 0;
         if (pflip) flip = pflip;
         if (flip) ptr_hide();                       /* the loading box may draw where it is */
 
