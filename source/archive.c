@@ -839,6 +839,7 @@ static const fmt_t formats[] = {
     { "Retro PAK",   arc_retro_probe,      arc_retro_open },
     { "LZO",         arc_lzop_probe,       arc_lzop_open },
     { "disc image",  arc_disc_probe,       arc_disc_open },
+    { "zip/7z/rar",  arc_zip7zrar_probe,   arc_zip7zrar_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
 

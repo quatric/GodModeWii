@@ -117,6 +117,8 @@ archive_t *arc_retro_open(const src_t *file, const char *name);
 bool arc_lzop_probe(const src_t *file, const char *name);      /* lzop .lzo */
 archive_t *arc_lzop_open(const src_t *file, const char *name);
 long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap);
+bool arc_zip7zrar_probe(const src_t *file, const char *name);  /* zip, 7z, rar (1.5 - 5) */
+archive_t *arc_zip7zrar_open(const src_t *file, const char *name);
 bool arc_gfa_probe(const src_t *file, const char *name);
 archive_t *arc_gfa_open(const src_t *file, const char *name);
 bool arc_wad_probe(const src_t *file, const char *name);

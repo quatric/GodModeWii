@@ -30,6 +30,7 @@ struct rar5 {
     ar_stream *st;
     char err[96];
     bool solid_archive;
+    uint64_t dict_cap;       /* 0, or the archive's total unpacked size (rar5_limit_dict) */
     bool eof;
 
     /* current file */
@@ -487,7 +488,15 @@ static bool alloc_window(rar5_t *r)
         uint64_t base = (uint64_t)128 * 1024 << (r->dict_log & 0xFF);
         dict = base + base / 32 * (uint64_t)(r->dict_log >> 8);
     }
-    uint64_t need = dict + MAX_FILTER_LEN + 2 * FLUSH_AT;
+    uint64_t filters = MAX_FILTER_LEN;
+    /* In a non-solid archive a file only refers back into itself, so the window only has to hold
+     * the file (RAR 7 picks 32 MiB dictionaries even for small files, more than the Wii can
+     * always spare in one piece). */
+    if (!r->solid_archive && r->usize < dict) dict = r->usize;
+    if (!r->solid_archive && r->usize < filters) filters = r->usize;
+    if (r->dict_cap && r->dict_cap < dict) dict = r->dict_cap;       /* nothing can refer further back */
+    if (r->dict_cap && r->dict_cap < filters) filters = r->dict_cap;
+    uint64_t need = dict + filters + 2 * FLUSH_AT;
     size_t w = 1u << 20;
     while (w < need && w < (size_t)MAX_WINDOW * 2) w <<= 1;
     if (need > MAX_WINDOW) return fail(r, "RAR dictionary is too large for this console");
@@ -500,6 +509,11 @@ static bool alloc_window(rar5_t *r)
     if (!r->win) { r->wsize = 0; return fail(r, "Not enough memory for the RAR dictionary"); }
     r->wsize = w;
     return true;
+}
+
+void rar5_limit_dict(rar5_t *r, uint64_t total)
+{
+    r->dict_cap = total ? total : 1;
 }
 
 static bool decode_file(rar5_t *r)

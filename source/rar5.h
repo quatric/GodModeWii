@@ -35,6 +35,10 @@ bool rar5_extract(rar5_t *r, rar5_sink sink, void *ud);
 
 const char *rar5_error(const rar5_t *r);
 
+/* Tells the reader the archive unpacks to `total` bytes in all, so its window needn't be larger
+ * than that even when the dictionary is. */
+void rar5_limit_dict(rar5_t *r, uint64_t total);
+
 /* Restarts at the first file. */
 bool rar5_rewind(rar5_t *r);
 
