@@ -2,140 +2,167 @@
 
 **Version:** 0.8.0 · **By:** quatric & cmyksoda
 
-A text-mode, [GodMode9](https://github.com/d0k3/GodMode9)-style file manager for the **Wii** and the **Wii U's vWii mode**.
-No fancy GUI: just a console, a cursor and a lot of power. Copy, cut, paste and delete files between every storage device
-the console can see, watch the free space of each one, and (only if you really mean it) poke around in the NAND.
+A text-mode file manager for the **Wii** and the **Wii U's vWii mode**, in the style of [GodMode9](https://github.com/d0k3/GodMode9).
+No fancy GUI: just a console, a cursor and a lot of power.
 
-> ## ⚠️ BRICK RISK
+* Copy, move and delete files between every drive the console can see.
+* Open archives, disc images, saves and WADs like folders.
+* View images, 3D models, banners and layouts; play music, sequences and videos.
+* Install WADs, launch homebrew, and install apps over the network (FTP or `wiiload`).
+* And, only if you really mean it, change the NAND.
+
+> [!CAUTION]
+> **GodModeWii can permanently brick your console.** Writing, deleting or renaming files on the NAND (IOS, System Menu,
+> boot2, tickets ...) can leave a Wii, or a Wii U's vWii, unable to boot.
 >
-> **GodModeWii can permanently brick your console.**
-> Writing, deleting or renaming files on the Wii NAND (IOS, System Menu, boot2, tickets, ...) can leave the console
-> unbootable, and on a Wii U the vWii NAND is just as fragile.
->
-> * Everything that modifies the NAND is **locked by default**. Copying *from* the NAND is always safe.
-> * The first time you try to change the NAND (delete, paste, cut, rename, new folder, ...) a warning appears and you must enter the **Konami code**. There is no menu to visit first, and once is enough: it stays unlocked until you exit or lock it again from the HOME menu.
-> * **Make a full NAND backup with BootMii before you use risky mode**, and keep a copy of it off the console.
-> * This software comes with **no warranty**. You are solely responsible for whatever you do with it.
+> * NAND changes are **locked by default**. Copying *from* the NAND is always safe.
+> * The first time you try to change the NAND, a warning appears and you must enter the [Konami code](#konami-code).
+>   It then stays unlocked until you exit, or lock it again from the HOME menu.
+> * **Make a full NAND backup with BootMii first**, and keep a copy off the console.
+> * There is **no warranty**. You are responsible for what you do with it.
 >
 > If you aren't sure what a file does, leave it alone.
 
-## Download
+## Contents
 
-Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older versions are on the [releases page](../../releases).
+* [Getting started](#getting-started)
+* [Drives](#drives)
+* [What it can open](#what-it-can-open)
+* [Other features](#other-features)
+* [Controls](#controls)
+* [Network: FTP and Wiiload](#network-ftp-and-wiiload)
+* [Console keys](#console-keys)
+* [Building](#building)
+* [Status and limitations](#status-and-limitations)
+* [Credits](#credits) · [License](#license)
 
-1. Extract `GodModeWii.zip` to the root of your SD card (or USB drive).
-2. Open GodModeWii from the Homebrew Channel.
+## Getting started
 
-**Modifying the NAND can brick your console** - read the README first.
+1. Download `GodModeWii.zip` from the [latest release](../../releases/latest) (older versions are on the [releases page](../../releases)).
+2. Extract it to the root of your SD card or USB drive. This puts `boot.dol` and `meta.xml` in `apps/GodModeWii/`.
+3. Start GodModeWii from the **Homebrew Channel**.
 
-## Features
+Launching from the Homebrew Channel (IOS58 with HW_AHBPROT disabled) gives GodModeWii full NAND permissions and access to
+the SEEPROM and the disc drive. Launched another way, SD and USB still work and the NAND can be browsed with limited permissions.
 
-* One text interface for all your storage, shown with free space and a usage bar in the file browser:
-  | Drive | Path | Notes |
-  | --- | --- | --- |
-  | SD card | `sd:/` | read / write |
-  | SD Gecko (slot A / B) | `gca:/`, `gcb:/` | original Wii only |
-  | USB drives | `usb1:/` ... `usb8:/` | every USB port and every drive behind a hub, every LUN of card readers (up to 8 volumes) |
-  | Wii NAND | `nand:/` | read-only until unlocked with the Konami code |
-  | SEEPROM | `seeprom:/` | read-only virtual drive containing `seeprom.bin` |
-  | Disc | `disc:/` | read-only: browse the files on a Wii or GameCube disc like any folder, and copy them out. A `sys/` folder holds `boot.bin`, `bi2.bin`, `apploader.img`, `fst.bin` and `main.dol`; GameCube and unrecognised discs also get a raw `disc.iso` |
-  | GameCube memory cards | `mca:/`, `mcb:/` | every save as a `.gci` file (GCMM-compatible): copy them out to back up, paste `.gci` files in to restore, delete saves. Original Wii only |
-  | Console keys | `keys:/` | read-only: each key as its own file plus the files [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) writes (see below) |
-* **Open archives like folders** (read-only, extract only, not available over FTP): press **A** on a
-  U8 archive (`.arc`, `.app`, `.bnr`, `.carc` ... also with an IMET or IMD5 header), an **LZ10 / LZ11** compressed file (`.lz`,
-  `.lz10`, `.lz11`, `.lz77`, or data starting with `LZ77`; a compressed archive opens as the archive inside),
-  a **WAD**, a **`content.bin`** (the DLC / WiiWare SD-card backup), a **`data.bin`** (a Wii save backup) or a **VFF** (`.vff`, WiiConnect24 / Mii
-  mailboxes). Archives nest (`sd:/x.wad|/00000001.app|/meta/banner.bin`), **B** goes back out, copy anything out
-  with **+** / the actions menu. *Open as archive* is also in the actions menu. WAD, `content.bin` and `data.bin` contents are
-  decrypted while browsing and copying, vWii-key WADs included; a WAD also shows a `wad_info.txt` (title ID, version, IOS, contents).
-* **Install WADs**: press **A** on a `.wad` and pick *Install to NAND* (or *Browse decrypted contents*), or mark several and use
-  *Install marked WADs* in the actions menu. The install and its brick checks come from YAWM ModMii Edition: boot2 and System Menu
-  WADs are refused (install those with YAWM ModMii Edition itself, which keeps Priiloader), Wii IOS on vWii and vWii IOS on Wii are
-  refused, as are stubs over the System Menu's, EULA's, region select's or Homebrew Channel's IOS, System Menu IOS that would brick a
-  Korean-key Wii, and titles whose IOS is missing or a stub. **Save data is never deleted**: there is no uninstall, and when a title is
-  already installed its `data` folder is first copied to `GodModeWii/save-backups/` on the SD card (or a USB drive) and counted again
-  after the install. Needs the Konami code, like any other NAND change.
-* **Launch homebrew**: press **A** on a `.dol` or `.elf` and confirm. Arguments from a `meta.xml` next to it are passed on, after the
-  program's path, and HW_AHBPROT access is kept when GodModeWii has it.
-* **Export all saves** in the HOME menu: copies the save data of every disc game, channel and WiiWare title to
-  `GodModeWii/save-export/<date-time>/<title id> <game id>/` on the SD card or a USB drive. The NAND is only read.
-* **Audio player** (press **A**): BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST and BTSND, streamed and decoded on the
-  console (DSP-ADPCM, AFC, PCM8 / PCM16), with looping, and the common formats: **WAV** (PCM, float, IMA / MS ADPCM, A-law, µ-law,
-  RF64), **AIFF**, **MP3**, **FLAC** (also in Ogg) and **Ogg Vorbis**. **A** pause, **1** loop / repeat on / off, **+** / **-** pick
-  channels on multi-track streams, **B** stop.
-* **MIDI player** (press **A**): standard MIDI files (`.mid`, RIFF `.rmi`, `.kar`), played with the SoundFont of the same name next
-  to the file (`song.mid` + `song.sf2`) or else a built-in General MIDI set. Each channel shows its instrument, note count and
-  level: Up / Down pick one, **A** turns it on / off, **2** plays it alone, **-** all on, **+** pause, **1** repeat, **B** stop.
-* **Image viewer** (press **A**): TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT effect textures, the textures inside J3D models,
-  and PNG, JPEG and WebP. Every GX texture format (I4 to CMPR, with palettes). Images open pixel for pixel (1:1) in their real
-  colours. **1** scale to fit / back to 1:1, **+** / **-** zoom, D-Pad pans, and when the whole image is on
-  screen each press of D-Pad **Left / Right** goes to the previous / next image (holding repeats); **A** background, **2** info.
-* **3D model viewer** (press **A**): MDL0 models in a `.brres` and J3D `.bmd` / `.bdl`, drawn with GX and lit, with bone / joint
-  placement and their textures (each material's first texture, with its wrap mode and cut-out alpha; a missing texture leaves
-  the mesh plain). D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
-  browses a `.brres`.
-* **Video player** (press **A**): Mobiclip `.mo`, THP, and Flipnote `.kwz` / `.ppm`, with sound, played straight from any drive,
-  the NAND, a disc or inside an archive. **A** / **+** pause, **B** stop.
-* **Disc images**: GameCube and Wii `.iso` / `.gcm`, single-file `.wbfs` and `.ciso` open like folders. A Wii disc shows each
-  partition (DATA, UPDATE, CHANNEL) with its `ticket.bin`, `tmd.bin`, `sys/` (boot.bin, bi2.bin, apploader.img, main.dol,
-  fst.bin) and `files/`, decrypted on the fly; a GameCube disc shows `sys/` and `files/`. Files inside open in the viewers like any
-  other (a course `.szs`, a `.thp`, a `.brstm` ...). Split WBFS parts (`.wbf1` ...) are not joined.
-  **RVZ** and **WIA** images (Dolphin / wit) open the same way, decompressed on the fly (Zstandard, bzip2, LZMA, LZMA2, purge and
-  RVZ packing); chunks are limited to 32 MiB, which covers Dolphin's defaults.
-* **zip, 7z and RAR** (1.5 - 5.x) archives open like folders, read-only: files up to 16 MiB are unpacked whole the first time
-  they're read, bigger ones are streamed (a RAR5 file has to fit in 48 MiB). Images, models, sounds and archives inside open
-  directly. Encrypted and multi-volume archives aren't supported, and a big solid RAR5 can be too large for the Wii's memory.
-* **Retro Studios PAK** archives (Metroid Prime 1 - 3, Metroid Prime Trilogy, Donkey Kong Country Returns; compressed resources
-  included) and
-  **LZO** (`.lzo`, lzop) files open like folders.
-* **Layout viewer** (press **A**): NW4R BRLYT layouts, such as a channel's or disc's banner and icon (`opening.bnr` ›
-  `meta/banner.bin` › `arc/blyt/banner.brlyt`), drawn with GX: every picture and window pane with its textures (the TPLs in the
-  archive's `timg` folder), texture SRTs, TEV stages and colours, swap tables, alpha compare and blend modes, playing the
-  layout's BRLAN animations (pane position / rotation / scale / size, vertex colours and alpha, visibility, material colours,
-  texture SRT and texture pattern). A banner plays its Start animation into its Loop one, as on the Wii Menu. Opening a BRLAN
-  plays it on its layout. Animations play once and stop on their last frame: **A** play / pause (and again from the start
-  once it has ended), D-Pad **Left / Right** step a frame while paused, **Up / Down** previous / next animation, **1** loop
-  on / off, **+** / **-** zoom, **2** info, **B** close. Text boxes are not drawn; a layout the viewer can't draw falls back to the text view.
-* **Text views**: BMG and MSBT messages, BREFF effect sets (their emitter list), BRLYT layouts (canvas, textures, fonts,
-  materials and the pane tree with each text box's text), BRLAN animations (length and what they animate) and Mario Kart Wii
-  KMP course data (sections, counts, laps).
-* **Files are recognised by what is in them**, not their names: **A** reads the first bytes of a file (its magic, after
-  nintoolbox's file-type detection) to pick the viewer or player, so a renamed or extensionless file still opens, and a file with a
-  misleading extension isn't handed to the wrong one. Only formats with no magic of their own (DSP, BTSND, BTI, TXTR, MP3 without
-  an ID3 tag, `.lz`-wrapped files) go by extension. WADs to install and programs to launch are recognised the same way.
-* **Folders**: **Yaz0 / SZS**, **Yay0**, **ASH0**, the Nintendo SDK codecs (**LZ10**, **LZ11**, **Huffman**, **run length**,
-  **LZH8** — recognised by extension or by what they decompress to, like the HOME Menu's compressed files), **RARC**, **BRRES**,
-  Virtual Console **CCF**, Super Smash Bros. Brawl **PAC** and Good-Feel **GFA** archives. A **BRSAR** sound archive opens as its groups, with each sequence,
-  bank and sound file, and every wave in its wave archives, which the audio player plays. GameCube `.bnr` banners, Wii save
-  `banner.bin` files (banner and icon frames) and Retro Studios `.txtr` textures open in the image viewer.
-* Everything here is for looking and listening: nothing is converted, exported or repacked (that is nintoolbox's job).
-* **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
-* **exFAT** SD cards and USB drives (release builds), partitioned MBR or GPT (as macOS formats them) or not at all: they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
-* **Restart Wii** in the HOME menu: on a Wii U it leaves vWii and returns to the Wii U menu.
-* **Export Miis** in the HOME menu: pick Miis by name and save them to the SD card or a USB drive as
-  `/savemiis/<Name>.miigx`, the same files SaveGame Manager GX writes (and can install again). The Mii database is only read.
-* Copy / move / delete summaries keep the result line (files, size, time) and let you page through every problem with **L / R** (**-** / **+**). Read-only FAT files and folders can be deleted.
-* **NTFS** SD cards and USB drives, read and write (NTFS-3G through extremscorner's libntfs). A drive Windows didn't shut
-  down fully (Fast Startup, hibernation) is left alone: shut Windows down fully, then remount. Further NTFS partitions on a
-  USB drive are mounted too, each on its own `usbN:` entry.
-* **ext2 / ext3 / ext4** (Linux) SD cards and USB drives, **read-only**: copy files off, nothing is written to them.
-* **Wii U WFS volumes** (read-only): a USB drive formatted by a Wii U (WFS, which libfat can't mount) shows up as its own
-  `usbN:/` drive, and a WFS image file (a dump of a Wii U USB drive or of the MLC) opens like an archive with **A**. WFS is encrypted
-  with keys that belong to the Wii U that formatted it, and a Wii or vWii can't read them, so copy them to the SD card first: either the two dumps
-  `otp.bin` and `seeprom.bin` of that Wii U, or the finished keys as 16 byte files `usb.key` / `mlc.key`, in `sd:/wfs/` (or the root of the card).
-  The easiest way is GodModeU on that Wii U: SYSTEM → *Save Wii U keys for GodModeWii* writes `usb.key` and `mlc.key` to `sd:/wfs/`.
-  Decrypted ("plain") images need no key. Remount drives (HOME menu) after changing the key files.
-* Copy from a disc keeps going on **read errors**: unreadable sectors are written as zeros and a `<file>.errors.txt` next to the copy lists every
-  byte range that could not be read.
-* Copy, cut, paste and delete between any two writable devices, folders included, with a progress screen,
-  transfer speed, overwrite / skip prompts and **hold B to cancel**. Half-written files are removed again.
-* Multi-select, select all / invert, rename, new folder, folder size / info, a text viewer and a hex viewer, plus in-app editors (Actions menu, Edit as text / Edit as hex) for files on writable drives: change bytes in place, or edit text a line at a time with the character roller. Files are edited in memory and only written when you save.
-* Konami-code gate (asked once, at the moment you try something risky) and brick warnings for NAND changes.
-* Works with the Wii Remote, Classic Controller, GameCube controller and a USB keyboard; release builds also support the Wii U GamePad, Wii U Pro Controller and PS3 SIXAXIS / DualShock 3 (untested on hardware).
-* Wii U (vWii) aware: the GameCube-only SD Gecko slots, the SEEPROM and the disc drive are skipped there.
-* A built-in **FTP server** (HOME → *FTP server*), a sturdier take on ftpii's — see below.
-* **Wiiload** (HOME → *Wiiload*): send apps from your computer with the usual `wiiload` client and they're installed — see below.
-* No scripts and no WAD installation, on purpose. It's a handy little tool.
+**On a Wii U**, run it from the vWii Homebrew Channel. NAND access works as in FSToolBox-Mod, and the SD card and USB ports are
+supported. SD Gecko, memory cards, the SEEPROM and the disc drive don't exist inside vWii and are shown as unavailable. The vWii
+NAND is just as brick-prone as a Wii's, and a bricked vWii may need the Wii U's own recovery tools.
+
+## Drives
+
+Every drive is shown with its free space and a usage bar.
+
+| Drive | Path | Notes |
+| --- | --- | --- |
+| SD card | `sd:/` | Read / write |
+| SD Gecko (slot A / B) | `gca:/`, `gcb:/` | Original Wii only |
+| USB drives | `usb1:/` … `usb8:/` | Every port, every drive behind a hub, every LUN of a card reader (up to 8 volumes) |
+| Wii NAND | `nand:/` | Read-only until unlocked with the Konami code |
+| SEEPROM | `seeprom:/` | Read-only; holds `seeprom.bin` |
+| Disc | `disc:/` | Read-only. A Wii or GameCube disc as folders, plus `sys/` (`boot.bin`, `bi2.bin`, `apploader.img`, `fst.bin`, `main.dol`). GameCube and unrecognised discs also get a raw `disc.iso` |
+| GameCube memory cards | `mca:/`, `mcb:/` | Each save as a GCMM-compatible `.gci` file: copy out to back up, paste in to restore. Original Wii only |
+| Console keys | `keys:/` | Read-only; see [Console keys](#console-keys) |
+
+**File systems:**
+
+| File system | Support |
+| --- | --- |
+| FAT / FAT32 | Read / write |
+| exFAT | Read / write (release builds); MBR, GPT or unpartitioned; files over 4 GiB |
+| NTFS | Read / write. A drive Windows didn't shut down fully (Fast Startup, hibernation) is left alone |
+| ext2 / ext3 / ext4 | Read-only |
+| Wii U WFS | Read-only; needs that Wii U's keys (see below) |
+
+* Extra FAT / exFAT / NTFS partitions on a USB drive each get their own `usbN:` entry ("USB Drive 1, part. 2").
+* A FAT32 drive hidden from the Wii U with **ustealth / USBHide** works like any other; the home screen notes that it is hidden.
+* **Wii U WFS:** a USB drive formatted by a Wii U shows up as its own `usbN:/` drive, and a WFS image (a dump of a Wii U USB drive
+  or of the MLC) opens like an archive. WFS is encrypted with keys of the Wii U that formatted it, so put them in `sd:/wfs/`
+  (or the card's root) first, either as that Wii U's `otp.bin` and `seeprom.bin`, or as the finished 16-byte keys `usb.key` / `mlc.key`.
+  The easiest way: on that Wii U, GodModeU → SYSTEM → *Save Wii U keys for GodModeWii*. Decrypted ("plain") images need no key.
+  Remount drives (HOME menu) after changing the key files.
+
+## What it can open
+
+Press **A** on a file and GodModeWii picks the right viewer by **what is in the file** (its magic bytes, after nintoolbox's
+detection), not by its name. Renamed or extensionless files still open, and a misleading extension doesn't fool it. Only formats
+with no magic of their own go by extension: DSP, BTSND, BTI, TXTR, MP3 without an ID3 tag, and `.lz`-wrapped files.
+
+The viewers only look and listen: nothing is converted, exported or repacked (that's nintoolbox's job).
+
+### Archives and disc images
+
+These open like folders (read-only). **B** goes back out, and **+** or the actions menu copies anything out. Archives nest, e.g.
+`sd:/x.wad|/00000001.app|/meta/banner.bin`. Files inside open in the viewers like any other.
+
+| Kind | Formats |
+| --- | --- |
+| Nintendo archives | U8 (`.arc`, `.app`, `.bnr`, `.carc` …, also with an IMET / IMD5 header), RARC, BRRES, Virtual Console CCF, Brawl PAC, Good-Feel GFA |
+| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`) |
+| Titles and saves | WAD (with a `wad_info.txt`), `content.bin` (DLC / WiiWare SD backup), `data.bin` (Wii save backup), VFF (WiiConnect24 / Mii mailboxes). Decrypted as you browse, vWii-key WADs included |
+| Sound archives | BRSAR: groups, sequences, banks, sound files and every wave, playable |
+| Disc images | GameCube / Wii `.iso` / `.gcm`, single-file `.wbfs`, `.ciso`, **RVZ** and **WIA** |
+| PC archives | zip, 7z, RAR 1.5 – 5.x |
+| Game archives | Retro Studios PAK (Metroid Prime 1 – 3, Trilogy, Donkey Kong Country Returns) |
+
+* A Wii disc image shows each partition (DATA, UPDATE, CHANNEL) with `ticket.bin`, `tmd.bin`, `sys/` and `files/`, decrypted on the
+  fly. RVZ / WIA are decompressed on the fly (Zstandard, bzip2, LZMA, LZMA2, purge, RVZ packing).
+* zip / 7z / RAR files up to 16 MiB are unpacked whole when first read; bigger ones are streamed.
+* *Open as archive* in the actions menu opens a file as an archive explicitly (a `.brres` instead of the model viewer, say).
+
+### Viewers and players
+
+| Viewer | Formats | Buttons |
+| --- | --- | --- |
+| **Images** | TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, PNG, JPEG, WebP. Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
+| **3D models** | MDL0 in `.brres`, J3D `.bmd` / `.bdl`, lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
+| **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
+| **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
+| **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat, **B** stop |
+| **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
+| **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
+
+* **Images** open pixel for pixel (1:1) in their real colours.
+* **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colours,
+  alpha compare and blending. A banner plays its Start animation into its Loop one, as on the Wii Menu, and opening a BRLAN
+  plays it on its layout. Other animations play once and stop on their last frame (**A** starts them again). Text boxes are not
+  drawn, and a layout the viewer can't draw falls back to the text view.
+* **MIDI** uses the SoundFont with the same name next to the file (`song.mid` + `song.sf2`), or else a built-in General MIDI set.
+  Each channel shows its instrument, note count and level.
+* **Audio** covers DSP-ADPCM, AFC and PCM8 / PCM16, plus WAV in PCM, float, IMA / MS ADPCM, A-law, µ-law and RF64, and FLAC in Ogg.
+
+## Other features
+
+**Files and folders**
+
+* Copy, cut, paste and delete between any writable drives, folders included, with progress, speed, overwrite / skip prompts
+  and **hold B to cancel**. Half-written files are removed.
+* Summaries keep the result line (files, size, time); page through every problem with **L / R** (**-** / **+**).
+* Copying from a disc keeps going on read errors: bad sectors become zeros, listed in `<file>.errors.txt`.
+* Multi-select, select all / invert, rename, new folder, folder size and info.
+* Text viewer, hex viewer, and in-place editors (*Edit as text*, *Edit as hex*). Edits are only written when you save.
+* Read-only FAT files and folders can be deleted.
+
+**Installing and launching**
+
+* **Install WADs:** **A** on a `.wad` → *Install to NAND*, or mark several and use *Install marked WADs*. The install and its brick
+  checks come from YAWM ModMii Edition. Refused: boot2 and System Menu WADs (use YAWM ModMii Edition itself, which keeps
+  Priiloader), Wii IOS on vWii and the other way round, stubs over the IOS of the System Menu, EULA, region select or Homebrew
+  Channel, System Menu IOS that would brick a Korean-key Wii, and titles whose IOS is missing or a stub. Needs the Konami code.
+* **Save data is never deleted:** there is no uninstall, and an installed title's `data` folder is first backed up to
+  `GodModeWii/save-backups/` and checked again after the install.
+* **Launch homebrew:** **A** on a `.dol` or `.elf`. Arguments from a `meta.xml` next to it are passed on, and HW_AHBPROT access is kept.
+  Channel contents (`0000000N.app`) are browsed, not launched.
+
+**HOME menu**
+
+* **Export all saves** of every disc game, channel and WiiWare title to `GodModeWii/save-export/<date-time>/<title id> <game id>/`.
+* **Export Miis** as `/savemiis/<Name>.miigx`, the files SaveGame Manager GX writes and installs.
+* **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
+* Lock the NAND again, remount drives, credits, exit.
+* **Restart Wii**; on a Wii U it returns to the Wii U Menu.
+
+The NAND is only read by the exports.
 
 ## Controls
 
@@ -143,121 +170,131 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 | --- | --- |
 | D-Pad Up / Down | Move (hold to scroll) |
 | D-Pad Left / Right | Page up / down |
-| **A** | Open folder or archive / actions menu on any other file / paste on the green `Paste` row |
-| **B** | Go up one folder (back to the drive list at the top) |
-| **1** | Mark / unmark the item and move down / clear the clipboard on the green `Paste` row |
-| **2** | Actions menu (paste, clear clipboard, copy, cut, delete, rename, new folder, info, text viewer, hex viewer, edit as text, edit as hex, selection tools) |
-| **+** | Copy the marked items (or the item under the cursor) |
+| **A** | Open a folder, archive or file / paste on the green `Paste` row |
+| **B** | Up one folder (back to the drive list at the top) |
+| **1** | Mark / unmark and move down / clear the clipboard on the `Paste` row |
+| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, viewers, editors, selection tools …) |
+| **+** | Copy the marked items (or the one under the cursor) |
 | **-** | Cut the marked items |
-| **HOME** | System menu: lock risky options again, remount drives, FTP server, credits, exit. HOME or B closes it again. |
+| **HOME** | HOME menu (HOME or B closes it) |
 
-Copy or cut something, browse to the destination and press **A** on the green `Paste` row at the top of the list
-(or use *Paste* in the actions menu). A copy stays in the clipboard so you can paste it in several places. To empty the
-clipboard without pasting, press **1** on the `Paste` row or pick *Clear clipboard* in the actions menu.
+**To copy or move:** copy (**+**) or cut (**-**), browse to the destination and press **A** on the green `Paste` row at the top.
+A copy stays in the clipboard so you can paste it in several places; **1** on the `Paste` row empties it.
 
-Classic Controller: ZR / + = **+**, ZL / - = **-**, X = **2**, Y = **1**. GameCube pad: R = **+**, L = **-**, X = **2**, Y = **1**,
-Start = **HOME**. Wii U GamePad / Pro Controller: like the Classic Controller (R/ZR/+ = **+**, L/ZL/- = **-**, X = **2**, Y = **1**).
-PS3 pad: Start/R1/R2 = **+**, Select/L1/L2 = **-**, Triangle = **2**, Square = **1**, Cross = A, Circle = B, PS = **HOME**. USB keyboard: arrows, Enter = A, Backspace = B, X = 1, Y = 2, C = copy, V = cut, Esc = HOME.
+**Other controllers:**
+
+| Controller | **+** | **-** | **1** | **2** | A / B / HOME |
+| --- | --- | --- | --- | --- | --- |
+| Classic Controller | ZR, + | ZL, - | Y | X | A / B / HOME |
+| Wii U GamePad, Wii U Pro Controller | R, ZR, + | L, ZL, - | Y | X | A / B / HOME |
+| GameCube controller | R | L | Y | X | A / B / Start |
+| PS3 SIXAXIS / DualShock 3 | Start, R1, R2 | Select, L1, L2 | Square | Triangle | Cross / Circle / PS |
+| USB keyboard | C (copy) | V (cut) | X | Y | Enter / Backspace / Esc, arrows to move |
+
+The GamePad, Pro Controller and PS3 pad work in release builds (untested on real hardware).
 
 ### Konami code
 
-It appears by itself the first time you try to change the NAND. Enter (D-Pad, then B and A):
+It appears by itself the first time you try to change the NAND. On the D-Pad, then B and A:
 
 `UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A`
 
-HOME cancels. After that the NAND stays unlocked for the rest of the session.
+HOME cancels. Once entered, the NAND stays unlocked for the rest of the session.
 
-## Console keys (xyzzy-mod compatible)
+## Network: FTP and Wiiload
 
-The `keys:/` drive (original Wii, launched from the Homebrew Channel) exposes what [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)
-dumps, laid out the way it writes it, so existing tools and [wad2bin](https://github.com/DarkMatterCore/wad2bin) understand the files:
+All three servers only accept computers on your local network, and speak plain, unencrypted protocols: use them on a network you trust.
 
-* `keys.txt` — a hex dump of every key in the wad2bin format (`boot1_hash`, `wii_common_key`, `console_id`, `ecc_private_key`,
-  `nand_hmac`, `nand_aes_key`, `prng_key`, `ng_key_id`, `ng_signature`, `wii_korean_key`, `sd_key`)
-* `otp.bin`, `seeprom.bin`, `bootmii_keys.bin` (BootMii `keys.bin` layout) and `device.cert`
-* `keys/<name>.bin` — **each key as its own file**, named like the entries in `keys.txt`
+### FTP server
 
-Copy them wherever you like (for xyzzy-mod's layout, into `xyzzy/<console id>/` on your SD card). Not included yet: SD IV, MD5 blanker,
-MAC address and the boot0 dump. **These keys are unique to your console. Keep them private.**
+HOME → *FTP server (read-only)* or *(read/write)*. The screen shows the address, the user name (`godmode`) and a fresh random
+password. Every mounted drive is a folder (`/sd`, `/usb1`, `/nand`, `/disc` …).
 
-## FTP server
+It is built to be harder to break and abuse than ftpii:
 
-HOME → *FTP server (read-only)* or *(read/write)* opens a status screen with the address, the user name (`godmode`) and a
-fresh random password. Connect with any FTP client; every mounted drive shows up as a folder (`/sd`, `/usb1`, `/nand`, `/disc`, ...).
+* **Login required**, random password per run; failed logins are throttled and a burst locks the server for a minute.
+  **1** on the server screen turns login off (anyone on your network can then connect) and on again.
+* **No FTP bounce:** `PORT` must point back at the client (port ≥ 1024), and passive connections must come from the client.
+* **Sandboxed paths:** `..` tricks, odd characters and unmounted drives go nowhere.
+* **Read-only by default**; the SEEPROM and disc are always read-only.
+* **Same NAND rules:** the first NAND change asks for the Konami code on the console (the FTP command waits).
+* **Safe uploads:** written under a temporary name and swapped in when complete, so a dropped connection never leaves a half file.
+* `RMD` only removes empty folders: nothing is deleted recursively over the network.
+* Bounded buffers, sessions (4) and timeouts. A client that stops reading mid-download holds the server until it times out.
 
-It is meant to be harder to break and harder to abuse than the original ftpii:
-
-* **Login is required by default**; the password is random per run. Failed logins are throttled and a burst of them locks the server for a minute.
-  **1** on the server screen switches login off for that run (no user name or password; anyone on your network can connect) and back on.
-* **LAN only**: peers outside private / link-local ranges are refused.
-* **No FTP bounce / hijack**: `PORT` must point back at the client (port >= 1024) and passive data connections must come from the client's IP.
-* **Sandboxed paths**: every path is canonicalised inside the virtual root, so `..` tricks, odd characters and unmounted drives go nowhere.
-* **Read-only by default**, and the SEEPROM / disc drives are always read-only.
-* **Same NAND rules as the browser**: the first NAND change asks for the Konami code on the console itself (the FTP command waits for it).
-* **Safe uploads**: files are written to a temporary name and only swapped in when complete (the old file is restored if the swap fails), so a dropped connection can't leave a half-written file.
-* `RMD` only removes empty folders; nothing is deleted recursively over the network.
-* Single-threaded with bounded buffers, command lines, sessions (4) and timeouts. Downloads go out in short blocking sends once the
-  client can take data, because libogc's non-blocking send can lose track of a partly sent block; a client that stops reading in the
-  middle of a download holds the server until its connection times out.
+Commands: `LIST`, `NLST`, `MLSD`, `RETR` (with `REST`), `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` / `RNTO`, `SIZE`, `PASV`, `EPSV`, `PORT`.
 
 ### FTP install server
 
-HOME → *FTP install server (archives to SD)* or *(archives to USB)* starts the same server in read/write mode and
-unpacks every **`.zip`, `.7z` or `.rar`** (RAR 1.5 - 5.x, single volume, no password) you upload straight onto the SD card
-or the first USB drive, then deletes the archive. The contents go where they belong: an archive that already holds the
-drive layout (`apps/...`, `wad/...`, `private/...`) is unpacked at the root, a wrapper folder around it is dropped, a single
-program folder (`Foo/boot.dol`) goes to `apps/Foo`, and loose files get a folder named after the archive (`.wad` files go to
-`wad/`). Docs (`.txt`, `.md`...) at the top level of a ready-made layout are skipped. A failed or cancelled install keeps
-the archive; hold **B** to cancel. Big 7z / RAR dictionaries need RAM, so an archive can be refused on low memory.
+HOME → *FTP install server (archives to SD)* or *(archives to USB)*. Upload a **`.zip`, `.7z` or `.rar`** and it is unpacked onto
+the drive, then deleted:
 
-It speaks plain FTP (no TLS): only use it on a network you trust. Supported commands include `LIST`, `NLST`, `MLSD`, `RETR`
-(with `REST`), `STOR`, `DELE`, `MKD`, `RMD`, `RNFR` / `RNTO`, `SIZE`, `PASV`, `EPSV`, `PORT`.
+| Archive holds | Goes to |
+| --- | --- |
+| The drive layout (`apps/…`, `wad/…`, `private/…`), with or without a wrapper folder | The drive root (wrapper dropped, top-level docs skipped) |
+| One program folder (`Foo/boot.dol`) | `apps/Foo/` |
+| Only `.wad` files | `wad/` |
+| Loose files | `apps/<archive name>/` |
+
+A failed or cancelled install (hold **B**) keeps the archive. Big 7z / RAR dictionaries need RAM, so an archive can be refused
+on low memory.
 
 ### Wiiload
 
-HOME → *Wiiload (install apps over the network)* listens on TCP port **4299**, the Homebrew Channel's, so the `wiiload`
-client from devkitPro (or any other that speaks wiiload 0.4 / 0.5) works as it is:
+HOME → *Wiiload (install apps over the network)* listens on TCP port **4299**, like the Homebrew Channel, so devkitPro's
+`wiiload` (or any wiiload 0.4 / 0.5 client) works as is. Pack your app the way the Homebrew Channel wants it, one folder with
+the program in it:
 
-    WIILOAD=tcp:192.168.1.23 wiiload MyApp.zip
+```
+myapp.zip
+└── myapp/          → installed to apps/myapp/
+    ├── boot.dol    (or boot.elf)
+    ├── meta.xml
+    └── icon.png
+```
 
-A **`.zip`, `.7z` or `.rar`** is installed onto the SD card, or the USB drive after **1** switches to it, the way the Homebrew
-Channel takes it — a zip holding one folder with the program in it:
+```sh
+zip -r myapp.zip myapp
+WIILOAD=tcp:192.168.1.23 wiiload myapp.zip
+```
 
-    myapp.zip
-    └── myapp/          → apps/myapp/
-        ├── boot.dol    (or boot.elf)
-        ├── meta.xml
-        └── icon.png
+It installs to the SD card, or to USB after pressing **1**. What happens depends on what you send:
 
-    zip -r myapp.zip myapp && wiiload myapp.zip
+| You send | What happens |
+| --- | --- |
+| `.zip` / `.7z` / `.rar` with a program | The folder holding `boot.dol` / `boot.elf` (or another `.dol` / `.elf`) goes to `apps/<folder>/`, wherever it sits in the archive |
+| `.zip` / `.7z` / `.rar` without a program (WADs, say) | Placed like the FTP install server does it |
+| `.dol` / `.elf` | Kept in `GodModeWii/wiiload/`, and you're offered to start it |
+| Anything else | Kept in `GodModeWii/wiiload/` |
 
-GodModeWii looks for the folder that holds `boot.dol` / `boot.elf` (or another `.dol` / `.elf`) wherever it is, so zips
-that also carry an `apps/` folder or a release folder around it (`MyApp-v1.2/apps/myapp/boot.dol`) end up in
-`apps/myapp/` all the same, files outside the program folder (readmes and so on) are left out, a zip with several apps
-installs each of them, and a program loose at the top goes into `apps/<zip name>/`. Archives with no program in them (WADs,
-say) are placed the way the FTP install server does it. A
-**`.dol` / `.elf`** is kept in `GodModeWii/wiiload/` and GodModeWii offers to start it at once. Anything else is kept in
-`GodModeWii/wiiload/` too. What a file is goes by its contents, not the name it was sent with. Compressed uploads are
-unpacked as they arrive, so a file can be as large as the drive's free space (up to 512 MiB); only peers on the local network
-are accepted, and hold **B** to cancel a transfer.
+* Extra folders around the app don't matter: `MyApp-v1.2/apps/myapp/boot.dol` still ends up in `apps/myapp/`.
+* Files outside the program folder (readmes …) are left out, a zip with several apps installs each one, and a program at the
+  top of the zip goes into `apps/<zip name>/`.
+* Files are recognised by their contents, not their names. Uploads are unpacked as they arrive (up to 512 MiB, or the drive's
+  free space). Hold **B** to cancel.
 
-## Installation
+## Console keys
 
-Copy `boot.dol` and `meta.xml` to `SD:/apps/GodModeWii/` and start it from the Homebrew Channel.
-**Use the Homebrew Channel (IOS58 with HW_AHBPROT disabled)**: that is what gives GodModeWii full NAND permissions and
-access to the SEEPROM and the disc drive. Without it you can still use SD / USB, and the NAND is browsable with
-limited permissions.
+The `keys:/` drive (original Wii, launched from the Homebrew Channel) shows what [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)
+dumps, in its layout, so existing tools and [wad2bin](https://github.com/DarkMatterCore/wad2bin) understand the files:
 
-### Wii U (vWii)
+| File | Contents |
+| --- | --- |
+| `keys.txt` | Every key as hex, in wad2bin's format (`boot1_hash`, `wii_common_key`, `console_id`, `ecc_private_key`, `nand_hmac`, `nand_aes_key`, `prng_key`, `ng_key_id`, `ng_signature`, `wii_korean_key`, `sd_key`) |
+| `otp.bin`, `seeprom.bin`, `device.cert` | Raw dumps |
+| `bootmii_keys.bin` | BootMii's `keys.bin` layout |
+| `keys/<name>.bin` | Each key as its own file |
 
-Run it from the vWii Homebrew Channel. NAND access works the same way as in FSToolBox-Mod; the SD card and the USB ports
-are supported. SD Gecko, memory cards, SEEPROM and the disc drive don't exist from within vWii and are shown as unavailable.
-The vWii NAND is as brick-prone as the Wii's, and a bricked vWii may need the Wii U's own recovery tools.
+For xyzzy-mod's layout, copy them into `xyzzy/<console id>/` on your SD card. Not included yet: SD IV, MD5 blanker, MAC address
+and the boot0 dump. **These keys are unique to your console. Keep them private.**
 
 ## Building
 
 You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus these portlibs:
-`dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg`.
+
+```sh
+dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg
+```
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
@@ -265,127 +302,138 @@ export DEVKITPPC=$DEVKITPRO/devkitPPC
 make
 ```
 
-The result is `GodModeWii.dol`. `make` also writes `GodModeWii-xz.dol`, the same program packed into a self-extracting `.dol` a fraction of the size; that is the one to copy as `boot.dol`. The first build downloads and builds [dolxz](https://github.com/FIX94/dolxz), which needs a host C compiler and liblzma (Debian/Ubuntu: `apt-get install liblzma-dev pkg-config`; macOS: `brew install xz`). `make NO_DOLXZ=1` skips this and uses the plain `.dol`.
+This writes `GodModeWii.dol` and `GodModeWii-xz.dol`, the same program as a much smaller self-extracting `.dol`; copy the
+latter as `boot.dol`. The first build downloads and builds [dolxz](https://github.com/FIX94/dolxz), which needs a host C compiler
+and liblzma (Debian / Ubuntu: `apt-get install liblzma-dev pkg-config`; macOS: `brew install xz`). `make NO_DOLXZ=1` skips it.
 
-Optional controller support is off by default. Build the libraries once, then enable what you want:
+### Optional features
 
-```sh
-./scripts/build_controller_portlibs.sh        # needs git, python3, network
-make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1
-```
+Off by default; the CI and release builds turn them all on. Build each library once with its script, then pass the flags:
 
-`WITH_WIIDRC` = Wii U GamePad, `WITH_WUPC` = Wii U Pro Controller, `WITH_SICKSAXIS` = PS3 SIXAXIS / DualShock 3. The CI and release builds enable all three.
-
-exFAT support is off by default too. The packaged libfat (devkitPro's libdvm with FatFs) is built with exFAT turned off, so the script
-rebuilds the same libdvm release with `FF_FS_EXFAT` and `FF_LBA64` (GPT) on, into `portlibs/exfat`:
-
-```sh
-./scripts/build_exfat_libfat.sh             # needs git, python3, cmake, network
-make WITH_EXFAT=1
-```
-
-The CI and release builds enable it. NTFS and ext2/3/4 are optional in the same way (ext reuses the exFAT build's libdvm, so it needs `WITH_EXFAT=1`):
+| Flag | Adds | Build first |
+| --- | --- | --- |
+| `WITH_WIIDRC=1` | Wii U GamePad | `scripts/build_controller_portlibs.sh` (git, python3, network) |
+| `WITH_WUPC=1` | Wii U Pro Controller | same |
+| `WITH_SICKSAXIS=1` | PS3 SIXAXIS / DualShock 3 | same |
+| `WITH_EXFAT=1` | exFAT and GPT (devkitPro's libdvm rebuilt with `FF_FS_EXFAT` and `FF_LBA64`, into `portlibs/exfat`) | `scripts/build_exfat_libfat.sh` (git, python3, cmake, network) |
+| `WITH_NTFS=1` | NTFS | `scripts/build_libntfs.sh` (git, network) |
+| `WITH_EXT4=1` | ext2 / 3 / 4 (needs `WITH_EXFAT=1`) | `scripts/build_libext4.sh` (git, network) |
 
 ```sh
-./scripts/build_libntfs.sh                  # needs git, network
-./scripts/build_libext4.sh                  # needs git, network
-make WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
+make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
 ```
 
-`make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1` builds a test version that opens each file listed in
-`sd:/gmwtest.txt` and saves a screenshot of every viewer; `scripts/autotest.sh` runs it in Dolphin with those files on a
-temporary SD card image and turns the screenshots into PNGs (`GFX=Vulkan` for real rendering, `AUDIO=True` to dump the sound).
+### Testing in Dolphin
 
-GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
+```sh
+make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1
+scripts/autotest.sh out/ some.brlyt game.rvz::DATA/files/x.brres
+```
 
-## Status / honesty section
+The test build opens each file listed in `sd:/gmwtest.txt` and saves a screenshot of every viewer; `scripts/autotest.sh` runs it
+in Dolphin with those files on a temporary SD card image and turns the screenshots into PNGs. `GFX=Metal` / `Vulkan` / `OGL`
+renders the GX viewers, `AUDIO=True` dumps the sound, and `@wiiload` waits for a wiiload upload.
 
-Developed against devkitPPC / libogc and exercised in the Dolphin emulator only. These parts are **not yet verified on real
-hardware** and may need fixes — please report what you see:
+### CI
 
-* multi-drive / multi-LUN USB mounting and SD Gecko,
-* the SEEPROM and OTP readers and the Console Keys drive (read-only; the SEEPROM sequence matches xyzzy-mod's),
-* browsing the disc (GameCube file table, or the Wii data partition opened through IOS; needs a readable disc).
+GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to your SD card). Pushing a tag
+like `v0.1.0` publishes a GitHub Release with that zip.
 
-Running inside vWii has been tried on a Wii U: the SD card, FAT32, NTFS (read / write) and ext4 (read-only) USB drives, a Wii U USB
-drive read with GodModeU's saved keys, the FTP server and Export Miis.
+## Status and limitations
 
-Known limitations: on a USB drive with several partitions (MBR or GPT primary partitions), the first one is the drive itself and every further FAT / exFAT / NTFS partition takes the next free `usbN:` slot (listed as "USB Drive 1, part. 2"); logical partitions in an extended partition, extra ext2/3/4 partitions and extra partitions on the SD card aren't mounted, and ext2/3/4 is read-only.
-The console font is ASCII only, so accented letters show without their accents and other characters as `?`; the files keep their real names.
-Files over 4 GiB can't be written to FAT / FAT32 (exFAT has no such limit).
-Memory cards: each save shows as `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry followed by the save data, the
-format GCMM and Dolphin import and export). Copy them to SD or USB for a backup. To restore, copy `.gci` files onto the card (only `.gci`, not `.gcs` / `.sav`): you are asked to
-confirm first, a save that is already on the card is never replaced (delete it first), and a file is only written once it is complete and valid.
-The save's identity comes from the `.gci` header, not the file name. Renaming and folders don't exist on cards, and the FTP server keeps them read-only.
-Don't pull the card out while it is writing. Cards are re-read every time you open the drive, or with *Remount drives*.
+Developed against devkitPPC / libogc and tested mostly in Dolphin.
 
-The disc drive shows the Wii data partition only (not the update partition); there is no raw Wii disc image, but GameCube and unrecognised
-discs can be copied as `disc.iso`. A disc is only as readable as the Wii's drive makes it: copying a damaged disc is slow while the drive retries.
+**Tried on a Wii U (vWii):** the SD card; FAT32, NTFS (read / write) and ext4 (read-only) USB drives; a Wii U USB drive read with
+GodModeU's saved keys; the FTP server; Export Miis.
 
-Archives (zip / 7z / RAR, RVZ / WIA and Retro PAK included), the texture-mapped model viewer and the WAV / MP3 / FLAC / Ogg player are
-exercised in Dolphin only. Archives are read-only and **untested on real hardware** and only checked against generated samples on a PC. Limits: LZ files and
-IMD5 payloads are decompressed in memory (24 MiB at most), the vWii common key (index 2, used by Wii U era WADs) isn't included, `content.bin` needs this console's
-keys (OTP, so Homebrew Channel with AHBPROT) and only opens on the console that made it, and VFF is FAT12 / FAT16 with 8.3 names.
-WFS is read the way wfslib does it (no block hashes are checked, areas are assumed to be contiguous, links are not shown) and was tested
-against images generated by a script on a PC and one real Wii U USB drive; large directories take a moment to list.
-SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read the way Dolphin's WiiSave code does.
+**Not yet verified on real hardware** (please report what you see): multi-drive / multi-LUN USB and SD Gecko, the SEEPROM / OTP
+readers and the Console Keys drive, disc browsing, archives (zip / 7z / RAR, RVZ / WIA, Retro PAK), the model viewer, the
+WAV / MP3 / FLAC / Ogg player, and the extra controllers.
+
+**Limitations:**
+
+* **Drives:** logical partitions, extra ext2/3/4 partitions and extra SD card partitions aren't mounted. Files over 4 GiB can't
+  be written to FAT32 (exFAT is fine). The font is ASCII only: accented letters lose their accents and other characters show as
+  `?` (the files keep their real names).
+* **Disc drive:** only the Wii data partition (not the update partition); no raw Wii disc image, but GameCube and unrecognised
+  discs can be copied as `disc.iso`. A damaged disc copies slowly while the drive retries.
+* **Memory cards:** saves are `<company>-<gamecode>-<name>.gci` (the 0x40-byte directory entry, then the data, as GCMM and Dolphin
+  use). To restore, copy `.gci` files onto the card (not `.gcs` / `.sav`): you're asked first, an existing save is never
+  replaced (delete it first), and a file is only written once complete and valid. Its identity comes from the header, not the
+  file name. No renaming or folders, read-only over FTP. Don't pull the card while it is writing; cards are re-read when you
+  open the drive or remount.
+* **Archives** are read-only; encrypted and multi-volume archives aren't supported. A RAR5 file has to fit in 48 MiB, and a big
+  solid RAR5 can be too large for the Wii's memory. Split WBFS parts (`.wbf1` …) aren't joined. RVZ / WIA chunks are limited
+  to 32 MiB (Dolphin's defaults fit). LZ files and IMD5 payloads are unpacked in memory (24 MiB at most). Archives can't be
+  opened over FTP.
+* **Keys:** the vWii common key (index 2, Wii U era WADs) isn't included. `content.bin` needs this console's keys (OTP, so the
+  Homebrew Channel with AHBPROT) and only opens on the console that made it.
+* **VFF** is FAT12 / FAT16 with 8.3 names. **`data.bin`** is read the way Dolphin's WiiSave code does it.
+* **WFS** is read the way wfslib does (no block hashes checked, areas assumed contiguous, links not shown), tested against
+  generated images and one real Wii U drive. Large folders take a moment to list.
 
 ## Credits
 
 **GodModeWii is by quatric & cmyksoda.** It also stands on a lot of other people's work. Thank you!
 
+### Code included
+
 * **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak
   (from Some YAWMM Mod, YAWMM and WAD Manager by Waninkoko; GPL-2.0) — the WAD installer (`source/wadinstall.c`: the ES install
   sequence, the vWii ticket fix-up and every brick check) and the `.dol` / `.elf` launcher (`source/launch.c` and its app booter in
   `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
-* **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
-  every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
-  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
-  Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
-  (ISO, WBFS, CISO).
 * **[wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player)** (quatric; MIT) — the Mobiclip, THP and Flipnote
   players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
   (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)
   and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
-* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
-* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
-* **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
-  play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). The built-in General
-  MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
-* **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC.
-* **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ.
-* **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
-* **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder follow nintoolbox's.
-
-* **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
-* **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
-* **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — Wii file-management homebrew that
-  inspired this project (no FTP here, but the spirit is the same).
-* **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
-* **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
-  Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
-  OTP and SEEPROM access sequences used here. The hashes used to recognise the SD key come from it too.
 * **[FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod)** by the WiiDatabase.de team, based on **FSToolBox by nickasa**
   and the **AHBPROT mod by Lupo96** — the approach for NAND access on the Wii and the Wii U's vWii mode
   (staying on the loader's IOS, ISFS permission patch). Parts of its code are included in `source/runtimeiospatch.c/.h`.
 * **libruntimeiospatch** by Nano (Christopher Bratusek), with code by Joseph Jordan, damysteryman, DarkMatterCore, megazig
   and FIX94, as shipped in FSToolBox-Mod. GodModeWii adds two tiny single-patch entry points (`IosPatch_ISFS`, `IosPatch_DIReadLimit`).
+* **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
+  play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). The built-in General
+  MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
+* **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC.
+* **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ.
+* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
 * **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch follow GlowWii's approach.
-* **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` layout (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents) and the IMET / U8 handling.
-* **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
-* **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
-* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
-* **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
-* **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
-* **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
 * **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
-* **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.
 * **[libntfs](https://github.com/extremscorner/libntfs)** by Extrems and contributors, on **NTFS-3G** (GPL-2.0): NTFS drives,
   built by `scripts/build_libntfs.sh`.
 * **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
   libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, ported and made read-only by `scripts/build_libext4.sh`.
+* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
+* **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.
+
+### Formats and references
+
+* **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
+  every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
+  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
+  Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
+  (ISO, WBFS, CISO), and file-type detection.
+* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
+* **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
+* **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder follow nintoolbox's.
+* **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
+  Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
+  OTP and SEEPROM access sequences used here. The hashes used to recognise the SD key come from it too.
+* **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` layout (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents) and the IMET / U8 handling.
+* **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
+* **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
+* **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
+* **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
+* **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
 * **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.
+
+### Inspiration
+
+* **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
+* **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
+* **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.
+* **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
 * The **Dolphin** team, for the emulator used during development.
 
 ## License
