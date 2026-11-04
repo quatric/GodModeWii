@@ -308,7 +308,7 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         char err[96] = "";
         g_inst_name = name;
         g_inst_dev = dev;
-        int n = install_archive(path, dev, install_progress, err, sizeof(err));
+        int n = install_archive_apps(path, dev, install_progress, err, sizeof(err));
         if (n >= 0) {
             vfs_remove(path, false);
             wl_log("Installed %d file%s to the %s", n, n == 1 ? "" : "s", g_devs[dev].tag);

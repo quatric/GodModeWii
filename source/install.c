@@ -89,6 +89,8 @@ typedef struct {
     int strip;                 /* leading folders to drop (0 or 1) */
     char prepend[MAX_NAME];    /* folder to put in front, "" or "apps/x/" */
     bool drop_docs;            /* skip loose readme-type files at the top */
+    int napps;                 /* apps-only mode: program folders found in the archive */
+    struct app_dir { char src[MAX_NAME]; char dst[MAX_NAME]; } *apps;
 } layout_t;
 
 typedef struct { char *name; bool dir; u64 size; } ent_t;
@@ -182,9 +184,82 @@ static void decide_layout(const ent_t *e, int n, const char *stem, layout_t *L)
     snprintf(L->prepend, sizeof(L->prepend), "%s%s/", APPS_BASE, stem);
 }
 
+static bool is_prog(const char *name)
+{
+    const char *x = ext_of(name);
+    return !strcasecmp(x, "dol") || !strcasecmp(x, "elf");
+}
+
+static bool is_boot(const char *name)
+{
+    const char *b = strrchr(name, '/');
+    b = b ? b + 1 : name;
+    return !strcasecmp(b, "boot.dol") || !strcasecmp(b, "boot.elf");
+}
+
+/* "a/b" is inside "a" (or anything is inside the root, ""). */
+static bool path_within(const char *p, const char *dir)
+{
+    size_t l = strlen(dir);
+    if (!l) return true;
+    return !strncasecmp(p, dir, l) && (p[l] == '/' || p[l] == '\0');
+}
+
+/* Apps-only placement, the way the Homebrew Channel takes a zip ("myapp/boot.dol" ->
+ * apps/myapp): find the folders that hold a program (boot.dol / boot.elf, else any .dol /
+ * .elf), whatever wrapper or "apps/" folders sit around them, and give each its own
+ * apps/<folder>. A program loose at the top goes into apps/<archive name>. Everything outside
+ * those folders is left out. False when there is no program in the archive. */
+static bool decide_apps(const ent_t *e, int n, const char *stem, layout_t *L)
+{
+    memset(L, 0, sizeof(*L));
+    for (int pass = 0; pass < 2 && !L->napps; pass++) {
+        for (int i = 0; i < n; i++) {
+            if (e[i].dir || !(pass ? is_prog(e[i].name) : is_boot(e[i].name))) continue;
+            char d[MAX_NAME];
+            snprintf(d, sizeof(d), "%s", e[i].name);
+            char *sl = strrchr(d, '/');
+            if (sl) *sl = '\0'; else d[0] = '\0';
+            bool have = false;
+            for (int k = 0; k < L->napps && !have; k++) have = !strcasecmp(L->apps[k].src, d);
+            if (have) continue;
+            struct app_dir *na = realloc(L->apps, (size_t)(L->napps + 1) * sizeof(*na));
+            if (!na) return false;
+            L->apps = na;
+            snprintf(L->apps[L->napps++].src, MAX_NAME, "%s", d);
+        }
+    }
+    if (!L->napps) return false;
+    /* a program folder inside another one belongs to that one */
+    for (int i = 0; i < L->napps; i++)
+        for (int k = 0; k < L->napps; k++)
+            if (i != k && strcasecmp(L->apps[i].src, L->apps[k].src) && path_within(L->apps[i].src, L->apps[k].src)) {
+                L->apps[i--] = L->apps[--L->napps];
+                break;
+            }
+    for (int i = 0; i < L->napps; i++) {
+        const char *src = L->apps[i].src, *b = strrchr(src, '/');
+        b = b ? b + 1 : src;
+        if (!b[0] || !strcasecmp(b, "apps")) b = stem;
+        snprintf(L->apps[i].dst, MAX_NAME, "%s%.120s", APPS_BASE, b);
+    }
+    return true;
+}
+
 /* Archive path -> path relative to the drive root, or false to skip it. */
 static bool map_name(const layout_t *L, const char *name, char *out, size_t n)
 {
+    if (L->napps) {
+        for (int i = 0; i < L->napps; i++) {
+            const char *src = L->apps[i].src;
+            if (!path_within(name, src)) continue;
+            const char *rest = name + strlen(src);
+            if (*rest == '/') rest++;
+            int w = *rest ? snprintf(out, n, "%s/%s", L->apps[i].dst, rest) : snprintf(out, n, "%s", L->apps[i].dst);
+            return w > 0 && (size_t)w < n;
+        }
+        return false;
+    }
     const char *p = name;
     for (int i = 0; i < L->strip; i++) {
         p = after_first(p);
@@ -373,7 +448,7 @@ static bool reader_extract(reader_t *rd, u64 size, wsink_t *w, char *buf, char *
 
 /* ---------------------------------------------------------------- install */
 
-int install_archive(const char *arc_path, int dev, install_cb cb, char *err, size_t errsz)
+static int install_any(const char *arc_path, int dev, bool apps_only, install_cb cb, char *err, size_t errsz)
 {
     if (err && errsz) err[0] = '\0';
     if (dev < 0 || !g_devs[dev].mounted) { set_err(err, errsz, "No SD card / USB drive to install to"); return -1; }
@@ -387,7 +462,7 @@ int install_archive(const char *arc_path, int dev, install_cb cb, char *err, siz
     int n = 0, cap = 0;
     u64 total = 0, done_bytes = 0;
     int result = -1;
-    layout_t L;
+    layout_t L = { 0 };
     char stem[128], *buf = NULL, root[VFS_PATH_MAX], raw[MAX_NAME + 8];
     snprintf(root, sizeof(root), "%s", vfs_dev_root(dev));
 
@@ -416,7 +491,10 @@ int install_archive(const char *arc_path, int dev, install_cb cb, char *err, siz
     if (!n) { set_err(err, errsz, "The archive is empty"); goto done; }
 
     archive_stem(arc_path, stem, sizeof(stem));
-    decide_layout(ents, n, stem, &L);
+    if (!apps_only || !decide_apps(ents, n, stem, &L)) {
+        free(L.apps);
+        decide_layout(ents, n, stem, &L);
+    }
 
     vfs_update_space(dev);
     if (g_devs[dev].space_known && total + (1u << 20) > g_devs[dev].free) {
@@ -468,10 +546,21 @@ int install_archive(const char *arc_path, int dev, install_cb cb, char *err, siz
     result = written;
 
 done:
+    free(L.apps);
     for (int i = 0; i < n; i++) free(ents[i].name);
     free(ents);
     free(buf);
     reader_close(&rd);
     ar_close(st);
     return result;
+}
+
+int install_archive(const char *arc_path, int dev, install_cb cb, char *err, size_t errsz)
+{
+    return install_any(arc_path, dev, false, cb, err, errsz);
+}
+
+int install_archive_apps(const char *arc_path, int dev, install_cb cb, char *err, size_t errsz)
+{
+    return install_any(arc_path, dev, true, cb, err, errsz);
 }

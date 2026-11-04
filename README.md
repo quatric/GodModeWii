@@ -220,8 +220,22 @@ client from devkitPro (or any other that speaks wiiload 0.4 / 0.5) works as it i
 
     WIILOAD=tcp:192.168.1.23 wiiload MyApp.zip
 
-A **`.zip`, `.7z` or `.rar`** is installed exactly like the FTP install server does it (`apps/MyApp/...` lands in `apps`, a
-lone program folder goes to `apps/<folder>`, and so on) onto the SD card, or the USB drive after **1** switches to it. A
+A **`.zip`, `.7z` or `.rar`** is installed onto the SD card, or the USB drive after **1** switches to it, the way the Homebrew
+Channel takes it — a zip holding one folder with the program in it:
+
+    myapp.zip
+    └── myapp/          → apps/myapp/
+        ├── boot.dol    (or boot.elf)
+        ├── meta.xml
+        └── icon.png
+
+    zip -r myapp.zip myapp && wiiload myapp.zip
+
+GodModeWii looks for the folder that holds `boot.dol` / `boot.elf` (or another `.dol` / `.elf`) wherever it is, so zips
+that also carry an `apps/` folder or a release folder around it (`MyApp-v1.2/apps/myapp/boot.dol`) end up in
+`apps/myapp/` all the same, files outside the program folder (readmes and so on) are left out, a zip with several apps
+installs each of them, and a program loose at the top goes into `apps/<zip name>/`. Archives with no program in them (WADs,
+say) are placed the way the FTP install server does it. A
 **`.dol` / `.elf`** is kept in `GodModeWii/wiiload/` and GodModeWii offers to start it at once. Anything else is kept in
 `GodModeWii/wiiload/` too. What a file is goes by its contents, not the name it was sent with. Compressed uploads are
 unpacked as they arrive, so a file can be as large as the drive's free space (up to 512 MiB); only peers on the local network
