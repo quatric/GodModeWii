@@ -637,7 +637,10 @@ static void show_credits(void)
         "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).",
 
         "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n\n"
-        "Audio and texture formats follow quatric's nintoolbox and mobipeg.",
+        "Audio and texture formats follow quatric's nintoolbox and mobipeg.\n\n"
+        "Mobiclip, THP and Flipnote playback: quatric's wii-mobiclip-player (MIT), whose Mobiclip decoder is "
+        "ported from FFmpeg (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, "
+        "MobiclipDecoder (Gericom) and WiiLink24. JPEG frames: NanoJPEG (Martin J. Fiedler). Vorbis: Tremor.",
     };
     ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 3);
 }

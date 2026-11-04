@@ -466,6 +466,19 @@ static bool load_set(set_t *s, const char *path)
     else if (!memcmp(b, "\x89PNG", 4)) load_png(s);
     else if (b[0] == 0xFF && b[1] == 0xD8) load_jpeg(s);
     else if (!memcmp(b, "RIFF", 4) && s->len > 12 && !memcmp(b + 8, "WEBP", 4)) load_webp(s);
+    else if ((!memcmp(b, "BNR1", 4) || !memcmp(b, "BNR2", 4)) && s->len >= 0x20 + 96 * 32 * 2) {
+        s->kind = "GameCube banner";                    /* 96x32 RGB5A3 after a 0x20 byte header */
+        add(s, TF_RGB5A3, 96, 32, 0x20, "banner");
+    }
+    else if (!memcmp(b, "WIBN", 4) && s->len >= 0xA0 + 192 * 64 * 2) {
+        s->kind = "Wii save banner";                    /* banner.bin: 192x64 banner, then 48x48 icon frames */
+        add(s, TF_RGB5A3, 192, 64, 0xA0, "banner");
+        for (u32 off = 0xA0 + 192 * 64 * 2, k = 1; off + 48 * 48 * 2 <= s->len && k <= 8; off += 48 * 48 * 2, k++) {
+            char lab[16];
+            snprintf(lab, sizeof(lab), "icon %u", (unsigned)k);
+            add(s, TF_RGB5A3, 48, 48, off, lab);
+        }
+    }
     else if (arc_name_has_ext(path, ".bti")) { s->kind = "BTI"; parse_bti_at(s, 0, vfs_basename(path)); }
     return s->n > 0;
 }
@@ -610,7 +623,7 @@ static bool view(const char *path)
 bool image_is_name(const char *name)
 {
     static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".breft", ".bmd", ".bdl",
-                                       ".png", ".jpg", ".jpeg", ".webp", NULL };
+                                       ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
             return true;

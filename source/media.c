@@ -10,10 +10,12 @@
 #include "vfs.h"
 #include "ui.h"
 #include "archive.h"
+#include "mc_player.h"
 
 bool media_is_name(const char *name)
 {
-    return audio_is_name(name) || image_is_name(name) || model_is_name(name) || arc_name_has_ext(name, ".bmg");
+    return audio_is_name(name) || video_is_name(name) || image_is_name(name) || model_is_name(name) || arc_name_has_ext(name, ".bmg") ||
+           arc_name_has_ext(name, ".breff");
 }
 
 bool media_open(const char *path)
@@ -24,9 +26,15 @@ bool media_open(const char *path)
         ui_message("AUDIO", C_YELLOW, "This file couldn't be played: its format or layout isn't supported.");
         return true;
     }
+    if (video_is_name(name)) {
+        if (video_play(path)) return true;
+        ui_message("VIDEO", C_YELLOW, "This file couldn't be played: it isn't a video this player understands.");
+        return true;
+    }
     if (model_is_name(name) && model_view(path)) return true;
     if (image_is_name(name) && image_view(path)) return true;
     if (arc_name_has_ext(name, ".bmg") && bmg_view(path)) return true;
+    if (arc_name_has_ext(name, ".breff") && breff_view(path)) return true;
     return false;
 }
 
@@ -122,6 +130,50 @@ bool bmg_view(const char *path)
         }
         put(&s, "\n", 1);
     }
+    free(b);
+    if (!s.p) return false;
+    u8 *buf = memalign(32, s.n + 32);
+    if (!buf) { free(s.p); return false; }
+    memcpy(buf, s.p, s.n);
+    free(s.p);
+    text_show(vfs_basename(path), buf, s.n, s.n, false);
+    return true;
+}
+
+/* ---------------------------------------------------------------- BREFF */
+
+/* NW4R effect set: "REFF" header, then a REFF section holding the project
+ * name and a table of emitters (name, offset, size; offsets from the table).
+ * The particle textures live in the matching .breft (the image viewer). */
+bool breff_view(const char *path)
+{
+    u32 len;
+    u8 *b = load(path, &len);
+    if (!b) return false;
+    if (memcmp(b, "REFF", 4) || len < 0x40 || memcmp(b + 0x10, "REFF", 4)) { free(b); return false; }
+    u32 nlen = be16(b + 0x24);
+    u32 tab = (0x28 + nlen + 3) & ~3u;
+    if (nlen > 256 || tab + 8 > len) { free(b); return false; }
+    char proj[260];
+    snprintf(proj, sizeof(proj), "%.*s", (int)nlen, (const char *)b + 0x28);
+    u32 tsz = be32(b + tab), cnt = be16(b + tab + 4);
+    sbuf s = { 0 };
+    char line[320];
+    snprintf(line, sizeof(line), "Effect set \"%s\": %u emitters\n\n", proj, (unsigned)cnt);
+    put(&s, line, strlen(line));
+    u32 p = tab + 8;
+    for (u32 i = 0; i < cnt && p + 2 <= len && p < tab + tsz; i++) {
+        u32 l = be16(b + p);
+        if (p + 2 + l + 8 > len) break;
+        u32 off = be32(b + p + 2 + l), sz = be32(b + p + 2 + l + 4);
+        snprintf(line, sizeof(line), "%3u  %-40.*s  %6u bytes\n", (unsigned)i, (int)(l ? l - 1 : 0),
+                 (const char *)b + p + 2, (unsigned)sz);
+        put(&s, line, strlen(line));
+        (void)off;
+        p += 2 + l + 8;
+    }
+    static const char tail[] = "\nTextures for these emitters are in the matching .breft file.\n";
+    put(&s, tail, sizeof(tail) - 1);
     free(b);
     if (!s.p) return false;
     u8 *buf = memalign(32, s.n + 32);

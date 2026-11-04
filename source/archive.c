@@ -636,6 +636,9 @@ static const fmt_t formats[] = {
     { "Yaz0",        arc_yaz0_probe,       arc_yaz0_open },
     { "RARC",        arc_rarc_probe,       arc_rarc_open },
     { "BRRES",       arc_brres_probe,      arc_brres_open },
+    { "ASH0",        arc_ash0_probe,       arc_ash0_open },
+    { "GFA",         arc_gfa_probe,        arc_gfa_open },
+    { "BRSAR",       arc_brsar_probe,      arc_brsar_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
 

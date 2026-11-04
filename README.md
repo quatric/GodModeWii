@@ -68,7 +68,12 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 * **3D model viewer** (press **A**): MDL0 models in a `.brres` and J3D `.bmd` / `.bdl`, drawn with GX and lit, with bone / joint
   placement. D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
   browses a `.brres`.
-* **BMG** message files open as text; **Yaz0 / SZS**, **Yay0**, **RARC** and **BRRES** open like folders.
+* **Video player** (press **A**): Mobiclip `.mo`, THP, and Flipnote `.kwz` / `.ppm`, with sound, played straight from any drive,
+  the NAND, a disc or inside an archive. **A** / **+** pause, **B** stop.
+* **BMG** message files and **BREFF** effect sets (their emitter list) open as text; **Yaz0 / SZS**, **Yay0**, **ASH0**, **RARC**,
+  **BRRES** and Good-Feel **GFA** archives open like folders. A **BRSAR** sound archive opens as its groups, with each sequence,
+  bank and sound file, and every wave in its wave archives, which the audio player plays. GameCube `.bnr` banners and Wii save
+  `banner.bin` files (banner and icon frames) open in the image viewer.
 * Everything here is for looking and listening: nothing is converted, exported or repacked (that is nintoolbox's job).
 * **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
 * **exFAT** SD cards and USB drives (release builds), partitioned MBR or GPT (as macOS formats them) or not at all: they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
@@ -188,7 +193,8 @@ The vWii NAND is as brick-prone as the Wii's, and a bricked vWii may need the Wi
 
 ## Building
 
-You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat:
+You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus these portlibs:
+`dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-libvorbisidec ppc-libogg`.
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
@@ -266,8 +272,12 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
   `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
 * **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
   every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
-  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, Yaz0 / Yay0 and RARC.
-* **libpng**, **libjpeg-turbo**, **libwebp** and **zlib**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing.
+  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, BREFF, BRSAR / RWAR, BNR, WIBN, Yaz0 / Yay0, ASH0, GFA and RARC.
+* **[wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player)** (quatric; MIT) — the Mobiclip, THP and Flipnote
+  players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
+  (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)
+  and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
+* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing and Vorbis sound in Mobiclip videos.
 
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.

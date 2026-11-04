@@ -3,6 +3,10 @@
  *   Yaz0 (.szs, .yaz0)  and  Yay0     compressed; a compressed archive opens as the archive inside
  *   RARC (.arc, .rarc)                GameCube / Wii resource archive
  *   BRRES (.brres)                    NW4R resource file: its folders and sub-files (TEX0, PLT0, MDL0, ...)
+ *   ASH0 (.ash)                       Wii Menu / Animal Crossing compression; opens as the file inside
+ *   BRSAR (.brsar)                    NW4R sound archive: groups, their sequence / bank / sound files,
+ *                                     and each wave archive's RWAV waves (playable)
+ *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10 payload, little endian
  * Layouts follow quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
@@ -296,5 +300,396 @@ archive_t *arc_brres_open(const src_t *f, const char *name)
     if (!brres_group(a, b, len, root + 8, 0, 0)) a = raw_fail(a);
 out:
     free(b);
+    return a;
+}
+
+/* ---------------------------------------------------------------- ASH0 */
+
+typedef struct { const uint8_t *src; uint32_t size, pos, word, used; } ashbits;
+
+static bool ash_feed(ashbits *b)
+{
+    if (b->size < 4 || b->pos > b->size - 4) return false;
+    b->word = be32(b->src + b->pos);
+    b->pos += 4;
+    b->used = 32;
+    return true;
+}
+
+static bool ash_read(ashbits *b, uint32_t n, uint32_t *v)
+{
+    uint32_t val = 0;
+    while (n--) {
+        if (!b->used && !ash_feed(b)) return false;
+        val = val << 1 | b->word >> 31;
+        b->word <<= 1;
+        b->used--;
+    }
+    *v = val;
+    return true;
+}
+
+/* Huffman tree, stored as left / right child tables above the leaf range. */
+static bool ash_tree(ashbits *b, uint32_t width, uint32_t *left, uint32_t *right, uint32_t *root, uint32_t *work)
+{
+    const uint32_t max = 1u << width, cap = 2 * max - 1, wcap = 2 * max;
+    uint32_t used = 0, nodes = 0, next = max;
+    for (;;) {
+        uint32_t bit, value;
+        if (!ash_read(b, 1, &bit)) return false;
+        if (bit) {
+            if (used + 2 > wcap || next >= cap) return false;
+            work[used++] = next | 0x80000000u;
+            work[used++] = next | 0x40000000u;
+            nodes += 2;
+            next++;
+            continue;
+        }
+        if (!ash_read(b, width, &value) || value >= max) return false;
+        *root = value;
+        while (nodes) {
+            uint32_t node = work[--used], idx = node & 0x3fffffffu;
+            if (idx >= cap) return false;
+            nodes--;
+            if (node & 0x80000000u) { right[idx] = *root; *root = idx; }
+            else { left[idx] = *root; break; }
+        }
+        if (!nodes) return true;
+    }
+}
+
+static bool ash_sym(ashbits *b, uint32_t root, uint32_t max, const uint32_t *l, const uint32_t *r, uint32_t *v)
+{
+    uint32_t s = root;
+    while (s >= max) {
+        uint32_t bit;
+        if (s >= 2 * max - 1 || !ash_read(b, 1, &bit)) return false;
+        s = bit ? r[s] : l[s];
+    }
+    *v = s;
+    return true;
+}
+
+/* The distance tree is 11 bits wide in the Wii Menu and Animal Crossing,
+ * 15 in My Pokémon Ranch; nothing in the header says which, so try both. */
+static bool ash_try(const uint8_t *in, uint32_t len, uint8_t *out, uint32_t osz, uint32_t dbits)
+{
+    const uint32_t smax = 1u << 9, dmax = 1u << dbits;
+    uint32_t *mem = calloc((2 * smax - 1) * 2 + (2 * dmax - 1) * 2 + 2 * dmax, sizeof(uint32_t));
+    if (!mem) return false;
+    uint32_t *sl = mem, *sr = sl + 2 * smax - 1, *dl = sr + 2 * smax - 1, *dr = dl + 2 * dmax - 1, *work = dr + 2 * dmax - 1;
+    ashbits sb = { in, len, 0x0C, 0, 0 }, db = { in, len, be32(in + 8), 0, 0 };
+    uint32_t sroot = 0, droot = 0;
+    bool ok = ash_feed(&sb) && ash_feed(&db) && ash_tree(&sb, 9, sl, sr, &sroot, work) &&
+              ash_tree(&db, dbits, dl, dr, &droot, work);
+    for (uint32_t pos = 0; ok && pos < osz;) {
+        uint32_t sym, dist;
+        if (!ash_sym(&sb, sroot, smax, sl, sr, &sym)) { ok = false; break; }
+        if (sym < 0x100) { out[pos++] = (uint8_t)sym; continue; }
+        uint32_t n = sym - 0x100 + 3;
+        if (!ash_sym(&db, droot, dmax, dl, dr, &dist) || dist >= pos || n > osz - pos) { ok = false; break; }
+        for (uint32_t k = 0; k < n; k++, pos++) out[pos] = out[pos - dist - 1];
+    }
+    free(mem);
+    return ok;
+}
+
+bool arc_ash0_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[16];
+    if (!read_head(f, h, 16) || memcmp(h, "ASH0", 4)) return false;
+    uint32_t osz = be32(h + 4) & 0x00FFFFFF;
+    return osz && osz <= MAX_OUT && be32(h + 8) + 4 <= f->size;
+}
+
+archive_t *arc_ash0_open(const src_t *f, const char *name)
+{
+    uint32_t len;
+    uint8_t *in = read_all(f, &len);
+    if (!in) return NULL;
+    uint32_t osz = be32(in + 4) & 0x00FFFFFF;
+    uint8_t *out = malloc(osz);
+    bool ok = out && (ash_try(in, len, out, osz, 11) || ash_try(in, len, out, osz, 15));
+    free(in);
+    if (!ok) { free(out); return NULL; }
+    static const char *const exts[] = { ".ash", ".ash0", NULL };
+    char inner[256];
+    inner_name(name, inner, sizeof(inner), exts);
+    return archive_open_memory(out, osz, inner);
+}
+
+/* ---------------------------------------------------------------- GFA */
+
+/* Byte pair encoding, Good-Feel's GFCP mode 1: per block, a pair table and a
+ * big endian block length, then bytes expanded recursively through the table. */
+static bool bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
+{
+    uint32_t sp = 0, dp = 0;
+    uint8_t t0[256], t1[256], stack[512];
+    bool paired[256];
+    while (dp < dsz) {
+        for (int i = 0; i < 256; i++) { t0[i] = (uint8_t)i; t1[i] = 0; paired[i] = false; }
+        uint32_t c = 0;
+        while (c < 256) {
+            if (sp >= ssz) return false;
+            uint32_t m = src[sp++], n;
+            if (m > 127) {
+                c += m - 127;
+                if (c == 256) break;
+                n = 1;
+            } else n = m + 1;
+            for (uint32_t i = 0; i < n && c < 256; i++, c++) {
+                if (sp >= ssz) return false;
+                uint8_t lc = src[sp++];
+                t0[c] = lc;
+                if (lc != (uint8_t)c) {
+                    if (sp >= ssz) return false;
+                    t1[c] = src[sp++];
+                    paired[c] = true;
+                }
+            }
+        }
+        if (sp + 2 > ssz) return false;
+        uint32_t blk = (uint32_t)src[sp] << 8 | src[sp + 1], sn = 0;
+        sp += 2;
+        while (blk || sn) {
+            uint8_t b;
+            if (sn) b = stack[--sn];
+            else {
+                if (sp >= ssz) return false;
+                b = src[sp++];
+                blk--;
+            }
+            if (paired[b]) {
+                if (sn + 2 > sizeof(stack)) return false;
+                stack[sn++] = t1[b];
+                stack[sn++] = t0[b];
+            } else {
+                if (dp >= dsz) return false;
+                dst[dp++] = b;
+            }
+        }
+    }
+    return true;
+}
+
+/* Plain LZ10 bit stream without the usual 4 byte header (GFCP modes 2 / 3). */
+static bool lz10_raw(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
+{
+    uint32_t sp = 0, dp = 0;
+    while (dp < dsz) {
+        if (sp >= ssz) return false;
+        uint8_t fl = src[sp++];
+        for (int bit = 0; bit < 8 && dp < dsz; bit++, fl <<= 1) {
+            if (!(fl & 0x80)) {
+                if (sp >= ssz) return false;
+                dst[dp++] = src[sp++];
+            } else {
+                if (sp + 2 > ssz) return false;
+                uint8_t a = src[sp++], b = src[sp++];
+                uint32_t n = (a >> 4) + 3, back = ((a & 15u) << 8 | b) + 1;
+                if (back > dp || n > dsz - dp) return false;
+                for (uint32_t k = 0; k < n; k++, dp++) dst[dp] = dst[dp - back];
+            }
+        }
+    }
+    return true;
+}
+
+bool arc_gfa_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x1C];
+    return read_head(f, h, 0x1C) && !memcmp(h, "GFAC", 4);
+}
+
+archive_t *arc_gfa_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint32_t len;
+    uint8_t *d = read_all(f, &len);
+    if (!d) return NULL;
+    archive_t *a = NULL;
+    uint8_t *blob = NULL;
+    uint32_t info = le32(d + 0x0C), doff = le32(d + 0x14), dsz = le32(d + 0x18);
+    if ((uint64_t)info + 4 > len || (uint64_t)doff + 20 > len || (uint64_t)doff + dsz > len) goto out;
+    uint32_t n = le32(d + info);
+    if (!n || n > 100000 || (uint64_t)info + 4 + n * 16ull > len) goto out;
+    const uint8_t *cp = d + doff;
+    if (memcmp(cp, "GFCP", 4)) goto out;
+    uint32_t mode = le32(cp + 8), olen = le32(cp + 12), zsz = le32(cp + 16);
+    if (!olen || olen > MAX_OUT || 20ull + zsz > dsz) goto out;
+    blob = malloc(olen);
+    if (!blob) goto out;
+    bool ok = mode == 1 ? bpe_decode(blob, olen, cp + 20, zsz)
+            : (mode == 2 || mode == 3) ? lz10_raw(blob, olen, cp + 20, zsz) : false;
+    if (!ok) goto out;
+    a = archive_alloc("GFA");
+    if (!a) goto out;
+    a->read = raw_read;
+    a->base = *f;
+    a->src = src_from_memory(blob, olen);
+    if (!a->src.ctx) { memset(&a->base, 0, sizeof(a->base)); archive_close(a); a = NULL; goto out; }
+    blob = NULL;
+    for (uint32_t i = 0; i < n; i++) {
+        const uint8_t *r = d + info + 4 + i * 16;
+        uint32_t no = le32(r + 4) & 0x00FFFFFF, sz = le32(r + 8), off = le32(r + 12);
+        char nm[256];
+        if (no && no < len) {
+            uint32_t k = 0;
+            while (no + k < len && d[no + k] && k + 1 < sizeof(nm)) { nm[k] = (char)d[no + k]; k++; }
+            nm[k] = 0;
+        } else nm[0] = 0;
+        if (!nm[0]) snprintf(nm, sizeof(nm), "file%04u.bin", (unsigned)i);
+        if (off >= doff) off -= doff;
+        if ((uint64_t)off + sz > olen) continue;
+        if (tree_add_path(&a->tree, nm, false, sz, off, 0, 0) < 0) {
+            memset(&a->base, 0, sizeof(a->base));
+            archive_close(a);
+            a = NULL;
+            goto out;
+        }
+    }
+out:
+    free(blob);
+    free(d);
+    return a;
+}
+
+/* ---------------------------------------------------------------- BRSAR */
+
+bool arc_brsar_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x28];
+    return read_head(f, h, 0x28) && !memcmp(h, "RSAR", 4) && be16(h + 4) == 0xFEFF;
+}
+
+typedef struct { const uint8_t *b; uint32_t n; } blk_t;
+
+static uint32_t bu32(const blk_t *k, uint64_t off) { return off + 4 <= k->n ? be32(k->b + off) : 0xFFFFFFFFu; }
+
+/* SYMB: a string table (count, then offsets) of NUL terminated names. */
+static const char *rsar_name(const blk_t *sy, uint32_t id)
+{
+    uint32_t tab = bu32(sy, 0), cnt = bu32(sy, tab);
+    if (id == 0xFFFFFFFFu || tab == 0xFFFFFFFFu || id >= cnt) return NULL;
+    uint32_t o = bu32(sy, tab + 4 + (uint64_t)id * 4);
+    if (o >= sy->n || !memchr(sy->b + o, 0, sy->n - o)) return NULL;
+    return (const char *)sy->b + o;
+}
+
+static const char *rsar_ext(const uint8_t m[4])
+{
+    if (!memcmp(m, "RSEQ", 4)) return ".rseq";
+    if (!memcmp(m, "RBNK", 4)) return ".rbnk";
+    if (!memcmp(m, "RWSD", 4)) return ".rwsd";
+    if (!memcmp(m, "RWAV", 4)) return ".rwav";
+    if (!memcmp(m, "RSTM", 4)) return ".brstm";
+    return ".bin";
+}
+
+/* An RWAR wave archive at `at` (absolute) becomes a folder of RWAVs. */
+static void rsar_rwar(archive_t *a, const src_t *f, uint64_t at, uint32_t size, int parent)
+{
+    uint8_t h[0x20];
+    if (size < 0x40 || !src_read_full(f, at, h, 0x20) || memcmp(h, "RWAR", 4)) return;
+    uint32_t tabl = be32(h + 0x10), dat = be32(h + 0x18);
+    uint8_t t[12];
+    if ((uint64_t)tabl + 12 > size || (uint64_t)dat + 8 > size || !src_read_full(f, at + tabl, t, 12) ||
+        memcmp(t, "TABL", 4))
+        return;
+    uint32_t cnt = be32(t + 8);
+    if (cnt > 4096 || tabl + 12 + cnt * 12ull > size) return;
+    uint8_t *e = malloc(cnt * 12 + 1);
+    if (!e || !src_read_full(f, at + tabl + 12, e, cnt * 12)) { free(e); return; }
+    for (uint32_t i = 0; i < cnt; i++) {
+        uint32_t off = be32(e + i * 12 + 4), sz = be32(e + i * 12 + 8);
+        if (!sz || (uint64_t)dat + off + sz > size) continue;
+        char nm[24];
+        snprintf(nm, sizeof(nm), "wave%04u.rwav", (unsigned)i);
+        tree_add(&a->tree, parent, nm, false, sz, at + dat + off, 0, 0);
+    }
+    free(e);
+}
+
+archive_t *arc_brsar_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x28];
+    if (!read_head(f, h, 0x28)) return NULL;
+    uint32_t so = be32(h + 0x10), ss = be32(h + 0x14), io = be32(h + 0x18), is = be32(h + 0x1C);
+    if (ss < 8 || is < 8 || ss > 16u << 20 || is > 16u << 20 || (uint64_t)so + ss > f->size || (uint64_t)io + is > f->size)
+        return NULL;
+    uint8_t *sb = malloc(ss), *ib = malloc(is);
+    archive_t *a = NULL;
+    uint8_t *done = NULL;
+    if (!sb || !ib || !src_read_full(f, so, sb, ss) || !src_read_full(f, io, ib, is) ||
+        memcmp(sb, "SYMB", 4) || memcmp(ib, "INFO", 4))
+        goto out;
+    blk_t sy = { sb + 8, ss - 8 }, in = { ib + 8, is - 8 };
+    uint32_t ftab = bu32(&in, 0x1C), fcnt = bu32(&in, ftab), gtab = bu32(&in, 0x24), gcnt = bu32(&in, gtab);
+    uint32_t btab = bu32(&in, 0x0C), bcnt = bu32(&in, btab), stab = bu32(&in, 0x04), scnt = bu32(&in, stab);
+    if (fcnt > in.n / 8 || gcnt > in.n / 8 || !gcnt) goto out;
+    if (bcnt > in.n / 8) bcnt = 0;
+    if (scnt > in.n / 8) scnt = 0;
+    const char **fname = calloc(fcnt + 1, sizeof(*fname));
+    done = calloc(fcnt + 1, 1);
+    if (!fname || !done) { free(fname); goto out; }
+    /* File names: a bank's own name, else the first sound that uses the file. */
+    for (uint32_t i = 0; i < bcnt; i++) {
+        uint32_t e = bu32(&in, btab + 8 + i * 8ull), fid = bu32(&in, e + 4ull);
+        if (fid < fcnt && !fname[fid]) fname[fid] = rsar_name(&sy, bu32(&in, e));
+    }
+    for (uint32_t i = 0; i < scnt; i++) {
+        uint32_t e = bu32(&in, stab + 8 + i * 8ull), fid = bu32(&in, e + 4ull);
+        if (fid < fcnt && !fname[fid]) fname[fid] = rsar_name(&sy, bu32(&in, e));
+    }
+    a = raw_new("BRSAR", f);
+    if (!a) { free(fname); goto out; }
+    for (uint32_t g = 0; g < gcnt; g++) {
+        uint32_t ge = bu32(&in, gtab + 8 + g * 8ull);
+        uint32_t gdata = bu32(&in, ge + 0x10ull), gwave = bu32(&in, ge + 0x18ull);
+        uint32_t itab = bu32(&in, ge + 0x24ull), icnt = bu32(&in, itab);
+        if (icnt > in.n / 8) continue;
+        const char *gn = rsar_name(&sy, bu32(&in, ge));
+        char gname[160];
+        if (gn) snprintf(gname, sizeof(gname), "%s", gn);
+        else snprintf(gname, sizeof(gname), "group%03u", (unsigned)g);
+        tree_clean_name(gname);
+        int gi = -1;
+        for (uint32_t i = 0; i < icnt; i++) {
+            uint32_t ie = bu32(&in, itab + 8 + i * 8ull);
+            uint32_t fid = bu32(&in, ie), doff = bu32(&in, ie + 4ull), dsz = bu32(&in, ie + 8ull);
+            uint32_t woff = bu32(&in, ie + 0xCull), wsz = bu32(&in, ie + 0x10ull);
+            if (fid < fcnt && done[fid]) continue;
+            if (!dsz || dsz == 0xFFFFFFFFu || (uint64_t)gdata + doff + dsz > f->size) continue;
+            uint8_t m[4];
+            if (!src_read_full(f, (uint64_t)gdata + doff, m, 4)) continue;
+            if (gi < 0 && (gi = tree_add(&a->tree, 0, gname, true, 0, 0, 0, 0)) < 0) break;
+            char stem[160], full[180];
+            if (fid < fcnt && fname[fid]) snprintf(stem, sizeof(stem), "%s", fname[fid]);
+            else snprintf(stem, sizeof(stem), "file%03u", (unsigned)fid);
+            tree_clean_name(stem);
+            const char *ext = rsar_ext(m);
+            snprintf(full, sizeof(full), "%s%s", stem, arc_name_has_ext(stem, ext) ? "" : ext);
+            tree_add(&a->tree, gi, full, false, dsz, (uint64_t)gdata + doff, 0, 0);
+            if (fid < fcnt) done[fid] = 1;
+            uint8_t wm[4];                   /* older archives keep raw samples here instead of an RWAR */
+            if (wsz >= 0x40 && wsz != 0xFFFFFFFFu && (uint64_t)gwave + woff + wsz <= f->size &&
+                src_read_full(f, (uint64_t)gwave + woff, wm, 4) && !memcmp(wm, "RWAR", 4)) {
+                snprintf(full, sizeof(full), "%s waves", stem);
+                int wi = tree_add(&a->tree, gi, full, true, 0, 0, 0, 0);
+                if (wi >= 0) rsar_rwar(a, f, (uint64_t)gwave + woff, wsz, wi);
+            }
+        }
+    }
+    free(fname);
+    if (a->tree.count <= 1) a = raw_fail(a);
+out:
+    free(done);
+    free(sb);
+    free(ib);
     return a;
 }

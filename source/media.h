@@ -18,6 +18,7 @@ bool model_is_name(const char *name);
 bool model_view(const char *path);          /* BRRES (MDL0) / BMD / BDL in 3D */
 
 bool bmg_view(const char *path);            /* BMG message files as text */
+bool breff_view(const char *path);          /* BREFF effect sets: the emitter list */
 
 /* A file the viewers recognise by name. */
 bool media_is_name(const char *name);
