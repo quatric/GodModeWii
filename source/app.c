@@ -57,6 +57,10 @@ static void status(int color, const char *fmt, ...)
 
 static int list_rows(void) { return ui_rows() - 8; }
 
+/* Set for a plain cursor move: the screen is the same one, so rows are rewritten in place
+ * instead of cleared first, which made the header bar blink. */
+static bool cursor_only;
+
 /* ---------------------------------------------------------------- clipboard */
 
 static void clip_clear(void)
@@ -205,7 +209,9 @@ static void draw_browser(void)
     int off = clip_n ? 1 : 0;
     int total = nents + off;
 
-    ui_clear();
+    if (!cursor_only)
+        ui_clear();
+    cursor_only = false;
     draw_header();
 
     ui_color(C_CYAN, true);
@@ -227,6 +233,7 @@ static void draw_browser(void)
         int idx = scroll + i;
         int row = 3 + i;
         if (idx >= total) {
+            ui_field(row, 0, cols - 1, "");
             if (total == 0 && i == 0) {
                 ui_color(C_WHITE, false);
                 ui_field(row, 2, cols - 3, "(empty)");
@@ -345,7 +352,9 @@ static void draw_home(void)
     if (home_cursor < home_scroll) home_scroll = home_cursor;
     if (home_cursor >= home_scroll + vis) home_scroll = home_cursor - vis + 1;
 
-    ui_clear();
+    if (!cursor_only)
+        ui_clear();
+    cursor_only = false;
     draw_header();
     ui_color(C_CYAN, true);
     ui_field(1, 1, cols - 2, "Select a drive");
@@ -385,10 +394,8 @@ static void draw_home(void)
     }
     ui_color(C_CYAN, true);
     ui_field(rows - 2, 1, cols - 2, "A Open drive  HOME System menu");
-    if (status_msg[0]) {
-        ui_color(status_color, true);
-        ui_field(rows - 3, 1, cols - 2, "%s", status_msg);
-    }
+    ui_color(status_color, true);
+    ui_field(rows - 3, 1, cols - 2, "%s", status_msg);
     ui_reset();
 }
 
@@ -1073,6 +1080,7 @@ int app_run(void)
             continue;
         status_msg[0] = '\0';
         dirty = true;
+        cursor_only = !(p & ~(WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT));
 
         if (p & WPAD_BUTTON_HOME) {
             if (system_menu())
