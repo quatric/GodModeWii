@@ -66,7 +66,10 @@ typedef struct {
 /* ---------------------------------------------------------------- reading */
 
 static u16 rd16(const snd_t *s, const u8 *p) { return s->le ? (u16)(p[0] | p[1] << 8) : be16(p); }
-static u32 rd32(const snd_t *s, const u8 *p) { return s->le ? (u32)(p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24) : be32(p); }
+static u32 rd32(const snd_t *s, const u8 *p)
+{
+    return s->le ? (u32)(p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24) : be32(p);
+}
 
 static bool read_at(vfs_file *f, u64 off, void *buf, u32 len)
 {
@@ -86,11 +89,17 @@ static u8 *grab(snd_t *s, u64 off, u32 len)
 {
     if (!len || off + len > s->f.size) return NULL;
     u8 *b = memalign(32, (len + 31) & ~31u);
-    if (b && !read_at(&s->f, off, b, len)) { free(b); b = NULL; }
+    if (b && !read_at(&s->f, off, b, len)) {
+        free(b);
+        b = NULL;
+    }
     return b;
 }
 
-static u32 adpcm_bytes(u32 samples) { return samples / 14 * 8 + (samples % 14 ? (samples % 14 + 1) / 2 + 1 : 0); }
+static u32 adpcm_bytes(u32 samples)
+{
+    return samples / 14 * 8 + (samples % 14 ? (samples % 14 + 1) / 2 + 1 : 0);
+}
 static u32 nibbles_to_samples(u32 n) { return n / 16 * 14 + (n % 16 > 2 ? n % 16 - 2 : 0); }
 
 static void load_coefs(snd_t *s, int ch, const u8 *p)
@@ -122,41 +131,58 @@ static bool open_stm(snd_t *s, u8 *h, u32 hlen, bool nw4c)
         s->fmt = !memcmp(h, "CSTM", 4) ? "BCSTM" : "BFSTM";
         if (!pos || !start) return false;
     }
+
     u8 *hd = grab(s, pos, 8);
     if (!hd) return false;
     u32 size = rd32(s, hd + 4);
     bool ok_magic = !memcmp(hd, nw4c ? "INFO" : "HEAD", 4);
     free(hd);
     if (!ok_magic || size < 0x40 || size > 0x100000) return false;
+
     u8 *b = grab(s, pos, size);
     if (!b) return false;
     bool ok = false;
     u32 h1 = rd32(s, b + 0x0C), toff = rd32(s, b + 0x1C) + 16;
     if (h1 + 8 + 0x38 > size || toff > size) goto out;
+
     const u8 *c = b + h1 + 8;
     int codec = c[0];
     s->loop = c[1] != 0;
     s->nch = c[2];
     if (!s->nch || s->nch > MAXCH) goto out;
+
     const u8 *q;
-    if (nw4c) { s->rate = rd32(s, c + 4); q = c + 8; }
-    else      { s->rate = rd16(s, c + 4); q = c + 8; }
+    if (nw4c) {
+        s->rate = rd32(s, c + 4);
+        q = c + 8;
+    } else {
+        s->rate = rd16(s, c + 4);
+        q = c + 8;
+    }
+
     s->loop_start = rd32(s, q);
     s->total = rd32(s, q + 4);
-    if (!nw4c) { start = rd32(s, q + 8); q += 12; } else q += 8;
+    if (!nw4c) {
+        start = rd32(s, q + 8);
+        q += 12;
+    } else
+        q += 8;
+
     s->nblocks = rd32(s, q);
     s->bs = rd32(s, q + 4);
     s->spb = rd32(s, q + 8);
     s->last_used = rd32(s, q + 12);
     s->last_samples = rd32(s, q + 16);
     s->last_pad = rd32(s, q + 20);
+
     if (!s->nblocks || !s->bs || s->bs > MAX_BLOCK || s->last_pad > MAX_BLOCK || !s->rate) goto out;
     s->codec = codec == 0 ? CO_PCM8 : codec == 1 ? CO_PCM16 : codec == 2 ? CO_ADPCM : -1;
     if (s->codec < 0) goto out;
     s->layout = L_INTERLEAVED;
     s->data = start;
 
-    if (s->codec == CO_ADPCM) {                    /* channel table -> channel info -> coefficients */
+    /* channel table -> channel info -> coefficients */
+    if (s->codec == CO_ADPCM) {
         u32 table = toff - 8;
         if (table + 4 + 8 * s->nch > size) goto out;
         const u8 *t = b + table;
@@ -181,6 +207,7 @@ static bool open_wav(snd_t *s, u8 *h, u32 hlen)
     s->le = be16(h + 4) == 0xFFFE;
     bool rw = !memcmp(h, "RWAV", 4);
     s->fmt = rw ? "BRWAV" : !memcmp(h, "CWAV", 4) ? "BCWAV" : "BFWAV";
+
     u32 info = 0, data = 0;
     if (rw) {
         info = rd32(s, h + 0x10);
@@ -194,18 +221,21 @@ static bool open_wav(snd_t *s, u8 *h, u32 hlen)
         }
     }
     if (!info || !data) return false;
+
     u8 *hd = grab(s, info, 8);
     if (!hd) return false;
     u32 size = rd32(s, hd + 4);
     bool okm = !memcmp(hd, "INFO", 4);
     free(hd);
     if (!okm || size < 0x20 || size > 0x100000) return false;
+
     u8 *b = grab(s, info, size);
     if (!b) return false;
     const u8 *w = b + 8;
     bool ok = false;
     int enc = w[0];
     s->loop = w[1] != 0;
+
     if (rw) {
         s->nch = w[2];
         s->rate = rd16(s, w + 4);
@@ -243,6 +273,7 @@ static bool open_wav(snd_t *s, u8 *h, u32 hlen)
             }
         }
     }
+
     s->codec = enc == 0 ? CO_PCM8 : enc == 1 ? CO_PCM16 : enc == 2 ? CO_ADPCM : -1;
     ok = s->codec >= 0 && s->rate > 0;
 out:
@@ -260,6 +291,7 @@ static bool open_bns(snd_t *s, u64 base)
     if (hs < 0x10 || hs > 0x100 || n > 8) return false;
     h = grab(s, base, hs);
     if (!h) return false;
+
     u64 info = 0;
     u64 data = 0;
     for (u32 i = 0; i < n && 0x10 + i * 8 + 8 <= hs; i++) {
@@ -271,8 +303,13 @@ static bool open_bns(snd_t *s, u64 base)
     }
     free(h);
     if (!info || !data) return false;
+
     u8 *b = grab(s, info, 0x200 > s->f.size - info ? (u32)(s->f.size - info) : 0x200);
-    if (!b || b[0] != 0) { free(b); return false; }
+    if (!b || b[0] != 0) {
+        free(b);
+        return false;
+    }
+
     bool ok = false;
     s->loop = b[1] != 0;
     s->nch = b[2];
@@ -281,6 +318,7 @@ static bool open_bns(snd_t *s, u64 base)
     s->total = be32(b + 0x0C);
     u32 list = be32(b + 0x10);
     if (!s->nch || s->nch > 2 || list + 4 * s->nch > 0x200) goto out;
+
     for (int ch = 0; ch < s->nch; ch++) {
         u32 ci = be32(b + list + 4 * ch);
         if (ci + 8 > 0x200) goto out;
@@ -289,6 +327,7 @@ static bool open_bns(snd_t *s, u64 base)
         if (co + 32 > 0x200) goto out;
         load_coefs(s, ch, b + co);
     }
+
     s->codec = CO_ADPCM;
     ok = s->rate > 0;
 out:
@@ -302,7 +341,11 @@ static bool open_dsp(snd_t *s)
     u8 *h = grab(s, 0, 0x60);
     if (!h) return false;
     u32 samples = be32(h), rate = be32(h + 8);
-    if (!samples || !rate || rate > 96000 || be16(h + 0x0E) != 0) { free(h); return false; }
+    if (!samples || !rate || rate > 96000 || be16(h + 0x0E) != 0) {
+        free(h);
+        return false;
+    }
+
     int declared = be16(h + 0x4A);
     u32 fpb = be16(h + 0x4C);
     s->nch = 1;
@@ -313,10 +356,14 @@ static bool open_dsp(snd_t *s)
     s->codec = CO_ADPCM;
     load_coefs(s, 0, h + 0x1C);
     free(h);
+
     if (declared > 1 && declared <= MAXCH && fpb) {        /* interleaved multi-channel DSP */
         for (int ch = 1; ch < declared; ch++) {
             u8 *x = grab(s, ch * 0x60, 0x60);
-            if (!x || be32(x) != samples || be32(x + 8) != rate) { free(x); return false; }
+            if (!x || be32(x) != samples || be32(x + 8) != rate) {
+                free(x);
+                return false;
+            }
             load_coefs(s, ch, x + 0x1C);
             free(x);
         }
@@ -331,6 +378,7 @@ static bool open_dsp(snd_t *s)
         s->last_pad = s->bs;
         return s->bs <= MAX_BLOCK;
     }
+
     s->choff[0] = 0x60;
     return true;
 }
@@ -347,20 +395,24 @@ static bool open_ast(snd_t *s, const u8 *h)
     s->loop_start = be32(h + 0x18);
     s->loop = be16(h + 0x0E) == 0xFFFF;
     if (!s->nch || s->nch > MAXCH || !s->rate) return false;
+
     s->layout = L_AST;
     u32 cap = 64, n = 0, first = 0;
     s->ast_off = malloc(cap * sizeof(u64));
     s->ast_size = malloc(cap * sizeof(u32));
     s->ast_first = malloc(cap * sizeof(u32));
+
     u64 pos = 0x40;
     u8 *bh = memalign(32, 32);
-    while (bh && s->ast_off && s->ast_size && s->ast_first && pos + 0x20 <= s->f.size && first < s->total) {
+    while (bh && s->ast_off && s->ast_size && s->ast_first && pos + 0x20 <= s->f.size &&
+           first < s->total) {
         if (!read_at(&s->f, pos, bh, 8) || memcmp(bh, "BLCK", 4)) break;
         u32 sz = be32(bh + 4);
         if (!sz || sz > MAX_BLOCK) break;
         if (n == cap) {
             cap *= 2;
-            void *a = realloc(s->ast_off, cap * sizeof(u64)), *b = realloc(s->ast_size, cap * sizeof(u32)),
+            void *a = realloc(s->ast_off, cap * sizeof(u64)),
+                 *b = realloc(s->ast_size, cap * sizeof(u32)),
                  *c = realloc(s->ast_first, cap * sizeof(u32));
             if (a) s->ast_off = a;
             if (b) s->ast_size = b;
@@ -374,6 +426,7 @@ static bool open_ast(snd_t *s, const u8 *h)
         n++;
         pos += 0x20 + (u64)sz * s->nch;
     }
+
     free(bh);
     s->nblocks = n;
     return n > 0;
@@ -410,27 +463,45 @@ static bool snd_open(snd_t *s, const char *path)
 {
     memset(s, 0, sizeof(*s));
     if (!vfs_open_read(&s->f, path)) return false;
-    if (s->f.size < 0x20) { vfs_close(&s->f); return false; }
+    if (s->f.size < 0x20) {
+        vfs_close(&s->f);
+        return false;
+    }
+
     u32 hlen = s->f.size < 0x100 ? (u32)s->f.size : 0x100;
     u8 *h = grab(s, 0, hlen);
     bool ok = false;
     if (!h) goto done;
     if (!memcmp(h, "RSTM", 4)) ok = open_stm(s, h, hlen, false);
     else if (!memcmp(h, "CSTM", 4) || !memcmp(h, "FSTM", 4)) ok = open_stm(s, h, hlen, true);
-    else if (!memcmp(h, "RWAV", 4) || !memcmp(h, "CWAV", 4) || !memcmp(h, "FWAV", 4)) { s->layout = L_PLANAR; ok = open_wav(s, h, hlen); }
-    else if (!memcmp(h, "STRM", 4)) ok = open_ast(s, h);
-    else if (!memcmp(h, "BNS ", 4)) { s->layout = L_PLANAR; ok = open_bns(s, 0); }
-    else if (!memcmp(h, "IMD5", 4) && hlen >= 0x24 && !memcmp(h + 0x20, "BNS ", 4)) { s->layout = L_PLANAR; ok = open_bns(s, 0x20); }
-    else if (arc_name_has_ext(path, ".dsp")) { s->layout = L_PLANAR; ok = open_dsp(s); }
-    else if (arc_name_has_ext(path, ".btsnd")) { s->layout = L_PLANAR; ok = open_btsnd(s); }
+    else if (!memcmp(h, "RWAV", 4) || !memcmp(h, "CWAV", 4) || !memcmp(h, "FWAV", 4)) {
+        s->layout = L_PLANAR;
+        ok = open_wav(s, h, hlen);
+    } else if (!memcmp(h, "STRM", 4))
+        ok = open_ast(s, h);
+    else if (!memcmp(h, "BNS ", 4)) {
+        s->layout = L_PLANAR;
+        ok = open_bns(s, 0);
+    } else if (!memcmp(h, "IMD5", 4) && hlen >= 0x24 && !memcmp(h + 0x20, "BNS ", 4)) {
+        s->layout = L_PLANAR;
+        ok = open_bns(s, 0x20);
+    } else if (arc_name_has_ext(path, ".dsp")) {
+        s->layout = L_PLANAR;
+        ok = open_dsp(s);
+    } else if (arc_name_has_ext(path, ".btsnd")) {
+        s->layout = L_PLANAR;
+        ok = open_btsnd(s);
+    }
 done:
     free(h);
+
     if (ok && s->layout == L_PLANAR) {
         u32 per = s->codec == CO_ADPCM ? PLANAR_BYTES / 8 * 14 : s->codec == CO_PCM8 ? PLANAR_BYTES
                 : s->codec == CO_PCM16_IL ? PLANAR_BYTES / 4 : PLANAR_BYTES / 2;
         s->spb = per;
         s->nblocks = (s->total + per - 1) / per;
     }
+
     if (ok && (!s->total || !s->nblocks || s->rate <= 0 || s->rate > 96000)) ok = false;
     if (ok && s->loop_start >= s->total) s->loop = false;
     if (!ok) snd_close(s);
@@ -473,7 +544,11 @@ static void block_chan(const snd_t *s, u32 b, int ch, u64 *off, u32 *len)
         *len = s->ast_size[b];
         break;
     default:
-        if (s->codec == CO_PCM16_IL) { *off = s->choff[0] + (u64)b * PLANAR_BYTES; *len = n * 4; break; }
+        if (s->codec == CO_PCM16_IL) {
+            *off = s->choff[0] + (u64)b * PLANAR_BYTES;
+            *len = n * 4;
+            break;
+        }
         *off = s->choff[ch] + (u64)b * PLANAR_BYTES;
         *len = s->codec == CO_ADPCM ? adpcm_bytes(n) : s->codec == CO_PCM8 ? n : n * 2;
         break;
@@ -497,7 +572,8 @@ static void dec_adpcm(snd_t *s, int ch, const u8 *in, u32 len, s16 *out, u32 n)
             if (bi >= len) break;
             s32 nib = i & 1 ? in[bi] & 15 : in[bi] >> 4;
             if (nib >= 8) nib -= 16;
-            s32 v = nib * scale * 2048 + 1024 + c1 * h1 + c2 * h2;   /* rounding as the DSP hardware does it */
+            /* rounding as the DSP hardware does it */
+            s32 v = nib * scale * 2048 + 1024 + c1 * h1 + c2 * h2;
             s16 smp = clamp16(v >> 11);
             h2 = h1;
             h1 = smp;
@@ -541,8 +617,10 @@ static u32 decode_block(snd_t *s, u32 b, u8 *raw, s16 *planar[3], int chans[2])
 {
     u32 n = block_samples(s, b);
     if (!n) return 0;
+
     if (s->codec == CO_PCM16_IL) {
-        u64 off; u32 len;
+        u64 off;
+        u32 len;
         block_chan(s, b, 0, &off, &len);
         if (!len || !read_at(&s->f, off, raw, len)) return 0;
         for (u32 i = 0; i < n; i++) {
@@ -551,23 +629,35 @@ static u32 decode_block(snd_t *s, u32 b, u8 *raw, s16 *planar[3], int chans[2])
         }
         return n;
     }
+
     /* ADPCM history runs through every channel, even ones not heard. */
     for (int ch = 0; ch < s->nch; ch++) {
         bool heard = ch == chans[0] || ch == chans[1];
         if (!heard && s->codec != CO_ADPCM && s->codec != CO_AFC) continue;
-        u64 off; u32 len;
+        u64 off;
+        u32 len;
         block_chan(s, b, ch, &off, &len);
         s16 *dst = heard ? planar[ch == chans[0] ? 0 : 1] : planar[2];
-        if (!len || len > MAX_BLOCK || !read_at(&s->f, off, raw, len)) { memset(dst, 0, n * 2); continue; }
+        if (!len || len > MAX_BLOCK || !read_at(&s->f, off, raw, len)) {
+            memset(dst, 0, n * 2);
+            continue;
+        }
         switch (s->codec) {
         case CO_ADPCM: dec_adpcm(s, ch, raw, len, dst, n); break;
         case CO_AFC:   dec_afc(s, ch, raw, len, dst, n); break;
-        case CO_PCM8:  for (u32 i = 0; i < n; i++) dst[i] = i < len ? (s16)((s8)raw[i] << 8) : 0; break;
-        default:       for (u32 i = 0; i < n; i++) dst[i] = i * 2 + 1 < len ? (s16)rd16(s, raw + i * 2) : 0; break;
+        case CO_PCM8:
+            for (u32 i = 0; i < n; i++)
+                dst[i] = i < len ? (s16)((s8)raw[i] << 8) : 0;
+            break;
+        default:
+            for (u32 i = 0; i < n; i++)
+                dst[i] = i * 2 + 1 < len ? (s16)rd16(s, raw + i * 2) : 0;
+            break;
         }
         if (ch == chans[0] && chans[1] == chans[0])
             memcpy(planar[1], dst, n * 2);
     }
+
     return n;
 }
 
@@ -579,10 +669,13 @@ static void fmt_time(char *o, size_t n, u32 samples, int rate)
     snprintf(o, n, "%u:%02u", (unsigned)(t / 60), (unsigned)(t % 60));
 }
 
-static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool loop, int pair, bool full)
+static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool loop, int pair,
+                 bool full)
 {
     int cols = ui_cols(), rows = ui_rows();
-    if (full) ui_clear();           /* later redraws overwrite in place: clearing makes the screen flicker */
+
+    /* later redraws overwrite in place: clearing makes the screen flicker */
+    if (full) ui_clear();
     ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
     ui_field(0, 0, cols - 1, " AUDIO  %s", name);
@@ -590,12 +683,15 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
     ui_color(C_WHITE, false);
     ui_fill(1, 0, cols - 1, '-');
     ui_color(C_WHITE, true);
+
     const char *codec = s->codec == CO_ADPCM ? "DSP-ADPCM" : s->codec == CO_AFC ? "AFC ADPCM"
                       : s->codec == CO_PCM8 ? "PCM8" : "PCM16";
     ui_field(3, 2, cols - 4, "Format:    %s (%s)", s->fmt, codec);
     ui_field(4, 2, cols - 4, "Channels:  %d   Sample rate: %d Hz", s->nch, s->rate);
     if (s->nch > 2)
-        ui_field(5, 2, cols - 4, "Playing:   channels %d + %d", pair * 2 + 1, pair * 2 + 2 <= s->nch ? pair * 2 + 2 : pair * 2 + 1);
+        ui_field(5, 2, cols - 4, "Playing:   channels %d + %d", pair * 2 + 1,
+                 pair * 2 + 2 <= s->nch ? pair * 2 + 2 : pair * 2 + 1);
+
     char t1[16], t2[16], t3[16];
     fmt_time(t1, sizeof(t1), played, s->rate);
     fmt_time(t2, sizeof(t2), s->total, s->rate);
@@ -604,10 +700,13 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
              s->loop ? (loop ? "" : "(loop off)") : loop ? "(repeat)" : "");
     if (s->loop)
         ui_field(8, 2, cols - 4, "Loops back to %s", t3);
+
     int pct = s->total ? (int)((u64)(played % (s->total + 1)) * 100 / s->total) : 0;
     ui_bar(10, 2, cols - 6, pct, C_GREEN);
+
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Loop on/off%s", s->nch > 2 ? "  +/- Channels" : "");
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Loop on/off%s",
+             s->nch > 2 ? "  +/- Channels" : "");
     ui_reset();
 }
 
@@ -634,7 +733,8 @@ static struct {
     s16 *buf[OQ_BUFS];
     s32 voice;
     volatile u32 filled, queued;    /* buffers filled by the player / handed to ASND */
-    volatile u32 idle;              /* callbacks since the last hand-off that had nothing to hand over */
+    /* callbacks since the last hand-off that had nothing to hand over */
+    volatile u32 idle;
     bool started;
     int drain;                      /* 0 playing, 1 tail flushed, 2 silence queued behind it */
     u32 rate, part;                 /* source rate; frames already in the buffer being filled */
@@ -647,7 +747,8 @@ static struct {
 
 static void oq_cb(s32 voice)
 {
-    if (oq.queued < oq.filled && ASND_AddVoice(voice, oq.buf[oq.queued % OQ_BUFS], OUT_FRAMES * 4) == SND_OK) {
+    if (oq.queued < oq.filled &&
+        ASND_AddVoice(voice, oq.buf[oq.queued % OQ_BUFS], OUT_FRAMES * 4) == SND_OK) {
         oq.queued++;
         oq.idle = 0;
     } else
@@ -679,7 +780,8 @@ static bool rs_init(u32 rate)
     oq.coef = malloc((RS_PHASES + 1) * RS_TAPS * sizeof(float));
     if (!oq.coef) return false;
     /* cut-off as a fraction of the source's Nyquist frequency: below the lower of the two rates */
-    double fc = 0.91 * (rate > OUT_RATE ? (double)OUT_RATE / rate : 1.0), beta = 8.0, ib = bessel_i0(beta);
+    double fc = 0.91 * (rate > OUT_RATE ? (double)OUT_RATE / rate : 1.0), beta = 8.0,
+           ib = bessel_i0(beta);
     for (int p = 0; p <= RS_PHASES; p++) {
         float *c = oq.coef + p * RS_TAPS;
         double sum = 0, frac = (double)p / RS_PHASES;
@@ -737,7 +839,8 @@ static void oq_flush_buffer(void)
     _CPU_ISR_Disable(level);
     oq.filled++;
     if (!oq.started) {
-        ASND_SetVoice(oq.voice, VOICE_STEREO_16BIT, OUT_RATE, 0, b, OUT_FRAMES * 4, 255, 255, oq_cb);
+        ASND_SetVoice(oq.voice, VOICE_STEREO_16BIT, OUT_RATE, 0, b, OUT_FRAMES * 4, 255, 255,
+                      oq_cb);
         oq.queued = oq.filled;
         oq.started = true;
     }
@@ -766,6 +869,7 @@ static void oq_write(const s16 *src, u32 n)
     if (src) memcpy(oq.in + oq.in_n * 2, src, n * 4);
     else memset(oq.in + oq.in_n * 2, 0, n * 4);
     oq.in_n += n;
+
     if (!oq.coef) {                              /* 48 kHz already */
         for (; oq.ipos < oq.in_n; oq.ipos++) oq_out(oq.in[oq.ipos * 2], oq.in[oq.ipos * 2 + 1]);
     } else {
@@ -777,13 +881,17 @@ static void oq_write(const s16 *src, u32 n)
             for (int k = 0; k < RS_TAPS; k++) c[k] = c0[k] + f * (c1[k] - c0[k]);
             const s16 *x = oq.in + (oq.ipos - (RS_HALF - 1)) * 2;
             float l = 0, r = 0;
-            for (int k = 0; k < RS_TAPS; k++) { l += c[k] * x[k * 2]; r += c[k] * x[k * 2 + 1]; }
+            for (int k = 0; k < RS_TAPS; k++) {
+                l += c[k] * x[k * 2];
+                r += c[k] * x[k * 2 + 1];
+            }
             oq_out(clip16(l), clip16(r));
             u32 nf = oq.fpos + oq.step_f;
             oq.ipos += oq.step_i + (nf < oq.fpos);
             oq.fpos = nf;
         }
     }
+
     /* keep the frames the filter still needs */
     u32 keep_from = oq.ipos >= RS_HALF - 1 ? oq.ipos - (RS_HALF - 1) : 0;
     if (keep_from > oq.in_n) keep_from = oq.in_n;
@@ -837,9 +945,14 @@ static bool play(const char *path)
     if (s.layout == L_INTERLEAVED && s.last_samples > maxn) maxn = s.last_samples;
     s16 *pl[3] = { malloc(maxn * 2 + 64), malloc(maxn * 2 + 64), malloc(maxn * 2 + 64) };
     s16 *fifo = malloc(FIFO_FRAMES * 4);
-    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || maxn > FIFO_FRAMES - OUT_FRAMES || !oq_open(s.rate)) {
+    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || maxn > FIFO_FRAMES - OUT_FRAMES ||
+        !oq_open(s.rate)) {
         oq_close();
-        free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo);
+        free(raw);
+        free(pl[0]);
+        free(pl[1]);
+        free(pl[2]);
+        free(fifo);
         snd_close(&s);
         ui_message("AUDIO", C_RED, "Not enough memory to play this file.");
         return true;
@@ -854,7 +967,10 @@ static bool play(const char *path)
     memcpy(start_h2, s.h2, sizeof(start_h2));
     bool have_loop_state = false;
     if (s.loop)
-        for (loop_block = 0; loop_block + 1 < s.nblocks && block_first(&s, loop_block + 1) <= s.loop_start; loop_block++) ;
+        for (loop_block = 0;
+             loop_block + 1 < s.nblocks && block_first(&s, loop_block + 1) <= s.loop_start;
+             loop_block++)
+            ;
     int frame = 0;
     bool drawn = false;
     const char *name = vfs_basename(path);
@@ -882,11 +998,13 @@ static bool play(const char *path)
                 ended = true;
                 break;
             }
+
             if (s.loop && block == loop_block && !have_loop_state) {
                 memcpy(loop_h1, s.h1, sizeof(loop_h1));
                 memcpy(loop_h2, s.h2, sizeof(loop_h2));
                 have_loop_state = true;
             }
+
             u32 n = decode_block(&s, block, raw, pl, chans);
             block++;
             decoded_to += n;
@@ -896,7 +1014,10 @@ static bool play(const char *path)
                 fifo_n++;
             }
             skip = skip > n ? skip - n : 0;
-            if (!n) { ended = true; break; }
+            if (!n) {
+                ended = true;
+                break;
+            }
         }
 
         /* hand full buffers to ASND */
@@ -920,7 +1041,8 @@ static bool play(const char *path)
             oq_pause(paused);
         }
         if (p & WPAD_BUTTON_1)
-            loop = !loop;                       /* the loop on / off, or repeat for streams without one */
+            /* the loop on / off, or repeat for streams without one */
+            loop = !loop;
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && s.nch > 2) {
             int pairs = (s.nch + 1) / 2;
             pair = (pair + (p & WPAD_BUTTON_PLUS ? 1 : pairs - 1)) % pairs;
@@ -930,7 +1052,8 @@ static bool play(const char *path)
         if (p || ++frame % 15 == 0) {
             u32 played = (u32)oq_played(submitted);
             if (s.loop && loop && played > s.total)
-                played = s.loop_start + (played - s.total) % (s.total - s.loop_start ? s.total - s.loop_start : 1);
+                played = s.loop_start +
+                         (played - s.total) % (s.total - s.loop_start ? s.total - s.loop_start : 1);
             else if (!s.loop && loop && s.total)
                 played %= s.total;
             draw(&s, name, played > s.total ? s.total : played, paused, loop, pair, !drawn);
@@ -939,17 +1062,23 @@ static bool play(const char *path)
     }
 
     oq_close();
-    free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo);
+    free(raw);
+    free(pl[0]);
+    free(pl[1]);
+    free(pl[2]);
+    free(fifo);
     snd_close(&s);
     return true;
 }
 
 /* ---------------------------------------------------------------- common formats */
 
-static void draw_gen(const gen_info *in, const char *name, u64 played, bool paused, bool repeat, int pair, bool full)
+static void draw_gen(const gen_info *in, const char *name, u64 played, bool paused, bool repeat,
+                     int pair, bool full)
 {
     int cols = ui_cols(), rows = ui_rows();
-    if (full) ui_clear();           /* later redraws overwrite in place: clearing makes the screen flicker */
+    /* later redraws overwrite in place: clearing makes the screen flicker */
+    if (full) ui_clear();
     ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
     ui_field(0, 0, cols - 1, " AUDIO  %s", name);
@@ -957,22 +1086,29 @@ static void draw_gen(const gen_info *in, const char *name, u64 played, bool paus
     ui_color(C_WHITE, false);
     ui_fill(1, 0, cols - 1, '-');
     ui_color(C_WHITE, true);
-    ui_field(3, 2, cols - 4, "Format:    %s (%s%s%s)", in->format, in->codec, in->detail[0] ? ", " : "", in->detail);
+
+    ui_field(3, 2, cols - 4, "Format:    %s (%s%s%s)", in->format, in->codec,
+             in->detail[0] ? ", " : "", in->detail);
     ui_field(4, 2, cols - 4, "Channels:  %d   Sample rate: %d Hz", in->channels, in->rate);
     if (in->channels > 2)
         ui_field(5, 2, cols - 4, "Playing:   channels %d + %d", pair * 2 + 1,
                  pair * 2 + 2 <= in->channels ? pair * 2 + 2 : pair * 2 + 1);
+
     char t1[16], t2[16];
     fmt_time(t1, sizeof(t1), (u32)played, in->rate);
     if (in->total) fmt_time(t2, sizeof(t2), (u32)in->total, in->rate);
     else snprintf(t2, sizeof(t2), "--:--");
-    ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2, repeat ? "(repeat)" : "");
+    ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
+             repeat ? "(repeat)" : "");
+
     if (in->total) {
         int pct = (int)(played * 100 / in->total);
         ui_bar(10, 2, cols - 6, pct > 100 ? 100 : pct, C_GREEN);
     }
+
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat on/off%s", in->channels > 2 ? "  +/- Channels" : "");
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat on/off%s",
+             in->channels > 2 ? "  +/- Channels" : "");
     ui_reset();
 }
 
@@ -986,7 +1122,8 @@ static bool play_gen(const char *path)
     s16 *fifo = malloc(FIFO_FRAMES * 4);
     if (!dec || !fifo || !oq_open(in->rate)) {
         oq_close();
-        free(dec); free(fifo);
+        free(dec);
+        free(fifo);
         gen_close(g);
         ui_message("AUDIO", C_RED, "Not enough memory to play this file.");
         return true;
@@ -1006,10 +1143,14 @@ static bool play_gen(const char *path)
             u32 n = gen_read(g, dec, OUT_FRAMES);
             if (!n) {
                 /* the end: start over when repeating (and the file played something at all) */
-                if (repeat && since_rewind && gen_rewind(g)) { since_rewind = 0; continue; }
+                if (repeat && since_rewind && gen_rewind(g)) {
+                    since_rewind = 0;
+                    continue;
+                }
                 ended = true;
                 break;
             }
+
             for (u32 i = 0; i < n; i++) {
                 fifo[fifo_n * 2] = dec[i * nch + chans[0]];
                 fifo[fifo_n * 2 + 1] = dec[i * nch + chans[1]];
@@ -1018,6 +1159,7 @@ static bool play_gen(const char *path)
             decoded += n;
             since_rewind += n;
         }
+
         /* hand full buffers to ASND */
         u32 chunk = oq_chunk();
         if (!paused && (fifo_n >= chunk || (ended && fifo_n)) && oq_space()) {
@@ -1064,15 +1206,20 @@ static bool play_gen(const char *path)
         }
     }
 #endif
+
     oq_close();
-    free(dec); free(fifo);
+    free(dec);
+    free(fifo);
     gen_close(g);
     return true;
 }
 
 /* ---------------------------------------------------------------- BRSAR sequences */
 
-typedef struct { vfs_file f; u8 *bounce; } seq_src;
+typedef struct {
+    vfs_file f;
+    u8 *bounce;
+} seq_src;
 
 static bool seq_rd(void *ctx, uint64_t off, void *buf, uint32_t len)
 {
@@ -1090,7 +1237,8 @@ static bool seq_rd(void *ctx, uint64_t off, void *buf, uint32_t len)
     return true;
 }
 
-static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool full, int sel, u32 muted)
+static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool full, int sel,
+                     u32 muted)
 {
     int cols = ui_cols(), rows = ui_rows();
     if (full) ui_clear();
@@ -1101,12 +1249,17 @@ static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool
     ui_color(C_WHITE, false);
     ui_fill(1, 0, cols - 1, '-');
     ui_color(C_WHITE, true);
+
     ui_field(3, 2, cols - 4, "Format:    RSEQ sequence (synthesized at 48 kHz)");
     ui_field(4, 2, cols - 4, "Bank:      %s", seq_bank_name(sq));
-    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Tracks: %d   Notes: %2d", seq_tempo(sq), seq_tracks(sq), seq_voices(sq));
+    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Tracks: %d   Notes: %2d", seq_tempo(sq),
+             seq_tracks(sq), seq_voices(sq));
+
     char t1[16];
     fmt_time(t1, sizeof(t1), (u32)(seq_frames(sq) / SEQ_RATE), 1);
-    ui_field(6, 2, cols - 4, "%s  %s   %s", paused ? "PAUSED " : "PLAYING", t1, repeat ? "(repeat)" : "");
+    ui_field(6, 2, cols - 4, "%s  %s   %s", paused ? "PAUSED " : "PLAYING", t1,
+             repeat ? "(repeat)" : "");
+
     /* the tracks (the sequence's channels): one line each, turned on / off with A */
     int top = 8, n = SEQ_MAX_TRACKS;
     if (top + n > rows - 3) n = rows - 3 - top;
@@ -1124,14 +1277,18 @@ static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool
         if (i == sel) ui_bg(C_CYAN);
         ui_color(off ? C_RED : !st ? C_BLUE : C_WHITE, off || st == 1);
         if (st)
-            ui_field(top + i, 2, cols - 4, "%c Track %2d  [%s]  program %3d  %-8s  %2d notes  %s", i == sel ? '>' : ' ', i,
-                     off ? "off" : " on", prg, st == 1 ? "playing" : "done", notes, meter);
+            ui_field(top + i, 2, cols - 4, "%c Track %2d  [%s]  program %3d  %-8s  %2d notes  %s",
+                     i == sel ? '>' : ' ', i, off ? "off" : " on", prg,
+                     st == 1 ? "playing" : "done", notes, meter);
         else
-            ui_field(top + i, 2, cols - 4, "%c Track %2d  [%s]  not started", i == sel ? '>' : ' ', i, off ? "off" : " on");
+            ui_field(top + i, 2, cols - 4, "%c Track %2d  [%s]  not started", i == sel ? '>' : ' ',
+                     i, off ? "off" : " on");
         ui_reset();
     }
+
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "Up/Down Track  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
+    ui_field(rows - 2, 1, cols - 2,
+             "Up/Down Track  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
     ui_reset();
 }
 
@@ -1149,17 +1306,23 @@ static bool play_seq(const char *path)
 
     ui_splash("Loading sequence and its bank...");
     seq_src q = { .bounce = memalign(32, 0x10000) };
-    if (!q.bounce || !vfs_open_read(&q.f, outer)) { free(q.bounce); return false; }
+    if (!q.bounce || !vfs_open_read(&q.f, outer)) {
+        free(q.bounce);
+        return false;
+    }
+
     const char *err = NULL;
     ui_busy_begin(name);
     seq_t *sq = seq_open(seq_rd, &q, q.f.size, name, &err);
     ui_busy_end();
     vfs_close(&q.f);
     free(q.bounce);
+
     if (!sq) {
         ui_message("AUDIO", C_YELLOW, err ? err : "This sequence couldn't be played.");
         return true;
     }
+
     s16 *buf = malloc(OUT_FRAMES * 4);
     if (!buf || !oq_open(SEQ_RATE)) {
         oq_close();
@@ -1168,21 +1331,30 @@ static bool play_seq(const char *path)
         ui_message("AUDIO", C_RED, "Not enough memory to play this sequence.");
         return true;
     }
+
     bool paused = false, repeat = false, ended = false;
     int frame = 0, sel = 0;
     u32 muted = 0;
     const char *shown = vfs_basename(path);
     draw_seq(sq, shown, paused, repeat, true, sel, muted);
+
     for (;;) {
         if (!paused && !ended && oq_space()) {
             u32 n = seq_render(sq, buf, oq_chunk());
-            if (n) { oq_write(buf, n); continue; }
+            if (n) {
+                oq_write(buf, n);
+                continue;
+            }
             ended = true;
         }
         if (ended && oq_drained()) break;
+
         u32 p = input_pressed();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
-        if (p & WPAD_BUTTON_PLUS) { paused = !paused; oq_pause(paused); }
+        if (p & WPAD_BUTTON_PLUS) {
+            paused = !paused;
+            oq_pause(paused);
+        }
         if (p & WPAD_BUTTON_1) {
             repeat = !repeat;
             seq_set_repeat(sq, repeat);
@@ -1197,7 +1369,8 @@ static bool play_seq(const char *path)
         if (p & (WPAD_BUTTON_A | WPAD_BUTTON_2 | WPAD_BUTTON_MINUS)) seq_set_muted(sq, muted);
         if (p || ++frame % 6 == 0) draw_seq(sq, shown, paused, repeat, false, sel, muted);
 #ifdef GMW_AUTOTEST
-        if (frame == 300) {                         /* test builds: a picture of the player after 5 s */
+        /* test builds: a picture of the player after 5 s */
+        if (frame == 300) {
             muted = 2;                              /* with track 1 turned off and track 2 picked */
             sel = 2;
             seq_set_muted(sq, muted);
@@ -1206,6 +1379,7 @@ static bool play_seq(const char *path)
         }
 #endif
     }
+
     oq_close();
     free(buf);
     seq_close(sq);
@@ -1221,15 +1395,19 @@ static bool play_seq(const char *path)
 
 static bool midi_is_name(const char *n)
 {
-    return arc_name_has_ext(n, ".mid") || arc_name_has_ext(n, ".midi") || arc_name_has_ext(n, ".rmi") ||
-           arc_name_has_ext(n, ".smf") || arc_name_has_ext(n, ".kar");
+    return arc_name_has_ext(n, ".mid") || arc_name_has_ext(n, ".midi") ||
+           arc_name_has_ext(n, ".rmi") || arc_name_has_ext(n, ".smf") ||
+           arc_name_has_ext(n, ".kar");
 }
 
 static u8 *slurp(const char *path, u32 max, u32 *len)
 {
     vfs_file f;
     if (!vfs_open_read(&f, path)) return NULL;
-    if (f.size > max || !f.size) { vfs_close(&f); return NULL; }
+    if (f.size > max || !f.size) {
+        vfs_close(&f);
+        return NULL;
+    }
     u32 n = (u32)f.size, got = 0;
     u8 *b = memalign(32, (n + 31) & ~31u);
     while (b && got < n) {
@@ -1238,7 +1416,10 @@ static u8 *slurp(const char *path, u32 max, u32 *len)
         got += r;
     }
     vfs_close(&f);
-    if (b && got != n) { free(b); b = NULL; }
+    if (b && got != n) {
+        free(b);
+        b = NULL;
+    }
     *len = n;
     return b;
 }
@@ -1260,7 +1441,8 @@ typedef struct {
 static void midi_mute_apply(midi_t *m, int ch)
 {
     if (m->muted >> ch & 1) tsf_channel_set_volume(m->f, ch, 0);
-    else {                                  /* back to what the song set (its expression is kept by the synth) */
+    else {
+        /* back to what the song set (its expression is kept by the synth) */
         tsf_channel_midi_control(m->f, ch, 7, m->cc7[ch]);
         tsf_channel_midi_control(m->f, ch, 39, m->cc39[ch]);
     }
@@ -1294,7 +1476,9 @@ static void midi_events(midi_t *m, u32 ms)
         tml_message *e = m->at;
         int ch = e->channel & 15;
         switch (e->type) {
-        case TML_PROGRAM_CHANGE: tsf_channel_set_presetnumber(m->f, ch, (u8)e->program, ch == 9); break;
+        case TML_PROGRAM_CHANGE:
+            tsf_channel_set_presetnumber(m->f, ch, (u8)e->program, ch == 9);
+            break;
         case TML_NOTE_ON:
             if ((u8)e->velocity) {
                 tsf_channel_note_on(m->f, ch, (u8)e->key, (u8)e->velocity / 127.0f);
@@ -1309,15 +1493,22 @@ static void midi_events(midi_t *m, u32 ms)
             tsf_channel_note_off(m->f, ch, (u8)e->key);
             if (m->notes[ch] > 0) m->notes[ch]--;
             break;
-        case TML_PITCH_BEND: tsf_channel_set_pitchwheel(m->f, ch, e->pitch_bend); break;
+        case TML_PITCH_BEND:
+            tsf_channel_set_pitchwheel(m->f, ch, e->pitch_bend);
+            break;
         case TML_CONTROL_CHANGE: {
             int c = (u8)e->control, v = (u8)e->control_value;
             if (c == 7) m->cc7[ch] = v;
             if (c == 39) m->cc39[ch] = v;
-            if (c == 121) { m->cc7[ch] = 100; m->cc39[ch] = 0; }  /* reset all controllers */
+            /* reset all controllers */
+            if (c == 121) {
+                m->cc7[ch] = 100;
+                m->cc39[ch] = 0;
+            }
             if (c == 120 || c == 123) m->notes[ch] = 0;          /* all sound / notes off */
             tsf_channel_midi_control(m->f, ch, c, v);
-            if ((m->muted >> ch & 1) && (c == 7 || c == 39 || c == 11 || c == 43 || c == 121)) tsf_channel_set_volume(m->f, ch, 0);
+            if ((m->muted >> ch & 1) && (c == 7 || c == 39 || c == 11 || c == 43 || c == 121))
+                tsf_channel_set_volume(m->f, ch, 0);
             break;
         }
         case TML_SET_TEMPO: {
@@ -1352,13 +1543,18 @@ static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, boo
     ui_color(C_WHITE, false);
     ui_fill(1, 0, cols - 1, '-');
     ui_color(C_WHITE, true);
+
     ui_field(3, 2, cols - 4, "Format:    MIDI (TinySoundFont, %d kHz)", MIDI_RATE / 1000);
     ui_field(4, 2, cols - 4, "Soundfont: %s", m->font);
-    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Notes: %2d", m->tempo, tsf_active_voice_count(m->f));
+    ui_field(5, 2, cols - 4, "Tempo:     %d BPM   Notes: %2d", m->tempo,
+             tsf_active_voice_count(m->f));
+
     char t1[16], t2[16];
     fmt_time(t1, sizeof(t1), (u32)(m->frames / MIDI_RATE), 1);
     fmt_time(t2, sizeof(t2), m->len_ms / 1000, 1);
-    ui_field(6, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2, repeat ? "(repeat)" : "");
+    ui_field(6, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
+             repeat ? "(repeat)" : "");
+
     int top = 8, n = 16;
     if (top + n > rows - 3) n = rows - 3 - top;
     for (int ch = 0; ch < n; ch++) {
@@ -1374,13 +1570,16 @@ static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, boo
         ui_ascii(pname, sizeof(pname), pn ? pn : "");
         if (ch == sel) ui_bg(C_CYAN);
         ui_color(off ? C_RED : !used ? C_BLUE : C_WHITE, off || used);
-        ui_field(top + ch, 2, cols - 4, "%c Ch %2d  [%s]  %3d %-20.20s %2d notes  %s", ch == sel ? '>' : ' ', ch + 1,
-                 off ? "off" : " on", tsf_channel_get_preset_number(m->f, ch), ch == 9 ? "(drums)" : pname,
-                 m->notes[ch], used ? meter : "");
+        ui_field(top + ch, 2, cols - 4, "%c Ch %2d  [%s]  %3d %-20.20s %2d notes  %s",
+                 ch == sel ? '>' : ' ', ch + 1, off ? "off" : " on",
+                 tsf_channel_get_preset_number(m->f, ch), ch == 9 ? "(drums)" : pname, m->notes[ch],
+                 used ? meter : "");
         ui_reset();
     }
+
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "Up/Down Ch  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
+    ui_field(rows - 2, 1, cols - 2,
+             "Up/Down Ch  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
     ui_reset();
 }
 
@@ -1399,15 +1598,20 @@ static bool play_midi(const char *path)
     m.song = tml_load_memory(b + o, (int)(n - o));
     free(b);
     MLOG("midi: %u bytes, song %p\n", (unsigned)n, (void *)m.song);
-    if (!m.song) { ui_message("AUDIO", C_YELLOW, "This isn't a MIDI file that can be played."); return true; }
+    if (!m.song) {
+        ui_message("AUDIO", C_YELLOW, "This isn't a MIDI file that can be played.");
+        return true;
+    }
     tml_get_info(m.song, NULL, NULL, NULL, NULL, &m.len_ms);
 
     /* x.mid's own x.sf2 if there's one, else the built-in General MIDI set */
+
     char sfp[VFS_PATH_MAX];
     snprintf(sfp, sizeof(sfp), "%s", path);
     char *dot = strrchr(sfp, '.');
     u32 sn = 0;
     u8 *sf = NULL;
+
     if (dot && (size_t)(dot - sfp) + 5 < sizeof(sfp)) {
         strcpy(dot, ".sf2");
         ui_busy_begin(vfs_basename(sfp));
@@ -1415,10 +1619,12 @@ static bool play_midi(const char *path)
         ui_busy_end();
         if (sf) ui_ascii(m.font, sizeof(m.font), vfs_basename(sfp));
     }
+
     if (!sf) {
         sf = midi_default_soundfont(&sn);
         snprintf(m.font, sizeof(m.font), "built-in General MIDI (Gervill)");
     }
+
     if (sf) {
         ui_busy_begin(m.font);
         ui_busy_tick();
@@ -1426,11 +1632,13 @@ static bool play_midi(const char *path)
         ui_busy_end();
         free(sf);
     }
+
     if (!m.f) {
         tml_free(m.song);
         ui_message("AUDIO", C_RED, "The soundfont couldn't be loaded (out of memory?).");
         return true;
     }
+
     MLOG("midi: soundfont %s %u bytes -> %p\n", m.font, (unsigned)sn, (void *)m.f);
     tsf_set_output(m.f, TSF_STEREO_INTERLEAVED, MIDI_RATE, -6.0f);
     tsf_set_max_voices(m.f, 64);
@@ -1445,41 +1653,55 @@ static bool play_midi(const char *path)
         ui_message("AUDIO", C_RED, "Not enough memory to play this MIDI file.");
         return true;
     }
+
     bool paused = false, repeat = false, ended = false;
     int frame = 0, sel = 0;
     u64 tail = 0;                           /* frames rendered after the last event */
     const char *shown = vfs_basename(path);
     draw_midi(&m, shown, paused, repeat, true, sel);
+
     for (;;) {
         if (!paused && !ended && oq_space()) {
             u32 k = oq_chunk();
             midi_render(&m, buf, k);
             oq_write(buf, k);
-            if (!m.at) {                    /* past the last event: let the notes ring out (up to 5 s) */
+            /* past the last event: let the notes ring out (up to 5 s) */
+            if (!m.at) {
                 tail += k;
                 if (!tsf_active_voice_count(m.f) || tail > 5u * MIDI_RATE) {
-                    if (repeat) { midi_start(&m); tail = 0; }
-                    else ended = true;
+                    if (repeat) {
+                        midi_start(&m);
+                        tail = 0;
+                    } else
+                        ended = true;
                 }
             }
             continue;
         }
         if (ended && oq_drained()) break;
+
         u32 p = input_pressed();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
-        if (p & WPAD_BUTTON_PLUS) { paused = !paused; oq_pause(paused); }
+        if (p & WPAD_BUTTON_PLUS) {
+            paused = !paused;
+            oq_pause(paused);
+        }
         if (p & WPAD_BUTTON_1) repeat = !repeat;
         if (p & WPAD_BUTTON_UP) sel = (sel + 15) % 16;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % 16;
+
         u32 was = m.muted;
         if (p & WPAD_BUTTON_A) m.muted ^= 1u << sel;
-        if (p & WPAD_BUTTON_2) m.muted = m.muted == (0xFFFFu & ~(1u << sel)) ? 0 : 0xFFFFu & ~(1u << sel);
+        if (p & WPAD_BUTTON_2)
+            m.muted = m.muted == (0xFFFFu & ~(1u << sel)) ? 0 : 0xFFFFu & ~(1u << sel);
         if (p & WPAD_BUTTON_MINUS) m.muted = 0;
+
         for (int ch = 0; ch < 16; ch++)
             if ((was ^ m.muted) >> ch & 1) midi_mute_apply(&m, ch);
         if (p || ++frame % 6 == 0) draw_midi(&m, shown, paused, repeat, false, sel);
 #ifdef GMW_AUTOTEST
-        if (frame == 300) {                         /* test builds: a picture of the player after 5 s */
+        /* test builds: a picture of the player after 5 s */
+        if (frame == 300) {
             MLOG("midi: %llu frames rendered after 300 polls\n", (unsigned long long)m.frames);
             sel = 9;
             draw_midi(&m, shown, paused, repeat, false, sel);
@@ -1487,6 +1709,7 @@ static bool play_midi(const char *path)
         }
 #endif
     }
+
     oq_close();
     free(buf);
     tsf_close(m.f);
@@ -1497,8 +1720,9 @@ static bool play_midi(const char *path)
 bool audio_is_name(const char *name)
 {
     if (gen_is_name(name) || arc_name_has_ext(name, ".seq") || midi_is_name(name)) return true;
-    static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav", ".bcwav", ".cwav", ".bfwav",
-                                       ".fwav", ".bns", ".dsp", ".ast", ".btsnd", NULL };
+    static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav",
+                                       ".bcwav", ".cwav",  ".bfwav", ".fwav",  ".bns",
+                                       ".dsp",   ".ast",   ".btsnd", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
             return true;

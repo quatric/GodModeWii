@@ -18,7 +18,8 @@ typedef struct {
 bool gen_is_name(const char *name);
 gen_t *gen_open(const char *path);          /* NULL if it isn't one of these, or is damaged */
 const gen_info *gen_get_info(const gen_t *g);
-u32 gen_read(gen_t *g, s16 *out, u32 frames);   /* interleaved, info.channels per frame; 0 at the end */
+/* interleaved, info.channels per frame; 0 at the end */
+u32 gen_read(gen_t *g, s16 *out, u32 frames);
 bool gen_rewind(gen_t *g);
 void gen_close(gen_t *g);
 

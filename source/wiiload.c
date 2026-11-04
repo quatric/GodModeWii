@@ -51,7 +51,10 @@ static void wl_log(const char *fmt, ...)
     va_end(ap);
 #ifdef GMW_AUTOTEST
     FILE *lg = fopen("sd:/gmwtest.log", "a");
-    if (lg) { fprintf(lg, "wiiload: %s\n", logbuf[log_n % LOG_LINES]); fclose(lg); }
+    if (lg) {
+        fprintf(lg, "wiiload: %s\n", logbuf[log_n % LOG_LINES]);
+        fclose(lg);
+    }
 #endif
     log_n++;
 }
@@ -60,7 +63,8 @@ static bool lan_peer(u32 ip_net)
 {
     u32 ip = ntohl(ip_net);
     u32 a = ip >> 24, b = (ip >> 16) & 0xFF;
-    return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || (a == 169 && b == 254) || a == 127;
+    return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) ||
+           (a == 169 && b == 254) || a == 127;
 }
 
 static s32 make_listener(void)
@@ -75,7 +79,10 @@ static s32 make_listener(void)
     a.sin_family = AF_INET;
     a.sin_port = htons(WIILOAD_PORT);
     a.sin_addr.s_addr = INADDR_ANY;
-    if (net_bind(s, (struct sockaddr *)&a, sizeof(a)) < 0 || net_listen(s, 2) < 0) { net_close(s); return -1; }
+    if (net_bind(s, (struct sockaddr *)&a, sizeof(a)) < 0 || net_listen(s, 2) < 0) {
+        net_close(s);
+        return -1;
+    }
     net_fcntl(s, F_SETFL, IOS_NONBLOCK);
     return s;
 }
@@ -93,14 +100,19 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
     ui_color(C_GREEN, true);
     ui_field(2, 1, cols - 2, busy ? "Receiving" : "Waiting for wiiload");
     ui_color(C_WHITE, true);
-    ui_field(4, 1, cols - 2, "Address :  %u.%u.%u.%u  (port %d)", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
-             WIILOAD_PORT);
-    ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload MyApp.zip", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255,
-             ip & 255);
+
+    ui_field(4, 1, cols - 2, "Address :  %u.%u.%u.%u  (port %d)", ip >> 24, (ip >> 16) & 255,
+             (ip >> 8) & 255, ip & 255, WIILOAD_PORT);
+    ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload MyApp.zip", ip >> 24,
+             (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
     ui_color(C_YELLOW, true);
-    ui_field(6, 1, cols - 2, "Install :  %s", dev < 0 ? "no drive to install onto!" : dev == DEV_SD ? "SD card" : g_devs[dev].tag);
+    ui_field(6, 1, cols - 2, "Install :  %s",
+             dev < 0         ? "no drive to install onto!"
+             : dev == DEV_SD ? "SD card"
+                             : g_devs[dev].tag);
     ui_color(C_WHITE, false);
     ui_field(7, 1, cols - 2, "Archives (.zip .7z .rar) install into apps; a .dol / .elf can run.");
+
     if (busy) {
         char a[24], b[24];
         ui_fmt_size(a, sizeof(a), done);
@@ -115,6 +127,7 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
         ui_field(10, 2, cols - 4, "%s", "");
         ui_field(11, 2, cols - 4, "%s", "");
     }
+
     int logrow = rows - 3 - LOG_LINES;
     ui_color(C_CYAN, true);
     ui_field(logrow - 1, 1, cols - 2, "Log");
@@ -123,8 +136,10 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
         int idx = log_n - LOG_LINES + i;
         ui_field(logrow + i, 2, cols - 3, "%s", idx >= 0 ? logbuf[idx % LOG_LINES] : "");
     }
+
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, busy ? "Hold B: cancel" : "1: SD card / USB drive    B / HOME: stop");
+    ui_field(rows - 2, 1, cols - 2,
+             busy ? "Hold B: cancel" : "1: SD card / USB drive    B / HOME: stop");
     ui_reset();
 }
 
@@ -144,15 +159,24 @@ static bool recv_all(conn_t *c, void *buf, u32 n, const char *what, u64 done, u6
     u64 drawn = 0;
     while (n) {
         s32 r = net_recv(c->sock, p, n > CHUNK ? CHUNK : n, 0);
-        if (r > 0) { p += r; n -= r; done += r; c->last = now_ms(); }
-        else if (r == 0) return false;
-        else if (r != -EAGAIN) return false;
+        if (r > 0) {
+            p += r;
+            n -= r;
+            done += r;
+            c->last = now_ms();
+        } else if (r == 0)
+            return false;
+        else if (r != -EAGAIN)
+            return false;
         else {
             if (now_ms() - c->last > IDLE_MS) return false;
             usleep(2000);
         }
         if (input_cancel_held() || g_quit_request) return false;
-        if (what && now_ms() - drawn > 250) { drawn = now_ms(); draw(net_gethostip(), c->dev, false, what, done, total); }
+        if (what && now_ms() - drawn > 250) {
+            drawn = now_ms();
+            draw(net_gethostip(), c->dev, false, what, done, total);
+        }
     }
     return true;
 }
@@ -166,7 +190,10 @@ static void safe_name(char *out, size_t sz, const char *in)
     size_t k = 0;
     for (; *in && k + 1 < sz; in++) {
         unsigned char ch = *in;
-        out[k++] = (ch < 0x20 || ch == ':' || ch == '*' || ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|') ? '_' : ch;
+        out[k++] = (ch < 0x20 || ch == ':' || ch == '*' || ch == '?' || ch == '"' || ch == '<' ||
+                    ch == '>' || ch == '|')
+                       ? '_'
+                       : ch;
     }
     out[k] = 0;
     if (!k || !strcmp(out, ".") || !strcmp(out, "..")) snprintf(out, sz, "wiiload.bin");
@@ -188,37 +215,61 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
 {
     u8 h[16];
     c->last = now_ms();
-    if (!recv_all(c, h, 16, NULL, 0, 0)) { wl_log("No header: not a wiiload client?"); return false; }
-    if (memcmp(h, "HAXX", 4)) { wl_log("Not a wiiload upload"); return false; }
-    if (h[4] != 0 || h[5] < 4) { wl_log("wiiload %u.%u isn't supported: update the client", h[4], h[5]); return false; }
+    if (!recv_all(c, h, 16, NULL, 0, 0)) {
+        wl_log("No header: not a wiiload client?");
+        return false;
+    }
+    if (memcmp(h, "HAXX", 4)) {
+        wl_log("Not a wiiload upload");
+        return false;
+    }
+    if (h[4] != 0 || h[5] < 4) {
+        wl_log("wiiload %u.%u isn't supported: update the client", h[4], h[5]);
+        return false;
+    }
     u32 argn = h[6] << 8 | h[7];
     u32 sent = (u32)h[8] << 24 | h[9] << 16 | h[10] << 8 | h[11];
     u32 full = h[5] >= 5 ? ((u32)h[12] << 24 | h[13] << 16 | h[14] << 8 | h[15]) : 0;
     u32 size = full ? full : sent;
-    if (!sent || sent > SIZE_MAX_IN || size > SIZE_MAX_IN) { wl_log("Bad size (%u bytes)", (unsigned)size); return false; }
+    if (!sent || sent > SIZE_MAX_IN || size > SIZE_MAX_IN) {
+        wl_log("Bad size (%u bytes)", (unsigned)size);
+        return false;
+    }
 
     char root[VFS_PATH_MAX], dir[VFS_PATH_MAX], tmp[VFS_PATH_MAX];
     snprintf(root, sizeof(root), "%s", vfs_dev_root(c->dev));
-    if (!vfs_join(dir, sizeof(dir), root, "GodModeWii/wiiload") || !mkdirs(dir) || !vfs_join(tmp, sizeof(tmp), dir, ".receiving")) {
+    if (!vfs_join(dir, sizeof(dir), root, "GodModeWii/wiiload") || !mkdirs(dir) ||
+        !vfs_join(tmp, sizeof(tmp), dir, ".receiving")) {
         wl_log("Can't make GodModeWii/wiiload on the %s", g_devs[c->dev].tag);
         return false;
     }
     vfs_file f;
-    if (!vfs_open_write(&f, tmp)) { wl_log("Can't write to the %s", g_devs[c->dev].tag); return false; }
+    if (!vfs_open_write(&f, tmp)) {
+        wl_log("Can't write to the %s", g_devs[c->dev].tag);
+        return false;
+    }
     vfs_unbuffered(&f);
 
     u8 *in = memalign(32, CHUNK), *out = memalign(32, CHUNK);
     z_stream z;
     memset(&z, 0, sizeof(z));
+
     bool ok = in && out && (!full || inflateInit(&z) == Z_OK);
     u32 got = 0, wrote = 0;
     *headn = 0;
+
     while (ok && got < sent) {
         u32 want = sent - got > CHUNK ? CHUNK : sent - got;
-        if (!recv_all(c, in, want, "Receiving...", got, sent)) { wl_log("Connection lost or cancelled"); ok = false; break; }
+        if (!recv_all(c, in, want, "Receiving...", got, sent)) {
+            wl_log("Connection lost or cancelled");
+            ok = false;
+            break;
+        }
         got += want;
+
         const u8 *data = in;
         u32 dn = want;
+
         if (full) {
             z.next_in = in;
             z.avail_in = want;
@@ -226,9 +277,17 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
                 z.next_out = out;
                 z.avail_out = CHUNK;
                 int zr = inflate(&z, Z_NO_FLUSH);
-                if (zr != Z_OK && zr != Z_STREAM_END && zr != Z_BUF_ERROR) { wl_log("Bad compressed data"); ok = false; break; }
+                if (zr != Z_OK && zr != Z_STREAM_END && zr != Z_BUF_ERROR) {
+                    wl_log("Bad compressed data");
+                    ok = false;
+                    break;
+                }
                 dn = CHUNK - z.avail_out;
-                if (dn && vfs_write(&f, out, dn) != (s32)dn) { wl_log("Write failed (drive full?)"); ok = false; break; }
+                if (dn && vfs_write(&f, out, dn) != (s32)dn) {
+                    wl_log("Write failed (drive full?)");
+                    ok = false;
+                    break;
+                }
                 if (dn && *headn < 0x100) {
                     u32 k = 0x100 - *headn < dn ? 0x100 - *headn : dn;
                     memcpy(head + *headn, out, k);
@@ -238,7 +297,12 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
             } while (ok && z.avail_out == 0);
             continue;
         }
-        if (vfs_write(&f, data, dn) != (s32)dn) { wl_log("Write failed (drive full?)"); ok = false; break; }
+
+        if (vfs_write(&f, data, dn) != (s32)dn) {
+            wl_log("Write failed (drive full?)");
+            ok = false;
+            break;
+        }
         if (*headn < 0x100) {
             u32 k = 0x100 - *headn < dn ? 0x100 - *headn : dn;
             memcpy(head + *headn, data, k);
@@ -246,8 +310,12 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
         }
         wrote += dn;
     }
+
     if (full) inflateEnd(&z);
-    if (ok && wrote != size) { wl_log("Got %u bytes, expected %u", (unsigned)wrote, (unsigned)size); ok = false; }
+    if (ok && wrote != size) {
+        wl_log("Got %u bytes, expected %u", (unsigned)wrote, (unsigned)size);
+        ok = false;
+    }
 
     /* the arguments: the first is the file's name */
     char name[128] = "";
@@ -259,7 +327,10 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
     free(in);
     free(out);
     if (!vfs_close_checked(&f)) ok = false;
-    if (!ok) { vfs_remove(tmp, false); return false; }
+    if (!ok) {
+        vfs_remove(tmp, false);
+        return false;
+    }
     if (!name[0]) safe_name(name, sizeof(name), "");
 
     /* the name the archive reader / launcher will go by: make its extension match what it is */
@@ -267,19 +338,28 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
     if (*headn >= 4 && !memcmp(head, "PK\3\4", 4)) ext = ".zip";
     else if (*headn >= 6 && !memcmp(head, "7z\xBC\xAF\x27\x1C", 6)) ext = ".7z";
     else if (*headn >= 4 && !memcmp(head, "Rar!", 4)) ext = ".rar";
-    else if (ftype_sniff(head, *headn, size, NULL) == FT_PROGRAM) ext = *headn >= 4 && !memcmp(head, "\x7F" "ELF", 4) ? ".elf" : ".dol";
+    else if (ftype_sniff(head, *headn, size, NULL) == FT_PROGRAM)
+        ext = *headn >= 4 && !memcmp(head, "\x7F" "ELF", 4) ? ".elf" : ".dol";
     if (ext) {
         char *dot = strrchr(name, '.');
         if (!dot || strcasecmp(dot, ext)) {
             if (strlen(name) + strlen(ext) < sizeof(name)) strcat(name, ext);
         }
     }
-    if (!vfs_join(path, pathsz, dir, name)) { vfs_remove(tmp, false); return false; }
+    if (!vfs_join(path, pathsz, dir, name)) {
+        vfs_remove(tmp, false);
+        return false;
+    }
     vfs_remove(path, false);
-    if (!vfs_rename(tmp, path)) { wl_log("Can't rename the upload"); vfs_remove(tmp, false); return false; }
+    if (!vfs_rename(tmp, path)) {
+        wl_log("Can't rename the upload");
+        vfs_remove(tmp, false);
+        return false;
+    }
     char sz[24];
     ui_fmt_size(sz, sizeof(sz), size);
-    wl_log("Received %s (%s) from %u.%u.%u.%u", name, sz, c->ip >> 24, (c->ip >> 16) & 255, (c->ip >> 8) & 255, c->ip & 255);
+    wl_log("Received %s (%s) from %u.%u.%u.%u", name, sz, c->ip >> 24, (c->ip >> 16) & 255,
+           (c->ip >> 8) & 255, c->ip & 255);
     return true;
 }
 
@@ -301,9 +381,11 @@ static bool install_progress(const char *file, u64 done, u64 total)
 }
 
 /* true when the user chose to start the program now */
-static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *launch, size_t launchsz)
+static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *launch,
+                   size_t launchsz)
 {
     const char *name = vfs_basename(path);
+
     if (install_is_archive_name(name)) {
         char err[96] = "";
         g_inst_name = name;
@@ -319,10 +401,13 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         vfs_update_space(dev);
         return false;
     }
+
     if (ftype_sniff(head, headn, 0x100, name) == FT_PROGRAM) {
         char q[300];
-        snprintf(q, sizeof(q), "Start \"%s\" now?\n\nGodModeWii closes and starts this program. It stays in "
-                 "GodModeWii/wiiload on the %s either way.", name, g_devs[dev].tag);
+        snprintf(q, sizeof(q),
+                 "Start \"%s\" now?\n\nGodModeWii closes and starts this program. It stays in "
+                 "GodModeWii/wiiload on the %s either way.",
+                 name, g_devs[dev].tag);
 #ifdef GMW_AUTOTEST
         wl_log("Would ask: start %s?", name);
         return false;
@@ -334,6 +419,7 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         wl_log("Kept GodModeWii/wiiload/%s", name);
         return false;
     }
+
     wl_log("Not an archive or a program: kept GodModeWii/wiiload/%s", name);
     vfs_update_space(dev);
     return false;
@@ -345,17 +431,28 @@ bool wiiload_run(char *launch, size_t launchsz)
 {
     if (!ftp_net_start()) return false;
     u32 ip = net_gethostip();
-    if (!ip) { ui_message("NETWORK", C_RED, "The console has no IP address."); return false; }
+    if (!ip) {
+        ui_message("NETWORK", C_RED, "The console has no IP address.");
+        return false;
+    }
     s32 ls = make_listener();
-    if (ls < 0) { ui_message("WIILOAD", C_RED, "Couldn't open port 4299."); return false; }
+    if (ls < 0) {
+        ui_message("WIILOAD", C_RED, "Couldn't open port 4299.");
+        return false;
+    }
 
     bool usb = false;
     int dev = install_pick_device(false);
-    if (dev < 0) { dev = install_pick_device(true); usb = dev >= 0; }
+    if (dev < 0) {
+        dev = install_pick_device(true);
+        usb = dev >= 0;
+    }
+
     log_n = 0;
     wl_log("Listening on port %d", WIILOAD_PORT);
     bool launching = false, full = true;
     u64 last_draw = 0;
+
     while (!g_quit_request) {
         struct sockaddr_in a;
         u32 al = sizeof(a);
@@ -363,7 +460,8 @@ bool wiiload_run(char *launch, size_t launchsz)
         if (s >= 0) {
             u32 pip = ntohl(a.sin_addr.s_addr);
             if (!lan_peer(a.sin_addr.s_addr)) {
-                wl_log("Refused %u.%u.%u.%u: not on the local network", pip >> 24, (pip >> 16) & 255, (pip >> 8) & 255, pip & 255);
+                wl_log("Refused %u.%u.%u.%u: not on the local network", pip >> 24,
+                       (pip >> 16) & 255, (pip >> 8) & 255, pip & 255);
                 net_close(s);
             } else if (dev < 0) {
                 wl_log("Nowhere to put it: insert an SD card or a USB drive");
@@ -376,7 +474,11 @@ bool wiiload_run(char *launch, size_t launchsz)
                 u32 headn = 0;
                 bool got = receive(&c, path, sizeof(path), head, &headn);
                 net_close(s);
-                if (got && handle(path, head, headn, dev, launch, launchsz)) { launching = true; break; }
+
+                if (got && handle(path, head, headn, dev, launch, launchsz)) {
+                    launching = true;
+                    break;
+                }
                 full = true;
                 last_draw = 0;
 #ifdef GMW_AUTOTEST
@@ -386,20 +488,27 @@ bool wiiload_run(char *launch, size_t launchsz)
 #endif
             }
         }
+
         u32 btn = DetectInput(IN_DOWN);
         if (btn & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         if (btn & WPAD_BUTTON_1) {
             int d = install_pick_device(!usb);
-            if (d >= 0) { usb = !usb; dev = d; wl_log("Installing onto the %s", usb ? g_devs[dev].tag : "SD card"); }
-            else wl_log("No %s found", usb ? "SD card" : "USB drive");
+            if (d >= 0) {
+                usb = !usb;
+                dev = d;
+                wl_log("Installing onto the %s", usb ? g_devs[dev].tag : "SD card");
+            } else
+                wl_log("No %s found", usb ? "SD card" : "USB drive");
             last_draw = 0;
         }
+
         if (!last_draw || now_ms() - last_draw > 500) {
             draw(ip, dev, full, NULL, 0, 0);
             full = false;
             last_draw = now_ms();
         }
     }
+
     net_close(ls);
     return launching;
 }

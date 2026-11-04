@@ -9,7 +9,8 @@
 
 void input_init(void)
 {
-    INPUT_InitEx(0);                                /* the pointer and mouse drive the viewers' cursor */
+    /* the pointer and mouse drive the viewers' cursor */
+    INPUT_InitEx(0);
 
     INPUT_KeyboardMapSet(0x4C, 0);                  /* Delete: unused here */
     INPUT_KeyboardMapSet(0x06, WPAD_BUTTON_PLUS);   /* C: copy */

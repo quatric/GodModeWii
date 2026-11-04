@@ -35,11 +35,20 @@
 #define ENV_MIN     (-904.0f)           /* dB x 10: -90.4 dB is silence */
 #define MS_FRAMES   (SEQ_RATE / 1000)   /* the envelope and the sequencer step every millisecond */
 
-static uint32_t be32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
+static uint32_t be32(const uint8_t *p)
+{
+    return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+}
 static uint16_t be16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
 
-typedef struct { const uint8_t *b; uint32_t n; } blk_t;
-static uint32_t bu32(const blk_t *k, uint64_t off) { return off + 4 <= k->n ? be32(k->b + off) : 0xFFFFFFFFu; }
+typedef struct {
+    const uint8_t *b;
+    uint32_t n;
+} blk_t;
+static uint32_t bu32(const blk_t *k, uint64_t off)
+{
+    return off + 4 <= k->n ? be32(k->b + off) : 0xFFFFFFFFu;
+}
 static uint8_t bu8(const blk_t *k, uint64_t off) { return off < k->n ? k->b[off] : 0; }
 
 /* ---------------------------------------------------------------- envelopes (VGMTrans) */
@@ -112,7 +121,11 @@ typedef struct {
     bool on;
     uint32_t pc;
     int32_t wait;
-    struct { uint32_t ret; int count; bool loop; } stack[CALL_DEPTH];
+    struct {
+        uint32_t ret;
+        int count;
+        bool loop;
+    } stack[CALL_DEPTH];
     int sp;
     int prg, vol, vol2, pan, transpose, bend, range;
     bool note_wait, tie, mono, cmp, mute;
@@ -158,7 +171,10 @@ static uint8_t *grab(seq_read_fn rd, void *ctx, uint64_t size, uint64_t off, uin
 {
     if (!n || n > MAX_FILE || off + n > size) return NULL;
     uint8_t *b = malloc(n);
-    if (b && !rd(ctx, off, b, n)) { free(b); b = NULL; }
+    if (b && !rd(ctx, off, b, n)) {
+        free(b);
+        b = NULL;
+    }
     return b;
 }
 
@@ -168,7 +184,11 @@ typedef struct {
     uint32_t stab, scnt, btab, bcnt, ftab, fcnt, gtab, gcnt;
 } rsar_t;
 
-static void rsar_free(rsar_t *r) { free(r->sb); free(r->ib); }
+static void rsar_free(rsar_t *r)
+{
+    free(r->sb);
+    free(r->ib);
+}
 
 static bool rsar_load(rsar_t *r, seq_read_fn rd, void *ctx, uint64_t size)
 {
@@ -182,10 +202,14 @@ static bool rsar_load(rsar_t *r, seq_read_fn rd, void *ctx, uint64_t size)
     if (!r->sb || !r->ib || memcmp(r->sb, "SYMB", 4) || memcmp(r->ib, "INFO", 4)) return false;
     r->sy = (blk_t){ r->sb + 8, ss - 8 };
     r->in = (blk_t){ r->ib + 8, is - 8 };
-    r->stab = bu32(&r->in, 0x04); r->scnt = bu32(&r->in, r->stab);
-    r->btab = bu32(&r->in, 0x0C); r->bcnt = bu32(&r->in, r->btab);
-    r->ftab = bu32(&r->in, 0x1C); r->fcnt = bu32(&r->in, r->ftab);
-    r->gtab = bu32(&r->in, 0x24); r->gcnt = bu32(&r->in, r->gtab);
+    r->stab = bu32(&r->in, 0x04);
+    r->scnt = bu32(&r->in, r->stab);
+    r->btab = bu32(&r->in, 0x0C);
+    r->bcnt = bu32(&r->in, r->btab);
+    r->ftab = bu32(&r->in, 0x1C);
+    r->fcnt = bu32(&r->in, r->ftab);
+    r->gtab = bu32(&r->in, 0x24);
+    r->gcnt = bu32(&r->in, r->gtab);
     uint32_t lim = r->in.n / 8;
     if (r->scnt > lim) r->scnt = 0;
     if (r->bcnt > lim) r->bcnt = 0;
@@ -204,7 +228,8 @@ static const char *rsar_name(const rsar_t *r, uint32_t id)
 }
 
 /* Where file `fid` is: its data and its wave data, as absolute offsets and sizes. */
-static bool rsar_file(const rsar_t *r, uint32_t fid, uint64_t *d, uint32_t *dn, uint64_t *w, uint32_t *wn)
+static bool rsar_file(const rsar_t *r, uint32_t fid, uint64_t *d, uint32_t *dn, uint64_t *w,
+                      uint32_t *wn)
 {
     if (fid >= r->fcnt) return false;
     const blk_t *in = &r->in;
@@ -231,7 +256,9 @@ static bool same_name(const char *a, const char *clean)
 {
     for (; *a && *clean; a++, clean++) {
         char c = *a;
-        if (c == '/' || c == '|' || c == '\\' || (unsigned char)c < 0x20 || (unsigned char)c == 0x7F) c = '_';
+        if (c == '/' || c == '|' || c == '\\' || (unsigned char)c < 0x20 ||
+            (unsigned char)c == 0x7F)
+            c = '_';
         if (c != *clean) return false;
     }
     return !*a && !*clean;
@@ -243,7 +270,8 @@ static uint32_t nib2smp(uint32_t n) { return n / 16 * 14 + (n % 16 > 2 ? n % 16 
 
 /* Decodes channel 0 of a wave described by WaveInfo `wi` (n bytes available from it) whose
  * samples start at `data`. */
-static void decode_wave(wave_t *w, const uint8_t *wi, uint32_t wn, const uint8_t *base, uint32_t base_n, uint32_t data)
+static void decode_wave(wave_t *w, const uint8_t *wi, uint32_t wn, const uint8_t *base,
+                        uint32_t base_n, uint32_t data)
 {
     w->bad = true;
     if (wn < 0x18) return;
@@ -254,18 +282,24 @@ static void decode_wave(wave_t *w, const uint8_t *wi, uint32_t wn, const uint8_t
     if (!wi[2] || !w->rate || ct + 4 > wn) return;
     uint32_t ci = be32(wi + ct);
     if (ci + 8 > wn) return;
+
     uint32_t start = data + be32(wi + ci);
     uint32_t n = fmt == 2 ? nib2smp(le) : le;
     w->loop_start = fmt == 2 ? nib2smp(ls) : ls;
     if (fmt == 2) n++;                  /* the end address is the last sample's */
     if (!n || n > (8u << 20) || start > base_n) return;
+
     int16_t *o = malloc((n + 2) * sizeof(int16_t));
     if (!o) return;
     const uint8_t *p = base + start;
     uint32_t avail = base_n - start, i = 0;
+
     if (fmt == 2) {
         uint32_t ai = be32(wi + ci + 4);
-        if (!ai || ai + 0x28 > wn) { free(o); return; }
+        if (!ai || ai + 0x28 > wn) {
+            free(o);
+            return;
+        }
         int16_t coef[16];
         for (int k = 0; k < 16; k++) coef[k] = (int16_t)be16(wi + ai + k * 2);
         int32_t h1 = (int16_t)be16(wi + ai + 0x24), h2 = (int16_t)be16(wi + ai + 0x26);
@@ -290,7 +324,12 @@ static void decode_wave(wave_t *w, const uint8_t *wi, uint32_t wn, const uint8_t
     } else {
         for (; i < n && i < avail; i++) o[i] = (int16_t)((int8_t)p[i] * 256);
     }
-    if (!i) { free(o); return; }
+
+    if (!i) {
+        free(o);
+        return;
+    }
+
     o[i] = o[i + 1] = 0;
     w->pcm = o;
     w->n = i;
@@ -338,11 +377,13 @@ static int32_t sub_ref(const seq_t *s, uint32_t ref, int v)
     uint32_t off = bu32(&k, ref + 4ull);
     if (type == 1) return (int32_t)ref;                     /* direct */
     if (off >= k.n) return -1;
-    if (type == 2) {                                        /* range: highest key / velocity of each */
+    /* range: highest key / velocity of each */
+    if (type == 2) {
         int n = k.b[off];
         uint32_t refs = (off + 1 + n + 3) & ~3u;
         for (int i = 0; i < n && off + 1 + i < k.n; i++)
-            if (v <= k.b[off + 1 + i]) return refs + i * 8ull + 8 <= k.n ? (int32_t)(refs + i * 8) : -1;
+            if (v <= k.b[off + 1 + i])
+                return refs + i * 8ull + 8 <= k.n ? (int32_t)(refs + i * 8) : -1;
         return -1;
     }
     if (type == 3) {                                        /* index: min, max */
@@ -422,24 +463,37 @@ seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, cons
 {
     rsar_t r;
     seq_t *s = NULL;
+
     *err = "This sound archive couldn't be read";
     if (!rsar_load(&r, rd, ctx, size)) goto fail;
     const blk_t *in = &r.in;
+
     uint32_t se = 0xFFFFFFFFu;
     for (uint32_t i = 0; i < r.scnt; i++) {
         uint32_t e = bu32(in, r.stab + 8 + i * 8ull);
         if (bu8(in, e + 0x16ull) != 1) continue;            /* sequences only */
         const char *n = rsar_name(&r, bu32(in, e));
         char def[24];
-        if (!n) { snprintf(def, sizeof(def), "sound%04u", (unsigned)i); n = def; }
-        if (same_name(n, name)) { se = e; break; }
+        if (!n) {
+            snprintf(def, sizeof(def), "sound%04u", (unsigned)i);
+            n = def;
+        }
+        if (same_name(n, name)) {
+            se = e;
+            break;
+        }
     }
+
     *err = "This sequence isn't in the sound archive";
     if (se == 0xFFFFFFFFu) goto fail;
     uint32_t si = bu32(in, se + 0x1Cull);
     uint32_t label = bu32(in, si), bank = bu32(in, si + 4ull);
+
     s = calloc(1, sizeof(*s));
-    if (!s) { *err = "Not enough memory"; goto fail; }
+    if (!s) {
+        *err = "Not enough memory";
+        goto fail;
+    }
     s->sound_vol = bu8(in, se + 0x14ull) / 127.0f;
     if (s->sound_vol <= 0) s->sound_vol = 1;
 
@@ -473,12 +527,14 @@ seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, cons
     s->inst = ib + 8;
     s->inst_n = be32(s->rbnk + ib + 4) - 8;
     if (s->inst_n > dn - s->inst) s->inst_n = dn - s->inst;
+
     if (wb && wb + 12 <= dn && !memcmp(s->rbnk + wb, "WAVE", 4) && be32(s->rbnk + wb + 4) > 12) {
         s->wtab = wb + 8;
         s->wtab_n = be32(s->rbnk + wb + 4) - 8;
         if (s->wtab_n > dn - s->wtab) s->wtab_n = dn - s->wtab;
         s->nwaves = be32(s->rbnk + s->wtab);
     }
+
     *err = "The instrument bank's waves couldn't be read";
     if (wn && wn != 0xFFFFFFFFu) {
         s->wdat = grab(rd, ctx, size, w, wn);
@@ -491,6 +547,7 @@ seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, cons
         if (tabl + 12 > wn) goto fail;
         s->nwaves = be32(s->wdat + tabl + 8);
     }
+
     if (s->nwaves > MAX_WAVES) s->nwaves = MAX_WAVES;
     s->waves = calloc(s->nwaves ? s->nwaves : 1, sizeof(wave_t));
     *err = "Not enough memory";
@@ -531,6 +588,7 @@ static void note_on(seq_t *s, int ti, int key, int vel, int32_t len)
     key += t->transpose;
     if (key < 0) key = 0;
     if (key > 127) key = 127;
+
     if (t->tie && t->tie_voice >= 0 && s->v[t->tie_voice].on && s->v[t->tie_voice].track == ti &&
         s->v[t->tie_voice].phase < ENV_RELEASE) {
         voice_t *v = &s->v[t->tie_voice];       /* tied: the sounding note moves to the new key */
@@ -539,24 +597,37 @@ static void note_on(seq_t *s, int ti, int key, int vel, int32_t len)
         set_pitch(s, v);
         return;
     }
+
     if (t->mono)
         for (int i = 0; i < MAX_VOICES; i++)
             if (s->v[i].on && s->v[i].track == ti) release_voice(&s->v[i]);
+
     int32_t rg = find_region(s, t->prg, key, vel);
     if (rg < 0) return;
     const uint8_t *r = s->rbnk + s->inst + rg;
     const wave_t *w = get_wave(s, be32(r));
     if (!w) return;
+
     /* a free voice, else the quietest releasing one, else the oldest */
     int best = -1;
     float best_env = 1e9f;
     uint32_t oldest = 0xFFFFFFFFu;
     for (int i = 0; i < MAX_VOICES; i++) {
         voice_t *v = &s->v[i];
-        if (!v->on) { best = i; break; }
-        if (v->phase == ENV_RELEASE && v->env < best_env) { best_env = v->env; best = i; oldest = 0; }
-        else if (best_env > 1e8f && v->age < oldest) { oldest = v->age; best = i; }
+        if (!v->on) {
+            best = i;
+            break;
+        }
+        if (v->phase == ENV_RELEASE && v->env < best_env) {
+            best_env = v->env;
+            best = i;
+            oldest = 0;
+        } else if (best_env > 1e8f && v->age < oldest) {
+            oldest = v->age;
+            best = i;
+        }
     }
+
     voice_t *v = &s->v[best];
     memset(v, 0, sizeof(*v));
     v->on = true;
@@ -564,9 +635,13 @@ static void note_on(seq_t *s, int ti, int key, int vel, int32_t len)
     v->w = w;
     v->key = key;
     v->orig_key = r[0x0C];
-    union { uint32_t u; float f; } tune = { be32(r + 0x10) };
+    union {
+        uint32_t u;
+        float f;
+    } tune = { be32(r + 0x10) };
     float tf = tune.f > 0.01f && tune.f < 100.0f ? tune.f : 1.0f;
     v->base_ratio = (float)w->rate / SEQ_RATE * tf;
+
     int a = t->att >= 0 ? t->att : r[4], d = t->dec >= 0 ? t->dec : r[5];
     int su = t->sus >= 0 ? t->sus : r[6], re = t->rel >= 0 ? t->rel : r[7];
     v->att = attack_table[a & 127];
@@ -575,9 +650,11 @@ static void note_on(seq_t *s, int ti, int key, int vel, int32_t len)
     v->rel = falling_rate((uint8_t)re);
     v->env = v->att > 0 ? ENV_MIN : 0;
     v->phase = v->att > 0 ? ENV_ATTACK : ENV_DECAY;
+
     float fv = vel / 127.0f, rv = r[0x0D] / 127.0f;
     v->gain = fv * fv * rv * rv;
     v->rpan = (int)r[0x0E] - 64;
+
     v->len = t->tie ? -1 : len;
     v->age = ++s->age;
     set_pitch(s, v);
@@ -589,11 +666,17 @@ static void env_step(voice_t *v)
     switch (v->phase) {
     case ENV_ATTACK:
         v->env *= v->att;
-        if (v->env > -1.0f / 32) { v->env = 0; v->phase = ENV_DECAY; }
+        if (v->env > -1.0f / 32) {
+            v->env = 0;
+            v->phase = ENV_DECAY;
+        }
         break;
     case ENV_DECAY:
         v->env -= v->dec;
-        if (v->env <= v->sus) { v->env = v->sus; v->phase = ENV_SUSTAIN; }
+        if (v->env <= v->sus) {
+            v->env = v->sus;
+            v->phase = ENV_SUSTAIN;
+        }
         break;
     case ENV_RELEASE:
         v->env -= v->rel;
@@ -604,7 +687,11 @@ static void env_step(voice_t *v)
 
 /* ---------------------------------------------------------------- sequencer */
 
-static uint32_t rnd(seq_t *s) { s->rng = s->rng * 1103515245u + 12345u; return s->rng >> 16; }
+static uint32_t rnd(seq_t *s)
+{
+    s->rng = s->rng * 1103515245u + 12345u;
+    return s->rng >> 16;
+}
 
 static int16_t *var_ref(seq_t *s, track_t *t, int i)
 {
@@ -619,7 +706,10 @@ enum { A_U8, A_S8, A_S16, A_VAR };
 /* Reads one byte of the command stream; past the end the track stops (0xFF). */
 static int cb(seq_t *s, track_t *t)
 {
-    if (t->pc >= s->code_n) { t->on = false; return 0xFF; }
+    if (t->pc >= s->code_n) {
+        t->on = false;
+        return 0xFF;
+    }
     return s->rseq[s->code + t->pc++];
 }
 
@@ -634,8 +724,17 @@ static uint32_t varlen(seq_t *s, track_t *t)
     return v;
 }
 
-static int32_t s16(seq_t *s, track_t *t) { int h = cb(s, t); return (int16_t)(h << 8 | cb(s, t)); }
-static uint32_t u24(seq_t *s, track_t *t) { uint32_t a = cb(s, t); a = a << 8 | cb(s, t); return a << 8 | cb(s, t); }
+static int32_t s16(seq_t *s, track_t *t)
+{
+    int h = cb(s, t);
+    return (int16_t)(h << 8 | cb(s, t));
+}
+static uint32_t u24(seq_t *s, track_t *t)
+{
+    uint32_t a = cb(s, t);
+    a = a << 8 | cb(s, t);
+    return a << 8 | cb(s, t);
+}
 
 /* An argument of the default kind, or the kind a random / variable prefix asked for. */
 static int32_t arg(seq_t *s, track_t *t, int kind, int prefix)
@@ -659,7 +758,10 @@ static int32_t arg(seq_t *s, track_t *t, int kind, int prefix)
 static void jump(seq_t *s, int ti, uint32_t to)
 {
     track_t *t = &s->t[ti];
-    if (to >= s->code_n) { t->on = false; return; }
+    if (to >= s->code_n) {
+        t->on = false;
+        return;
+    }
     if (to < t->pc) {                   /* backwards: a loop. The first track that loops counts. */
         if (s->loop_track < 0) s->loop_track = ti;
         if (s->loop_track == ti && ++s->loops >= 2 && !s->repeat && s->fade_step == 0)
@@ -675,13 +777,16 @@ static void run_track(seq_t *s, int ti)
     for (int guard = 0; t->on && t->wait <= 0 && guard < 10000; guard++) {
         int c = cb(s, t), prefix = 0;
         bool doit = true;
+
         while (c == 0xA0 || c == 0xA1 || c == 0xA2 || c == 0xA3 || c == 0xA4 || c == 0xA5) {
             if (c == 0xA2) doit = t->cmp;
             else if (c <= 0xA1) prefix = c;
             /* 0xA3 - 0xA5 (time, ramp versions of a command) are read as the plain command */
             c = cb(s, t);
         }
+
         if (!t->on) break;
+
         if (c < 0x80) {
             int vel = cb(s, t);
             int32_t len = arg(s, t, A_VAR, prefix);
@@ -691,6 +796,7 @@ static void run_track(seq_t *s, int ti)
             }
             continue;
         }
+
         switch (c) {
         case 0x80: { int32_t w = arg(s, t, A_VAR, prefix); if (doit) t->wait = w; break; }
         case 0x81: { int32_t p = arg(s, t, A_VAR, prefix); if (doit) t->prg = p & 0xFFFF; break; }
@@ -703,7 +809,11 @@ static void run_track(seq_t *s, int ti)
             }
             break;
         }
-        case 0x89: { uint32_t to = u24(s, t); if (doit) jump(s, ti, to); break; }
+        case 0x89: {
+            uint32_t to = u24(s, t);
+            if (doit) jump(s, ti, to);
+            break;
+        }
         case 0x8A: {
             uint32_t to = u24(s, t);
             if (doit && t->sp < CALL_DEPTH) {
@@ -735,7 +845,8 @@ static void run_track(seq_t *s, int ti)
             int v = arg(s, t, A_U8, prefix);
             if (doit) {
                 t->tie = v != 0;
-                if (!t->tie && t->tie_voice >= 0 && s->v[t->tie_voice].track == ti) release_voice(&s->v[t->tie_voice]);
+                if (!t->tie && t->tie_voice >= 0 && s->v[t->tie_voice].track == ti)
+                    release_voice(&s->v[t->tie_voice]);
             }
             break;
         }
@@ -771,7 +882,9 @@ static void run_track(seq_t *s, int ti)
                 case 0x83: *v = (int16_t)(*v * val); break;
                 case 0x84: if (val) *v = (int16_t)(*v / val); break;
                 case 0x85: *v = (int16_t)(val >= 0 ? *v << val : *v >> -val); break;
-                case 0x86: *v = (int16_t)(val > 0 ? (int32_t)(rnd(s) % (uint32_t)(val + 1)) : 0); break;
+                case 0x86:
+                    *v = (int16_t)(val > 0 ? (int32_t)(rnd(s) % (uint32_t)(val + 1)) : 0);
+                    break;
                 case 0x87: *v = (int16_t)(*v & val); break;
                 case 0x88: *v = (int16_t)(*v | val); break;
                 case 0x89: *v = (int16_t)(*v ^ val); break;
@@ -785,7 +898,8 @@ static void run_track(seq_t *s, int ti)
                 case 0x95: t->cmp = *v != val; break;
                 }
             } else if ((x & 0xF0) == 0xE0) {
-                cb(s, t); cb(s, t);
+                cb(s, t);
+                cb(s, t);
             } else
                 t->on = false;          /* unknown: stop rather than misread */
             break;
@@ -800,18 +914,26 @@ static void run_track(seq_t *s, int ti)
             }
             break;
         case 0xFD:
-            if (doit && t->sp) { t->sp--; t->pc = t->stack[t->sp].ret; }
+            if (doit && t->sp) {
+                t->sp--;
+                t->pc = t->stack[t->sp].ret;
+            }
             break;
-        case 0xFE: cb(s, t); cb(s, t); break;
+        case 0xFE:
+            cb(s, t);
+            cb(s, t);
+            break;
         case 0xFF:
             if (doit) {
                 t->on = false;
                 for (int i = 0; i < MAX_VOICES; i++)
-                    if (s->v[i].on && s->v[i].track == ti && s->v[i].len < 0) release_voice(&s->v[i]);
+                    if (s->v[i].on && s->v[i].track == ti && s->v[i].len < 0)
+                        release_voice(&s->v[i]);
             }
             break;
         default:
-            if (c >= 0xB0 && c <= 0xDF) arg(s, t, A_U8, prefix);    /* settings without an effect here */
+            /* settings without an effect here */
+            if (c >= 0xB0 && c <= 0xDF) arg(s, t, A_U8, prefix);
             else t->on = false;
             break;
         }
@@ -838,7 +960,10 @@ void seq_set_repeat(seq_t *s, bool repeat)
 {
     s->repeat = repeat;
     if (repeat && s->ended) seq_restart(s);     /* it had finished: from the top */
-    else if (repeat) { s->fade_step = 0; s->fade = 1; }
+    else if (repeat) {
+        s->fade_step = 0;
+        s->fade = 1;
+    }
 }
 
 uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
@@ -848,35 +973,50 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
         if (s->sub == 0) {
             /* a new millisecond: the sequencer, then the envelopes */
             s->ticks += s->tempo * s->timebase / 60000.0;
-            while (s->ticks >= 1) { tick(s); s->ticks -= 1; }
+            while (s->ticks >= 1) {
+                tick(s);
+                s->ticks -= 1;
+            }
+
             bool any = false;
             for (int i = 0; i < MAX_TRACKS; i++) any |= s->t[i].on;
             /* repeat: a sequence with no loop of its own (most jingles and sound effects) starts
              * again once all its tracks have finished */
-            if (!any && s->repeat) { seq_restart(s); any = true; }
+            if (!any && s->repeat) {
+                seq_restart(s);
+                any = true;
+            }
             for (int i = 0; i < MAX_VOICES; i++) {
                 if (s->v[i].on) env_step(&s->v[i]);
                 any |= s->v[i].on;
             }
-            if (!any || s->fade <= 0) { s->ended = true; break; }
+            if (!any || s->fade <= 0) {
+                s->ended = true;
+                break;
+            }
         }
+
         uint32_t n = MS_FRAMES - s->sub;
         if (n > frames - done) n = frames - done;
         float mix[MS_FRAMES * 2];
         memset(mix, 0, n * 2 * sizeof(float));
         float master = s->sound_vol * (s->main_vol / 127.0f) * (s->main_vol / 127.0f) * 0.5f;
+
         for (int i = 0; i < MAX_TRACKS; i++) if (s->t[i].on) s->seen |= 1u << i;
         for (int i = 0; i < MAX_VOICES; i++) {
             voice_t *v = &s->v[i];
             if (!v->on) continue;
+
             const track_t *t = &s->t[v->track];
             float tv = t->vol / 127.0f, ev = t->vol2 / 127.0f;
             float g = master * v->gain * tv * tv * ev * ev * db_to_gain(v->env);
             if (g > s->level[v->track]) s->level[v->track] = g;
-            if (s->muted >> v->track & 1) g = 0;    /* turned off: keeps its place, so it comes back in time */
+            /* turned off: keeps its place, so it comes back in time */
+            if (s->muted >> v->track & 1) g = 0;
             int p = t->pan + v->rpan;
             if (p < 0) p = 0;
             if (p > 127) p = 127;
+
             float ang = p / 127.0f * 1.5707963f;
             float gl = g * cosf(ang) * 1.41421356f, gr = g * sinf(ang) * 1.41421356f;
             const wave_t *w = v->w;
@@ -886,8 +1026,12 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
                     if (w->loop && w->n > w->loop_start) {
                         v->pos -= w->n - w->loop_start;
                         ip = (uint32_t)v->pos;
-                    } else { v->on = false; break; }
+                    } else {
+                        v->on = false;
+                        break;
+                    }
                 }
+
                 float fr = (float)(v->pos - ip);
                 int32_t a = w->pcm[ip];
                 int32_t b = ip + 1 < w->n ? w->pcm[ip + 1] : (w->loop ? w->pcm[w->loop_start] : 0);
@@ -898,16 +1042,21 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
             }
         }
         for (uint32_t k = 0; k < n; k++) {
-            if (s->fade_step > 0) { s->fade -= s->fade_step; if (s->fade < 0) s->fade = 0; }
+            if (s->fade_step > 0) {
+                s->fade -= s->fade_step;
+                if (s->fade < 0) s->fade = 0;
+            }
             for (int c = 0; c < 2; c++) {
                 float x = mix[k * 2 + c] * s->fade;
                 x += x < 0 ? -0.5f : 0.5f;
                 out[(done + k) * 2 + c] = x > 32767 ? 32767 : x < -32768 ? -32768 : (int16_t)x;
             }
         }
+
         done += n;
         s->sub = (s->sub + n) % MS_FRAMES;
     }
+
     s->frames += done;
     return done;
 }
@@ -939,6 +1088,9 @@ int seq_track(seq_t *s, int i, int *prg, int *notes, float *level)
     for (int k = 0; k < MAX_VOICES; k++) n += s->v[k].on && s->v[k].track == i;
     if (prg) *prg = s->t[i].prg;
     if (notes) *notes = n;
-    if (level) { *level = s->level[i]; s->level[i] *= 0.5f; }
+    if (level) {
+        *level = s->level[i];
+        s->level[i] *= 0.5f;
+    }
     return s->t[i].on ? 1 : (s->seen >> i & 1) || n ? 2 : 0;
 }

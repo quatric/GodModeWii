@@ -45,7 +45,8 @@ bool launch_is_name(const char *name)
 static bool looks_runnable(const u8 *b, u32 size)
 {
     if (size >= 0x34 && !memcmp(b, "\x7F" "ELF", 4))
-        return b[4] == 1 && b[5] == 2 && be16(b + 0x12) == 20;      /* 32-bit, big endian, PowerPC */
+        /* 32-bit, big endian, PowerPC */
+        return b[4] == 1 && b[5] == 2 && be16(b + 0x12) == 20;
     if (size < 0x100)
         return false;
     u32 entry = be32(b + 0xE0);
@@ -68,12 +69,18 @@ static void add_meta_args(const char *dir)
     vfs_file f;
     if (!vfs_open_read(&f, path))
         return;
+
     u32 n = f.size < 16384 ? (u32)f.size : 16384;
     char *x = memalign(32, n + 32);
     s32 got = x ? vfs_read(&f, x, n) : -1;
     vfs_close(&f);
-    if (got <= 0) { free(x); return; }
+    if (got <= 0) {
+        free(x);
+        return;
+    }
+
     x[got] = '\0';
+
     char *a = strstr(x, "<arguments>"), *end = a ? strstr(a, "</arguments>") : NULL;
     for (char *p = a; p && end && (p = strstr(p, "<arg>")) && p < end;) {
         p += 5;
@@ -118,8 +125,10 @@ bool launch_prepare(const char *path)
         ui_message("LAUNCH", C_RED, "This file is too big or too small to be a Wii program.");
         return false;
     }
+
     app_size = (u32)f.size;
     app = memalign(32, (app_size + 31) & ~31u);
+
     u32 got = 0;
     vfs_unbuffered(&f);
     ui_splash("Loading...");
@@ -132,9 +141,12 @@ bool launch_prepare(const char *path)
     if (!app || got != app_size || !looks_runnable(app, app_size)) {
         free(app);
         app = NULL;
-        ui_message("LAUNCH", C_RED, got != app_size ? "Could not read the whole file." : "This isn't a Wii DOL or ELF.");
+        ui_message("LAUNCH", C_RED,
+                   got != app_size ? "Could not read the whole file."
+                                   : "This isn't a Wii DOL or ELF.");
         return false;
     }
+
     add_path_arg(path);
     char dir[VFS_PATH_MAX];
     if (!vfs_is_archive(path) && vfs_parent(path, dir, sizeof(dir)))
@@ -149,7 +161,8 @@ void launch_go(void)
         return;
     u32 level = IRQ_Disable();
 
-    /* The program first (it may sit anywhere in MEM2, memmove copes with overlap), then the arguments. */
+    /* The program first (it may sit anywhere in MEM2, memmove copes with overlap), then the
+     * arguments. */
     memmove((void *)APP_ADDR, app, app_size);
     DCFlushRange((void *)APP_ADDR, app_size);
     *(vu32 *)ARGS_ADDR = args_len;

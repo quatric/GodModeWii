@@ -28,7 +28,8 @@ bool rvz_read_raw(rvz_t *r, uint64_t off, uint8_t *buf, uint32_t len);
 /* Wii partitions: their data as a game reads it, decrypted and without hashes (0x7C00 bytes for
  * each 0x8000 on the disc). */
 int rvz_partitions(const rvz_t *r);
-uint64_t rvz_part_disc_offset(const rvz_t *r, int i); /* where its encrypted data starts on the disc */
+/* where its encrypted data starts on the disc */
+uint64_t rvz_part_disc_offset(const rvz_t *r, int i);
 uint64_t rvz_part_size(const rvz_t *r, int i);
 bool rvz_read_part(rvz_t *r, int i, uint64_t off, uint8_t *buf, uint32_t len);
 

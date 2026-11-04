@@ -61,6 +61,7 @@ static void utf16_name(const u8 *be, char *out, size_t sz, bool for_file)
         memcpy(out + o, buf, n);
         o += n;
     }
+
     /* FAT drops trailing spaces and dots from names */
     while (for_file && o && (out[o - 1] == ' ' || out[o - 1] == '.'))
         o--;
@@ -79,9 +80,11 @@ static bool load(void)
     vfs_close(&f);
     if (got != (s32)sizeof(db) || memcmp(db, "RNOD", 4))
         return false;
+
     miis = calloc(RFL_SLOTS, sizeof(*miis));
     if (!miis)
         return false;
+
     for (int i = 0; i < RFL_SLOTS; i++) {
         const u8 *r = db + 4 + i * MII_SIZE;
         static const u8 zero[8];
@@ -97,6 +100,7 @@ static bool load(void)
         if (!m->name[0])
             snprintf(m->name, sizeof(m->name), "(no name)");
     }
+
     return true;
 }
 
@@ -121,9 +125,13 @@ static void draw(int cursor, int top, int rows)
     ui_reset();
     for (int i = 0; i < rows && top + i < nmiis; i++) {
         const mii_t *m = &miis[top + i];
-        if (top + i == cursor) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-        else ui_color(C_WHITE, m->marked);
-        ui_field(3 + i, 0, cols - 1, " %s %-12s  by %s", m->marked ? "[x]" : "[ ]", m->name, m->creator);
+        if (top + i == cursor) {
+            ui_bg(C_CYAN);
+            ui_color(C_BLACK, false);
+        } else
+            ui_color(C_WHITE, m->marked);
+        ui_field(3 + i, 0, cols - 1, " %s %-12s  by %s", m->marked ? "[x]" : "[ ]", m->name,
+                 m->creator);
         ui_reset();
     }
     ui_color(C_CYAN, true);
@@ -196,13 +204,15 @@ static void export(int dev, int only)
             snprintf(failed, sizeof(failed), "%s", path[0] ? path : dir);
         }
     }
+
     char msg[VFS_PATH_MAX * 2 + 96];
     if (ok == total && total == 1)
         snprintf(msg, sizeof(msg), "Saved as %s", last);
     else if (ok == total)
         snprintf(msg, sizeof(msg), "Saved %d Miis to %s/", ok, dir);
     else
-        snprintf(msg, sizeof(msg), "Saved %d of %d Miis to %s/\n\nCould not write:\n%s", ok, total, dir, failed);
+        snprintf(msg, sizeof(msg), "Saved %d of %d Miis to %s/\n\nCould not write:\n%s", ok, total,
+                 dir, failed);
     if (ok == total) {
         ui_message("DONE", C_GREEN, msg);
     } else {
@@ -221,12 +231,14 @@ void mii_export(void)
         ui_message("EXPORT MIIS", C_YELLOW, "Couldn't read the Wii's Mii database (" RFL_PATH ").");
         return;
     }
+
     if (!nmiis) {
         free(miis);
         miis = NULL;
         ui_message("EXPORT MIIS", C_YELLOW, "There are no Miis on this Wii yet.");
         return;
     }
+
     int cursor = 0, top = 0, rows = ui_rows() - 6;
     bool dirty = true;
     for (;;) {
@@ -255,6 +267,7 @@ void mii_export(void)
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME))
             break;
     }
+
     free(miis);
     miis = NULL;
 }

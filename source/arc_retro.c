@@ -59,10 +59,16 @@ long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap)
         state = k < 4 ? k : 4;
         have = false;
     }
+
     for (;;) {
-        if (!have) { NEED_IN(1); token = src[ip++]; }
+        if (!have) {
+            NEED_IN(1);
+            token = src[ip++];
+        }
+
         have = false;
         size_t len, dist;
+
         if (token < 16) {
             if (!state) {
                 LENGTH(4, 3, token, len);
@@ -95,7 +101,9 @@ long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap)
             dist = ((size_t)src[ip++] << 3) + ((token >> 2) & 7) + 1;
             state = token & 3;
         }
+
         if (!dist || dist > op) return -1;
+
         NEED_OUT(len);
         for (size_t i = 0; i < len; i++) out[op + i] = out[op - dist + i];
         op += len;
@@ -107,7 +115,8 @@ long lzo1x_decode(const uint8_t *src, size_t n, uint8_t *out, size_t cap)
 #undef LENGTH
 }
 
-/* {u16 length, LZO1X} pieces (a length with the top bit set is a stored piece of 0x10000 - length). */
+/* {u16 length, LZO1X} pieces (a length with the top bit set is a stored piece of
+ * 0x10000 - length). */
 static bool lzo_pieces(const uint8_t *p, size_t n, uint8_t *out, size_t size)
 {
     size_t q = 0, got = 0;
@@ -147,38 +156,50 @@ typedef struct {
 
 enum { PAK_V35 = 1, PAK_V2 = 2 };
 
-/* node: a = offset in the file, b = stored size, c = format (bit 0 compressed, bits 1.. PAK version) */
+/* node: a = offset in the file, b = stored size,
+ * c = format (bit 0 compressed, bits 1.. PAK version) */
 static uint8_t *unpack(archive_t *a, const tnode *nd)
 {
     uint32_t stored = (uint32_t)nd->b;
     if (stored > MAX_RES) return NULL;
     uint8_t *in = malloc(stored ? stored : 1), *out = NULL;
     if (!in || !src_read_full(&a->src, nd->a, in, stored)) goto fail;
+
     out = malloc(nd->size ? nd->size : 1);
     if (!out) goto fail;
+
     if ((nd->c >> 1) == PAK_V35) {
         if (stored < 4) goto fail;
         bool z = stored >= 6 && in[4] == 0x78 && ((in[4] << 8 | in[5]) % 31) == 0;
-        if (!(z ? zlib_exact(in + 4, stored - 4, out, nd->size) : lzo_pieces(in + 4, stored - 4, out, nd->size)))
+        if (!(z ? zlib_exact(in + 4, stored - 4, out, nd->size) :
+                  lzo_pieces(in + 4, stored - 4, out, nd->size)))
             goto fail;
     } else {
+
         uint32_t nb = be32(in + 4);
         size_t ip = 8 + 8 * (size_t)nb, op = 0;
         if (stored < 8 || memcmp(in, "CMPD", 4) || !nb || ip > stored) goto fail;
+
         for (uint32_t i = 0; i < nb; i++) {
             uint32_t cs = be32(in + 8 + i * 8) & 0x1FFFFFFF, ds = be32(in + 12 + i * 8);
             if (cs > stored - ip || ds > nd->size - op) goto fail;
             const uint8_t *p = in + ip;
             bool ok;
-            if (cs == ds) { memcpy(out + op, p, ds); ok = true; }
-            else if (cs >= 2 && p[0] == 0x78 && ((p[0] << 8 | p[1]) % 31) == 0) ok = zlib_exact(p, cs, out + op, ds);
+            if (cs == ds) {
+                memcpy(out + op, p, ds);
+                ok = true;
+            } else if (cs >= 2 && p[0] == 0x78 && ((p[0] << 8 | p[1]) % 31) == 0)
+                ok = zlib_exact(p, cs, out + op, ds);
             else ok = lzo_pieces(p, cs, out + op, ds);
+
             if (!ok) goto fail;
             ip += cs;
             op += ds;
         }
+
         if (op != nd->size) goto fail;
     }
+
     free(in);
     return out;
 fail:
@@ -216,13 +237,15 @@ static void type_ext(const uint8_t *fourcc, char out[5])
 {
     for (int k = 0; k < 4; k++) {
         uint8_t c = fourcc[k];
-        out[k] = c >= 'A' && c <= 'Z' ? c + 32 : (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ? c : '_';
+        out[k] = c >= 'A' && c <= 'Z' ? c + 32 :
+                 (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ? c :
+                 '_';
     }
     out[4] = 0;
 }
 
-static int add_res(archive_t *a, const char *name, const char *ext, uint64_t off, uint32_t stored, uint32_t size,
-                   bool compressed, int version)
+static int add_res(archive_t *a, const char *name, const char *ext, uint64_t off, uint32_t stored,
+                   uint32_t size, bool compressed, int version)
 {
     char nm[256];
     snprintf(nm, sizeof(nm), "%s.%s", name, ext);
@@ -231,7 +254,8 @@ static int add_res(archive_t *a, const char *name, const char *ext, uint64_t off
         size_t l = strlen(nm);
         snprintf(nm + l, sizeof(nm) - l, "_%x", (unsigned)off);
     }
-    return tree_add(&a->tree, 0, nm, false, size, off, stored, (uint32_t)(compressed | version << 1));
+    return tree_add(&a->tree, 0, nm, false, size, off, stored,
+                    (uint32_t)(compressed | version << 1));
 }
 
 static bool v35_header(const uint8_t *h) { return be32(h) == 0x00030005 && be32(h + 4) == 0; }
@@ -240,7 +264,8 @@ static bool v2_header(const uint8_t *h) { return be32(h) == 2 && be32(h + 4) == 
 bool arc_retro_probe(const src_t *f, const char *name)
 {
     uint8_t h[0x48];
-    if (!arc_name_has_ext(name, ".pak") || f->size < 0x48 || !src_read_full(f, 0, h, 0x48)) return false;
+    if (!arc_name_has_ext(name, ".pak") || f->size < 0x48 || !src_read_full(f, 0, h, 0x48))
+        return false;
     return v35_header(h) || (v2_header(h) && be32(h + 0x40) && be32(h + 0x40) <= 8);
 }
 
@@ -249,11 +274,17 @@ static bool packed_size(const src_t *f, uint64_t off, uint32_t stored, int versi
 {
     uint8_t h[8];
     if (stored < 8 || !src_read_full(f, off, h, 8)) return false;
-    if (version == PAK_V35) { *size = be32(h); return *size <= MAX_RES; }
+    if (version == PAK_V35) {
+        *size = be32(h);
+        return *size <= MAX_RES;
+    }
     uint32_t nb = be32(h + 4);
     if (memcmp(h, "CMPD", 4) || !nb || nb > 4096 || 8 + 8ull * nb > stored) return false;
     uint8_t *t = malloc(8 * nb);
-    if (!t || !src_read_full(f, off + 8, t, 8 * nb)) { free(t); return false; }
+    if (!t || !src_read_full(f, off + 8, t, 8 * nb)) {
+        free(t);
+        return false;
+    }
     uint64_t total = 0;
     for (uint32_t i = 0; i < nb; i++) total += be32(t + i * 8 + 4);
     free(t);
@@ -265,7 +296,10 @@ static uint8_t *read_at(const src_t *f, uint64_t off, uint32_t n)
 {
     if (n > 64u * 1024 * 1024 || off + n > f->size) return NULL;
     uint8_t *b = malloc(n ? n : 1);
-    if (b && !src_read_full(f, off, b, n)) { free(b); b = NULL; }
+    if (b && !src_read_full(f, off, b, n)) {
+        free(b);
+        b = NULL;
+    }
     return b;
 }
 
@@ -279,7 +313,11 @@ static bool open_v35(archive_t *a, const src_t *f)
     uint8_t *nt = read_at(f, 12, span);
     if (!nt) return false;
     size_t q = 0;
-    typedef struct { uint32_t id; char type[4]; char name[96]; } named_t;
+    typedef struct {
+        uint32_t id;
+        char type[4];
+        char name[96];
+    } named_t;
     named_t *names = named && named < 100000 ? calloc(named, sizeof(named_t)) : NULL;
     uint32_t got = 0;
     for (uint32_t i = 0; i < named && names; i++) {
@@ -288,10 +326,12 @@ static bool open_v35(archive_t *a, const src_t *f)
         if (l > span - q - 12) break;
         memcpy(names[got].type, nt + q, 4);
         names[got].id = be32(nt + q + 4);
-        snprintf(names[got].name, sizeof(names[got].name), "%.*s", (int)(l < 95 ? l : 95), (const char *)nt + q + 12);
+        snprintf(names[got].name, sizeof(names[got].name), "%.*s", (int)(l < 95 ? l : 95),
+                 (const char *)nt + q + 12);
         got++;
         q += 12 + l;
     }
+
     bool ok = false;
     uint64_t rt = 12 + q;
     uint8_t *rc = q + 4 <= span ? nt + q : NULL;
@@ -299,16 +339,21 @@ static bool open_v35(archive_t *a, const src_t *f)
     uint8_t *tab = nres && nres < 1000000 ? read_at(f, rt + 4, nres * 20) : NULL;
     for (uint32_t i = 0; tab && i < nres; i++) {
         const uint8_t *e = tab + i * 20;
-        uint32_t comp = be32(e), id = be32(e + 8), stored = be32(e + 12), off = be32(e + 16), size = stored;
+        uint32_t comp = be32(e), id = be32(e + 8), stored = be32(e + 12), off = be32(e + 16),
+                 size = stored;
         if ((uint64_t)off + stored > f->size) continue;
         if (comp && !packed_size(f, off, stored, PAK_V35, &size)) continue;
         char ext[5], nm[100];
         type_ext(e + 4, ext);
         snprintf(nm, sizeof(nm), "%08x", (unsigned)id);
         for (uint32_t k = 0; k < got; k++)
-            if (names[k].id == id && !memcmp(names[k].type, e + 4, 4)) { snprintf(nm, sizeof(nm), "%s", names[k].name); break; }
+            if (names[k].id == id && !memcmp(names[k].type, e + 4, 4)) {
+                snprintf(nm, sizeof(nm), "%s", names[k].name);
+                break;
+            }
         if (add_res(a, nm, ext, off, stored, size, comp != 0, PAK_V35) >= 0) ok = true;
     }
+
     free(tab);
     free(names);
     free(nt);
@@ -327,15 +372,23 @@ static bool open_v2(archive_t *a, const src_t *f)
         const uint8_t *t = h + 0x44 + i * 8;
         uint32_t sz = be32(t + 4);
         if (pos + sz > f->size) return false;
-        if (!memcmp(t, "STRG", 4)) { strg = pos; strg_n = sz; }
-        else if (!memcmp(t, "RSHD", 4)) { rshd = pos; rshd_n = sz; }
-        else if (!memcmp(t, "DATA", 4)) data = pos;
+        if (!memcmp(t, "STRG", 4)) {
+            strg = pos;
+            strg_n = sz;
+        } else if (!memcmp(t, "RSHD", 4)) {
+            rshd = pos;
+            rshd_n = sz;
+        } else if (!memcmp(t, "DATA", 4))
+            data = pos;
         pos = (pos + sz + 0x3F) & ~0x3Full;
     }
+
     if (!rshd || !data || rshd_n < 4) return false;
+
     uint8_t *rs = read_at(f, rshd, rshd_n), *st = strg_n ? read_at(f, strg, strg_n) : NULL;
     bool ok = false;
     uint32_t nres = rs ? be32(rs) : 0;
+
     if (nres && 4 + 24ull * nres <= rshd_n) {
         for (uint32_t i = 0; i < nres; i++) {
             const uint8_t *e = rs + 4 + i * 24;
@@ -343,22 +396,29 @@ static bool open_v2(archive_t *a, const src_t *f)
             uint64_t off = data + be32(e + 20);
             if (off + stored > f->size) continue;
             if (comp && !packed_size(f, off, stored, PAK_V2, &size)) continue;
+
             char ext[5], nm[208];
             type_ext(e + 4, ext);
-            snprintf(nm, sizeof(nm), "%02x%02x%02x%02x%02x%02x%02x%02x", e[8], e[9], e[10], e[11], e[12], e[13], e[14], e[15]);
+            snprintf(nm, sizeof(nm), "%02x%02x%02x%02x%02x%02x%02x%02x", e[8], e[9], e[10], e[11],
+                     e[12], e[13], e[14], e[15]);
+
             if (st && strg_n >= 4) {                    /* names: cstring, fourcc, u64 id */
                 size_t q = 4;
                 for (uint32_t k = 0, cnt = be32(st); k < cnt && q < strg_n; k++) {
                     const char *s = (const char *)st + q;
                     size_t l = strnlen(s, strg_n - q);
                     if (q + l + 1 + 12 > strg_n) break;
-                    if (!memcmp(st + q + l + 5, e + 8, 8)) { snprintf(nm, sizeof(nm), "%.200s", s); break; }
+                    if (!memcmp(st + q + l + 5, e + 8, 8)) {
+                        snprintf(nm, sizeof(nm), "%.200s", s);
+                        break;
+                    }
                     q += l + 1 + 12;
                 }
             }
             if (add_res(a, nm, ext, off, stored, size, comp != 0, PAK_V2) >= 0) ok = true;
         }
     }
+
     free(rs);
     free(st);
     return ok;
@@ -371,12 +431,17 @@ archive_t *arc_retro_open(const src_t *f, const char *name)
     if (!src_read_full(f, 0, h, 8)) return NULL;
     archive_t *a = archive_alloc("Retro PAK");
     retro_priv *p = calloc(1, sizeof(*p));
-    if (!a || !p) { free(p); if (a) archive_close(a); return NULL; }
+    if (!a || !p) {
+        free(p);
+        if (a) archive_close(a);
+        return NULL;
+    }
     p->node = -1;
     a->priv = p;
     a->read = retro_read;
     a->destroy = retro_destroy;
-    a->src = *f;                                /* read only with the file's own reader until we keep it */
+    /* read only with the file's own reader until we keep it */
+    a->src = *f;
     bool ok = v35_header(h) ? open_v35(a, f) : open_v2(a, f);
     if (!ok) {
         memset(&a->src, 0, sizeof(a->src));
@@ -400,7 +465,11 @@ bool arc_lzop_probe(const src_t *f, const char *name)
 
 archive_t *arc_lzop_open(const src_t *f, const char *name)
 {
-    if (f->size > MAX_RES * 2) { g_archive_err = "This .lzo file is too large to open here"; return NULL; }
+    if (f->size > MAX_RES * 2) {
+        g_archive_err = "This .lzo file is too large to open here";
+        return NULL;
+    }
+
     uint32_t len = (uint32_t)f->size;
     uint8_t *in = read_at(f, 0, len), *out = NULL;
     if (!in) return NULL;
@@ -410,24 +479,49 @@ archive_t *arc_lzop_open(const src_t *f, const char *name)
     NEED(4);
     unsigned version = in[p] << 8 | in[p + 1];
     p += 4;                                             /* version, library version */
-    if (version >= 0x0940) { NEED(2); p += 2; }         /* version needed to extract */
+    /* version needed to extract */
+    if (version >= 0x0940) {
+        NEED(2);
+        p += 2;
+    }
+
     NEED(1);
     unsigned method = in[p++];
     if (method < 1 || method > 3) goto bad;             /* LZO1X-1, LZO1X-1(15), LZO1X-999 */
-    if (version >= 0x0940) { NEED(1); p++; }            /* level */
+    /* level */
+    if (version >= 0x0940) {
+        NEED(1);
+        p++;
+    }
+
     NEED(4);
     uint32_t flags = be32(in + p);
     p += 4;
-    if (flags & 0x800) { NEED(4); p += 4; }             /* filter */
+    /* filter */
+    if (flags & 0x800) {
+        NEED(4);
+        p += 4;
+    }
+
     NEED(8);
     p += 8;                                             /* mode, mtime */
-    if (version >= 0x0940) { NEED(4); p += 4; }
+    if (version >= 0x0940) {
+        NEED(4);
+        p += 4;
+    }
+
     NEED(1);
     unsigned nl = in[p++];
     NEED(nl + 4);
     snprintf(inner, sizeof(inner), "%.*s", (int)nl, (const char *)in + p);
     p += nl + 4;                                        /* name, header checksum */
-    if (flags & 0x40) { NEED(4); uint32_t xl = be32(in + p); p += 4; NEED((uint64_t)xl + 4); p += xl + 4; }
+    if (flags & 0x40) {
+        NEED(4);
+        uint32_t xl = be32(in + p);
+        p += 4;
+        NEED((uint64_t)xl + 4);
+        p += xl + 4;
+    }
 
     size_t cap = 0, op = 0;
     for (;;) {
@@ -438,10 +532,15 @@ archive_t *arc_lzop_open(const src_t *f, const char *name)
         NEED(4);
         uint32_t sl = be32(in + p);
         p += 4;
+
         if (dl > 64u * 1024 * 1024 || sl > dl || op + dl > MAX_RES * 2) goto bad;
         if (flags & 1) p += 4;                          /* Adler-32 / CRC-32 of the data */
         if (flags & 0x100) p += 4;
-        if (sl < dl) { if (flags & 2) p += 4; if (flags & 0x200) p += 4; }
+        if (sl < dl) {
+            if (flags & 2) p += 4;
+            if (flags & 0x200) p += 4;
+        }
+
         NEED(sl);
         if (op + dl > cap) {
             size_t nc = cap ? cap * 2 : 1u << 20;
@@ -451,6 +550,7 @@ archive_t *arc_lzop_open(const src_t *f, const char *name)
             out = nb;
             cap = nc;
         }
+
         if (sl == dl) memcpy(out + op, in + p, dl);
         else if (lzo1x_decode(in + p, sl, out + op, dl) != (long)dl) goto bad;
         op += dl;
@@ -468,6 +568,7 @@ archive_t *arc_lzop_open(const src_t *f, const char *name)
         if (arc_name_has_ext(inner, ".lzo")) inner[strlen(inner) - 4] = 0;
         if (!inner[0]) snprintf(inner, sizeof(inner), "data.bin");
     }
+
     if (!out) out = malloc(1);
     return out ? archive_open_memory(out, op, inner) : NULL;
 bad:

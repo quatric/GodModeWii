@@ -63,7 +63,8 @@ int vfs_dev_of(const char *path)
 
 bool vfs_is_virtual(int dev)
 {
-    return arcfs_dev_pinned(dev) || dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_MCA || dev == DEV_MCB || dev == DEV_KEYS;
+    return arcfs_dev_pinned(dev) || dev == DEV_SEEPROM || dev == DEV_DISC || dev == DEV_MCA ||
+           dev == DEV_MCB || dev == DEV_KEYS;
 }
 
 bool vfs_is_card(int dev)
@@ -108,6 +109,7 @@ bool vfs_parent(const char *path, char *out, size_t outsz)
     if (d < 0 || vfs_is_root(path))
         return false;
     snprintf(out, outsz, "%s", path);
+
     char *bar = strrchr(out, '|');
     if (bar) {
         char *rest = bar + 1;
@@ -119,15 +121,23 @@ bool vfs_parent(const char *path, char *out, size_t outsz)
             return vfs_parent(tmp, out, outsz);
         }
         char *sl = strrchr(rest, '/');
-        if (sl && sl[1]) { *sl = '\0'; return true; }
+        if (sl && sl[1]) {
+            *sl = '\0';
+            return true;
+        }
         if (sl) {                           /* trailing slash */
             *sl = '\0';
             sl = strrchr(rest, '/');
-            if (sl) { *sl = '\0'; return true; }
+            if (sl) {
+                *sl = '\0';
+                return true;
+            }
         }
-        bar[1] = '/'; bar[2] = '\0';
+        bar[1] = '/';
+        bar[2] = '\0';
         return true;
     }
+
     char *slash = strrchr(out, '/');
     if (!slash)
         return false;
@@ -186,7 +196,8 @@ typedef struct {
 } usb_slot;
 
 static usb_slot uslot[USB_SLOTS];
-static char usb_dev_name[USB_SLOTS][32];     /* "USB Drive N", or which drive a further partition is on */
+/* "USB Drive N", or which drive a further partition is on */
+static char usb_dev_name[USB_SLOTS][32];
 static usbstorage_handle uhandle[USB_SLOTS];
 static int uhandles_open;
 static bool usb_inited;
@@ -237,7 +248,8 @@ static int usb_seen;            /* mass-storage devices IOS listed */
 static char usb_diag[48];       /* why a device could not be used */
 static u8 *usb_bounce;
 
-/* libogc retries a failed USB command but gives up at once on a timeout, so each transfer gets two more tries. */
+/* libogc retries a failed USB command but gives up at once on a timeout,
+ * so each transfer gets two more tries. */
 static s32 us_xfer(usb_slot *s, sec_t sector, u32 cnt, bool write)
 {
     s32 r = -1;
@@ -300,8 +312,9 @@ USB_IFACE(0) USB_IFACE(1) USB_IFACE(2) USB_IFACE(3) USB_IFACE(4) USB_IFACE(5) US
 
 #define USB_ENTRY(I) { DEVICE_TYPE_WII_USB, FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE | FEATURE_WII_USB, \
     us_startup_##I, us_inserted_##I, us_read_##I, us_write_##I, us_clear_##I, us_shutdown_##I }
-static const DISC_INTERFACE usb_iface[USB_SLOTS] = { USB_ENTRY(0), USB_ENTRY(1), USB_ENTRY(2), USB_ENTRY(3),
-                                                      USB_ENTRY(4), USB_ENTRY(5), USB_ENTRY(6), USB_ENTRY(7) };
+static const DISC_INTERFACE usb_iface[USB_SLOTS] = { USB_ENTRY(0), USB_ENTRY(1), USB_ENTRY(2),
+                                                     USB_ENTRY(3), USB_ENTRY(4), USB_ENTRY(5),
+                                                     USB_ENTRY(6), USB_ENTRY(7) };
 
 static void usb_close_all(void)
 {
@@ -354,9 +367,11 @@ static int usb_scan_once(void)
         s32 orr = USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid);
         ubuf_active = false;
         if (orr < 0) {
-            snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X cannot be opened (%d)", list[d].vid, list[d].pid, (int)orr);
+            snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X cannot be opened (%d)", list[d].vid,
+                     list[d].pid, (int)orr);
             continue;
         }
+
         int first = slot;
         int luns = (int)h->max_lun;            /* libogc already stores the LUN count */
         if (luns < 1) luns = 1;
@@ -364,14 +379,17 @@ static int usb_scan_once(void)
             u32 ss = 0, ns = 0;
             s32 mr = USBStorage_MountLUN(h, l);
             if (mr < 0) {
-                snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X not ready (%d)", list[d].vid, list[d].pid, (int)mr);
+                snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X not ready (%d)", list[d].vid,
+                         list[d].pid, (int)mr);
                 continue;
             }
             if (USBStorage_ReadCapacity(h, l, &ss, &ns) < 0 || ss == 0) {
                 if (!usb_diag[0])
-                    snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X has no media", list[d].vid, list[d].pid);
+                    snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X has no media", list[d].vid,
+                             list[d].pid);
                 continue;
             }
+
             uslot[slot].h = h;
             uslot[slot].lun = l;
             uslot[slot].sector_size = ss;
@@ -382,18 +400,21 @@ static int usb_scan_once(void)
                 /* ustealth / USBHide marks a drive by changing the last MBR byte to 0xAB */
                 u8 *mbr = memalign(32, ss > 512 ? ss : 512);
                 if (mbr) {
-                    if (USBStorage_Read(h, l, 0, 1, mbr) >= 0 && mbr[510] == 0x55 && mbr[511] == 0xAB)
+                    if (USBStorage_Read(h, l, 0, 1, mbr) >= 0 && mbr[510] == 0x55 &&
+                        mbr[511] == 0xAB)
                         uslot[slot].hidden = true;
                     free(mbr);
                 }
             }
             slot++;
         }
+
         if (slot == first)
             USBStorage_Close(h);            /* nothing usable on it */
         else
             uhandles_open++;
     }
+
     return slot;
 }
 
@@ -401,6 +422,7 @@ bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len)
 {
     if (slot < 0 || slot >= USB_SLOTS || !uslot[slot].ok)
         return false;
+
     u32 ss = uslot[slot].sector_size;
     if (!ss || ss > 32768)
         return false;
@@ -409,6 +431,7 @@ bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len)
         tmp = malloc(32768);
     if (!tmp)
         return false;
+
     u8 *out = buf;
     while (len) {
         u64 sector = off / ss;
@@ -458,7 +481,8 @@ static int usb_device_count(void)
  * (IOS does not like a drive being closed and re-opened straight away). */
 static bool is_fat_vbr(const u8 *s)
 {
-    return s[510] == 0x55 && s[511] == 0xAA && (!memcmp(s + 0x36, "FAT", 3) || !memcmp(s + 0x52, "FAT32", 5));
+    return s[510] == 0x55 && s[511] == 0xAA &&
+           (!memcmp(s + 0x36, "FAT", 3) || !memcmp(s + 0x52, "FAT32", 5));
 }
 
 static u32 rd32le(const u8 *p)
@@ -481,6 +505,7 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
         return true;
     if (is_fat_vbr(buf))
         return false;
+
     if (buf[0x1C2] == 0xEE) {
         if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
             return false;
@@ -496,6 +521,7 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
         for (int i = 0; i < 4; i++)
             start[n++] = rd32le(buf + 0x1C6 + i * 16);
     }
+
     for (int i = 0; i < n; i++) {
         if (!start[i] || !io->readSectors(start[i], 1, buf))
             continue;
@@ -504,6 +530,7 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
         if (is_fat_vbr(buf))
             return false;
     }
+
     return false;
 }
 
@@ -533,7 +560,9 @@ static void mount_ntfs(int dev, const char *name, const DISC_INTERFACE *io)
     }
     free(parts);
 #else
-    (void)dev; (void)name; (void)io;
+    (void)dev;
+    (void)name;
+    (void)io;
 #endif
 }
 
@@ -559,6 +588,7 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
                                       0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4 };
     u8 *buf = memalign(32, 512), *mbr = memalign(32, 512);
     bool found = false;
+
     if (!buf || !mbr || !io->readSectors(0, 1, mbr))
         goto done;
     if ((found = ext_super(io, 0, buf))) {
@@ -567,6 +597,7 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
     }
     if (mbr[510] != 0x55 || mbr[511] != 0xAA)
         goto done;
+
     if (mbr[0x1C2] == 0xEE && io->readSectors(1, 1, buf) && !memcmp(buf, "EFI PART", 8)) {
         u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
         for (u32 i = 0; i < count && i < 128 && !found; i++) {
@@ -580,6 +611,7 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
         }
         goto done;
     }
+
     for (int i = 0; i < 4 && !found; i++) {
         sec_t s = rd32le(mbr + 0x1C6 + i * 16);
         if (mbr[0x1C2 + i * 16] == 0x83 && s && ext_super(io, s, buf)) {
@@ -588,6 +620,7 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
         }
     }
 done:;
+
     int version = found ? ext_version(buf) : 0;
     free(buf);
     free(mbr);
@@ -619,7 +652,9 @@ static void mount_ext(int dev, const char *name, const DISC_INTERFACE *io)
         snprintf(g_devs[dev].note, sizeof(g_devs[dev].note), "ext: can't mount");
     }
 #else
-    (void)dev; (void)name; (void)io;
+    (void)dev;
+    (void)name;
+    (void)io;
 #endif
 }
 
@@ -663,12 +698,15 @@ static int list_parts(const DISC_INTERFACE *io, part_info *out, int max)
     int n = 0;
     if (!buf || !tab || !io->readSectors(0, 1, tab) || tab[510] != 0x55 || tab[511] != 0xAA)
         goto done;
-    if (part_kind(io, 0, buf) >= 0 || !memcmp(tab + 3, "NTFS    ", 8) || !memcmp(tab + 3, "EXFAT   ", 8))
+    if (part_kind(io, 0, buf) >= 0 || !memcmp(tab + 3, "NTFS    ", 8) ||
+        !memcmp(tab + 3, "EXFAT   ", 8))
         goto done;                                   /* no partition table: one volume */
+
     if (tab[0x1C2] == 0xEE) {
         if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
             goto done;
         u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
+
         for (u32 i = 0; i < count && i < 128 && n < max; i++) {
             if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, tab))
                 break;
@@ -695,6 +733,7 @@ static int list_parts(const DISC_INTERFACE *io, part_info *out, int max)
             }
         }
     }
+
 done:
     free(buf);
     free(tab);
@@ -706,7 +745,8 @@ static bool mount_extra(int dev, const char *name, const DISC_INTERFACE *io, con
     vfs_dev *d = &g_devs[dev];
     if (pi->kind == PK_NTFS) {
 #ifdef HAVE_NTFS
-        d->ntfs = ntfsMount(name, (DISC_INTERFACE *)io, pi->start, 8, 64, NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
+        d->ntfs = ntfsMount(name, (DISC_INTERFACE *)io, pi->start, 8, 64,
+                            NTFS_DEFAULT | NTFS_SHOW_HIDDEN_FILES);
         d->mounted = d->ntfs;
 #endif
     } else {
@@ -732,6 +772,7 @@ static void mount_usb_extras(void)
                 skipped = true;
                 continue;
             }
+
             int k = -1;
             for (int j = i + 1; j < USB_SLOTS; j++) {
                 vfs_dev *c = &g_devs[DEV_USB0 + j];
@@ -742,12 +783,14 @@ static void mount_usb_extras(void)
             }
             if (k < 0)
                 return;
+
             char name[8];
             snprintf(name, sizeof(name), "usb%d", k + 1);
             if (!mount_extra(DEV_USB0 + k, name, &usb_iface[i], &parts[p]))
                 continue;
             vfs_dev *d = &g_devs[DEV_USB0 + k];
-            snprintf(usb_dev_name[k], sizeof(usb_dev_name[k]), "USB Drive %d, part. %d", i + 1, p + 1);
+            snprintf(usb_dev_name[k], sizeof(usb_dev_name[k]), "USB Drive %d, part. %d", i + 1,
+                     p + 1);
             d->name = usb_dev_name[k];
             snprintf(d->note, sizeof(d->note), "another partition of usb%d:/", i + 1);
         }
@@ -765,12 +808,14 @@ static void mount_usb(int tries)
             break;
         usleep(400000);
     }
+
     if (last > 0)
         for (int attempt = 0; attempt < 3; attempt++) {
             if (usb_scan_once() > 0)
                 break;
             usleep(500000);
         }
+
     for (int i = 0; i < USB_SLOTS; i++) {
         if (!uslot[i].ok)
             continue;
@@ -782,13 +827,16 @@ static void mount_usb(int tries)
         if (!g_devs[DEV_USB0 + i].mounted && !g_devs[DEV_USB0 + i].note[0])
             mount_ext(DEV_USB0 + i, name, &usb_iface[i]);
         if (g_devs[DEV_USB0 + i].note[0] && !g_devs[DEV_USB0 + i].mounted) {
-            g_devs[DEV_USB0 + i].always_show = true;     /* NTFS that refused to mount: its note says why */
+            /* NTFS that refused to mount: its note says why */
+            g_devs[DEV_USB0 + i].always_show = true;
         } else if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note),
+                     "Wii U WFS volume  read-only");
         } else if (g_devs[DEV_USB0 + i].mounted && uslot[i].hidden) {
-            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "hidden by ustealth  read / write");
+            snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note),
+                     "hidden by ustealth  read / write");
         } else if (!g_devs[DEV_USB0 + i].mounted) {
             /* IOS found it but libfat cannot: exFAT / NTFS / unknown partitioning */
             g_devs[DEV_USB0 + i].always_show = true;
@@ -808,7 +856,8 @@ static void mount_usb(int tries)
         if (usb_diag[0] || vols == 0) {
             vfs_dev *d = &g_devs[DEV_USB0 + used];
             d->always_show = true;
-            snprintf(d->note, sizeof(d->note), "%s", usb_diag[0] ? usb_diag : "device found but unreadable");
+            snprintf(d->note, sizeof(d->note), "%s",
+                     usb_diag[0] ? usb_diag : "device found but unreadable");
         }
     }
     mount_usb_extras();
@@ -816,8 +865,8 @@ static void mount_usb(int tries)
 
 /* ---------------------------------------------------------------- mounting */
 
-/* An aging SD card fails some reads that work when asked again (a tester's old card stopped a big copy at a
- * different byte each time), and libogc's driver doesn't ask again. */
+/* An aging SD card fails some reads that work when asked again (a tester's old card stopped a big
+ * copy at a different byte each time), and libogc's driver doesn't ask again. */
 static bool sd_read(sec_t sector, sec_t n, void *buf)
 {
     for (int i = 0; i < 3; i++) {
@@ -1037,6 +1086,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
                 free(buf);
                 return false;
             }
+
             list = calloc(got ? got : 1, sizeof(vfs_entry));
             const char *p = buf;
             for (u32 i = 0; i < got && list; i++) {
@@ -1052,6 +1102,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
                 }
                 p += l + 1;
             }
+
             free(buf);
         }
     } else {
@@ -1059,6 +1110,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
         if (!dir)
             return false;
         struct dirent *de;
+
         while ((de = readdir(dir)) != NULL) {
             if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
                 continue;
@@ -1072,6 +1124,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
                 }
                 list = nl;
             }
+
             vfs_entry *e = &list[n];
             memset(e, 0, sizeof(*e));
             snprintf(e->name, sizeof(e->name), "%s", de->d_name);
@@ -1083,6 +1136,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
             }
             n++;
         }
+
         closedir(dir);
     }
 
@@ -1134,11 +1188,13 @@ bool vfs_stat(const char *path, bool *is_dir, u64 *size)
         if (size) *size = 0;
         return true;
     }
+
     if (arcfs_is_path(path))
         return arcfs_stat(path, is_dir, size);
     if (vfs_is_virtual(dev)) {
         return virt_stat(dev, virt_name(path), is_dir, size);
     }
+
     if (dev == DEV_NAND) {
         const char *np = nand_path(path);
         if (nand_is_dir(np)) {
@@ -1153,6 +1209,7 @@ bool vfs_stat(const char *path, bool *is_dir, u64 *size)
         if (size) *size = sz;
         return true;
     }
+
     struct stat st;
     if (stat(path, &st) != 0)
         return false;
@@ -1220,7 +1277,9 @@ void vfs_clone_attrs(const char *from, const char *to)
 {
     if (vfs_dev_of(from) != DEV_NAND || vfs_dev_of(to) != DEV_NAND)
         return;
-    u32 owner; u16 group; u8 attr, op, gp, ot;
+    u32 owner;
+    u16 group;
+    u8 attr, op, gp, ot;
     if (ISFS_GetAttr(nand_path(from), &owner, &group, &attr, &op, &gp, &ot) >= 0)
         ISFS_SetAttr(nand_path(to), owner, group, attr, op, gp, ot);
 }

@@ -46,13 +46,20 @@ static bool bio_open(bio_t *b, const char *path)
     memset(b, 0, sizeof(*b));
     b->buf = memalign(32, BUF);
     if (!b->buf) return false;
-    if (!vfs_open_read(&b->f, path)) { free(b->buf); b->buf = NULL; return false; }
+    if (!vfs_open_read(&b->f, path)) {
+        free(b->buf);
+        b->buf = NULL;
+        return false;
+    }
     return true;
 }
 
 static void bio_close(bio_t *b)
 {
-    if (b->buf) { vfs_close(&b->f); free(b->buf); }
+    if (b->buf) {
+        vfs_close(&b->f);
+        free(b->buf);
+    }
     b->buf = NULL;
 }
 
@@ -85,7 +92,8 @@ static size_t bio_read(bio_t *b, void *out, size_t n)
 
 static bool bio_seek(bio_t *b, s64 off, int whence)
 {
-    s64 t = whence == SEEK_SET ? off : whence == SEEK_CUR ? (s64)b->pos + off : (s64)b->f.size + off;
+    s64 t = whence == SEEK_SET ? off :
+            whence == SEEK_CUR ? (s64)b->pos + off : (s64)b->f.size + off;
     if (t < 0 || (u64)t > b->f.size) return false;
     b->pos = (u64)t;
     return true;
@@ -98,28 +106,66 @@ enum { K_WAV, K_MP3, K_FLAC, K_OGG };
 struct gen {
     bio_t io;
     int kind;
-    union { drwav wav; drmp3 mp3; drflac *flac; OggVorbis_File ogg; } d;
+    union {
+        drwav wav;
+        drmp3 mp3;
+        drflac *flac;
+        OggVorbis_File ogg;
+    } d;
     gen_info info;
 };
 
 static size_t dr_read(void *u, void *out, size_t n) { return bio_read(u, out, n); }
-static int whence_of(int origin) { return origin == 0 ? SEEK_SET : origin == 1 ? SEEK_CUR : SEEK_END; }
-static drwav_bool32 wav_seek(void *u, int off, drwav_seek_origin o) { return bio_seek(u, off, whence_of(o)); }
-static drwav_bool32 wav_tell(void *u, drwav_int64 *c) { *c = (drwav_int64)((bio_t *)u)->pos; return DRWAV_TRUE; }
-static drmp3_bool32 mp3_seek(void *u, int off, drmp3_seek_origin o) { return bio_seek(u, off, whence_of(o)); }
-static drmp3_bool32 mp3_tell(void *u, drmp3_int64 *c) { *c = (drmp3_int64)((bio_t *)u)->pos; return DRMP3_TRUE; }
-static drflac_bool32 flac_seek(void *u, int off, drflac_seek_origin o) { return bio_seek(u, off, whence_of(o)); }
-static drflac_bool32 flac_tell(void *u, drflac_int64 *c) { *c = (drflac_int64)((bio_t *)u)->pos; return DRFLAC_TRUE; }
-static size_t ogg_read(void *p, size_t sz, size_t nm, void *u) { return sz ? bio_read(u, p, sz * nm) / sz : 0; }
+static int whence_of(int origin)
+{
+    return origin == 0 ? SEEK_SET : origin == 1 ? SEEK_CUR : SEEK_END;
+}
+static drwav_bool32 wav_seek(void *u, int off, drwav_seek_origin o)
+{
+    return bio_seek(u, off, whence_of(o));
+}
+static drwav_bool32 wav_tell(void *u, drwav_int64 *c)
+{
+    *c = (drwav_int64)((bio_t *)u)->pos;
+    return DRWAV_TRUE;
+}
+static drmp3_bool32 mp3_seek(void *u, int off, drmp3_seek_origin o)
+{
+    return bio_seek(u, off, whence_of(o));
+}
+static drmp3_bool32 mp3_tell(void *u, drmp3_int64 *c)
+{
+    *c = (drmp3_int64)((bio_t *)u)->pos;
+    return DRMP3_TRUE;
+}
+static drflac_bool32 flac_seek(void *u, int off, drflac_seek_origin o)
+{
+    return bio_seek(u, off, whence_of(o));
+}
+static drflac_bool32 flac_tell(void *u, drflac_int64 *c)
+{
+    *c = (drflac_int64)((bio_t *)u)->pos;
+    return DRFLAC_TRUE;
+}
+static size_t ogg_read(void *p, size_t sz, size_t nm, void *u)
+{
+    return sz ? bio_read(u, p, sz * nm) / sz : 0;
+}
 static int ogg_seek(void *u, ogg_int64_t off, int wh) { return bio_seek(u, off, wh) ? 0 : -1; }
-static int ogg_close(void *u) { (void)u; return 0; }
+static int ogg_close(void *u)
+{
+    (void)u;
+    return 0;
+}
 static long ogg_tell(void *u) { return (long)((bio_t *)u)->pos; }
 
 static int kind_of(const u8 *h, u32 n, const char *name)
 {
     if (n >= 12 && !memcmp(h, "RIFF", 4) && !memcmp(h + 8, "WAVE", 4)) return K_WAV;
     if (n >= 12 && (!memcmp(h, "RF64", 4) || !memcmp(h, "riff", 4))) return K_WAV;
-    if (n >= 12 && !memcmp(h, "FORM", 4) && (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4))) return K_WAV;
+    if (n >= 12 && !memcmp(h, "FORM", 4) &&
+        (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4)))
+        return K_WAV;
     if (n >= 4 && !memcmp(h, "fLaC", 4)) return K_FLAC;
     if (n >= 4 && !memcmp(h, "OggS", 4)) {
         /* Ogg holds Vorbis, FLAC or Opus: the first packet says which */
@@ -136,13 +182,18 @@ static int kind_of(const u8 *h, u32 n, const char *name)
 gen_t *gen_open(const char *path)
 {
     gen_t *g = calloc(1, sizeof(*g));
-    if (!g || !bio_open(&g->io, path)) { free(g); return NULL; }
+    if (!g || !bio_open(&g->io, path)) {
+        free(g);
+        return NULL;
+    }
+
     u8 h[0x40];
     u32 n = (u32)bio_read(&g->io, h, sizeof(h));
     bio_seek(&g->io, 0, SEEK_SET);
     g->kind = kind_of(h, n, path);
     gen_info *i = &g->info;
     bool ok = false;
+
     switch (g->kind) {
     case K_WAV:
         ok = drwav_init(&g->d.wav, dr_read, wav_seek, wav_tell, &g->io, NULL);
@@ -187,7 +238,11 @@ gen_t *gen_open(const char *path)
         ok = ov_open_callbacks(&g->io, &g->d.ogg, NULL, 0, cb) == 0;
         if (!ok) break;
         vorbis_info *vi = ov_info(&g->d.ogg, -1);
-        if (!vi) { ov_clear(&g->d.ogg); ok = false; break; }
+        if (!vi) {
+            ov_clear(&g->d.ogg);
+            ok = false;
+            break;
+        }
         i->channels = vi->channels;
         i->rate = (int)vi->rate;
         ogg_int64_t t = ov_pcm_total(&g->d.ogg, -1);
@@ -201,6 +256,7 @@ gen_t *gen_open(const char *path)
     default:
         break;
     }
+
     if (ok && (i->channels < 1 || i->channels > 8 || i->rate < 1000 || i->rate > 192000)) {
         gen_close(g);
         return NULL;
@@ -225,7 +281,8 @@ u32 gen_read(gen_t *g, s16 *out, u32 frames)
         u32 got = 0, fb = (u32)g->info.channels * 2;
         while (got < frames) {
             int bs;
-            long r = ov_read(&g->d.ogg, (char *)(out + got * g->info.channels), (int)((frames - got) * fb), &bs);
+            long r = ov_read(&g->d.ogg, (char *)(out + got * g->info.channels),
+                             (int)((frames - got) * fb), &bs);
             if (r == OV_HOLE) continue;         /* a gap in the stream: carry on */
             if (r <= 0) break;
             /* a chained stream may change its channel count: stop rather than play it wrong */
@@ -265,8 +322,8 @@ void gen_close(gen_t *g)
 
 bool gen_is_name(const char *name)
 {
-    static const char *const ext[] = { ".wav", ".wave", ".aif", ".aiff", ".aifc", ".mp3", ".mp2", ".flac",
-                                       ".ogg", ".oga", NULL };
+    static const char *const ext[] = { ".wav", ".wave", ".aif", ".aiff", ".aifc", ".mp3",
+                                       ".mp2", ".flac", ".ogg", ".oga",  NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
             return true;

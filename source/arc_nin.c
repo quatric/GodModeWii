@@ -2,13 +2,17 @@
  * First-party GameCube / Wii containers, read-only, for browsing:
  *   Yaz0 (.szs, .yaz0)  and  Yay0     compressed; a compressed archive opens as the archive inside
  *   RARC (.arc, .rarc)                GameCube / Wii resource archive
- *   BRRES (.brres)                    NW4R resource file: its folders and sub-files (TEX0, PLT0, MDL0, ...)
- *   ASH0 (.ash)                       Wii Menu / Animal Crossing compression; opens as the file inside
- *   BRSAR (.brsar)                    NW4R sound archive: groups, their sequence / bank / sound files,
- *                                     and each wave archive's RWAV waves (playable)
- *   CCF (.ccf)                        Virtual Console container: 20 char names, zlib or stored members
+ *   BRRES (.brres)                    NW4R resource file: its folders and sub-files (TEX0, PLT0,
+ *                                     MDL0, ...)
+ *   ASH0 (.ash)                       Wii Menu / Animal Crossing compression; opens as the file
+ *                                     inside
+ *   BRSAR (.brsar)                    NW4R sound archive: groups, their sequence / bank / sound
+ *                                     files, and each wave archive's RWAV waves (playable)
+ *   CCF (.ccf)                        Virtual Console container: 20 char names, zlib or stored
+ *                                     members
  *   PAC (.pac)                        Super Smash Bros. Brawl "ARC" archive: typed, indexed members
- *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10 payload, little endian
+ *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10
+ *                                     payload, little endian
  * Layouts follow quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
@@ -30,7 +34,10 @@ static uint8_t *read_all(const src_t *f, uint32_t *len)
 {
     if (f->size > MAX_OUT) return NULL;
     uint8_t *b = malloc(f->size ? f->size : 1);
-    if (b && !src_read_full(f, 0, b, (uint32_t)f->size)) { free(b); return NULL; }
+    if (b && !src_read_full(f, 0, b, (uint32_t)f->size)) {
+        free(b);
+        return NULL;
+    }
     *len = (uint32_t)f->size;
     return b;
 }
@@ -55,7 +62,8 @@ bool arc_yaz0_probe(const src_t *f, const char *name)
 {
     (void)name;
     uint8_t h[16];
-    return read_head(f, h, 16) && (!memcmp(h, "Yaz0", 4) || !memcmp(h, "Yay0", 4)) && be32(h + 4) && be32(h + 4) <= MAX_OUT;
+    return read_head(f, h, 16) && (!memcmp(h, "Yaz0", 4) || !memcmp(h, "Yay0", 4)) && be32(h + 4) &&
+           be32(h + 4) <= MAX_OUT;
 }
 
 static bool yaz0_decode(const uint8_t *in, uint32_t len, uint8_t *out, uint32_t osz)
@@ -73,10 +81,16 @@ static bool yaz0_decode(const uint8_t *in, uint32_t len, uint8_t *out, uint32_t 
             if (ip + 1 >= len) return false;
             uint8_t b1 = in[ip++], b2 = in[ip++];
             uint32_t dist = ((uint32_t)(b1 & 15) << 8 | b2) + 1, n = b1 >> 4;
-            if (!n) { if (ip >= len) return false; n = in[ip++] + 0x12; }
-            else n += 2;
+            if (!n) {
+                if (ip >= len) return false;
+                n = in[ip++] + 0x12;
+            } else
+                n += 2;
             if (dist > op) return false;
-            while (n-- && op < osz) { out[op] = out[op - dist]; op++; }
+            while (n-- && op < osz) {
+                out[op] = out[op - dist];
+                op++;
+            }
         }
     }
     return true;
@@ -88,19 +102,32 @@ static bool yay0_decode(const uint8_t *in, uint32_t len, uint8_t *out, uint32_t 
     uint32_t mask = 0;
     int bits = 0;
     while (op < osz) {
-        if (!bits) { if (mp + 4 > len) return false; mask = be32(in + mp); mp += 4; bits = 32; }
+        if (!bits) {
+            if (mp + 4 > len) return false;
+            mask = be32(in + mp);
+            mp += 4;
+            bits = 32;
+        }
         if (mask & 0x80000000u) {
             if (chunk >= len) return false;
             out[op++] = in[chunk++];
         } else {
             if (link + 2 > len) return false;
-            uint16_t l = be16(in + link); link += 2;
+            uint16_t l = be16(in + link);
+            link += 2;
             uint32_t dist = (l & 0xFFF) + 1, n = l >> 12;
-            if (!n) { if (chunk >= len) return false; n = in[chunk++] + 0x12; }
-            else n += 2;
+            if (!n) {
+                if (chunk >= len) return false;
+                n = in[chunk++] + 0x12;
+            } else
+                n += 2;
             if (dist > op) return false;
-            while (n-- && op < osz) { out[op] = out[op - dist]; op++; }
+            while (n-- && op < osz) {
+                out[op] = out[op - dist];
+                op++;
+            }
         }
+
         mask <<= 1;
         bits--;
     }
@@ -114,9 +141,13 @@ archive_t *arc_yaz0_open(const src_t *f, const char *name)
     if (!in) return NULL;
     uint32_t osz = be32(in + 4);
     uint8_t *out = malloc(osz ? osz : 1);
-    bool ok = out && (!memcmp(in, "Yaz0", 4) ? yaz0_decode(in, len, out, osz) : yay0_decode(in, len, out, osz));
+    bool ok = out && (!memcmp(in, "Yaz0", 4) ? yaz0_decode(in, len, out, osz) :
+                                               yay0_decode(in, len, out, osz));
     free(in);
-    if (!ok) { free(out); return NULL; }
+    if (!ok) {
+        free(out);
+        return NULL;
+    }
     static const char *const exts[] = { ".szs", ".yaz0", ".yay0", ".szp", ".carc", NULL };
     char inner[256];
     inner_name(name, inner, sizeof(inner), exts);
@@ -125,7 +156,9 @@ archive_t *arc_yaz0_open(const src_t *f, const char *name)
 
 /* ---------------------------------------------------------------- RARC */
 
-typedef struct { uint64_t base; } rawpriv;
+typedef struct {
+    uint64_t base;
+} rawpriv;
 
 static int32_t raw_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)
 {
@@ -210,11 +243,19 @@ archive_t *arc_rarc_open(const src_t *f, const char *name)
     (void)name;
     uint8_t h[0x40];
     if (!read_head(f, h, 0x40)) return NULL;
+
     rarc_t r = { 0 };
-    uint32_t info_len = be32(h + 0x0C);          /* data offset, relative to 0x20 = size of the info part */
-    if (info_len < 0x20 || info_len > 8 * 1024 * 1024 || 0x20 + (uint64_t)info_len > f->size) return NULL;
+    /* data offset, relative to 0x20 = size of the info part */
+    uint32_t info_len = be32(h + 0x0C);
+    if (info_len < 0x20 || info_len > 8 * 1024 * 1024 || 0x20 + (uint64_t)info_len > f->size)
+        return NULL;
+
     uint8_t *b = malloc(0x20 + info_len);
-    if (!b || !src_read_full(f, 0, b, 0x20 + info_len)) { free(b); return NULL; }
+    if (!b || !src_read_full(f, 0, b, 0x20 + info_len)) {
+        free(b);
+        return NULL;
+    }
+
     r.b = b;
     r.len = 0x20 + info_len;
     r.nnodes = be32(b + 0x20);
@@ -224,10 +265,13 @@ archive_t *arc_rarc_open(const src_t *f, const char *name)
     r.strsz = be32(b + 0x30);
     r.strs = 0x20 + be32(b + 0x34);
     r.data = 0x20 + (uint64_t)info_len;
+
     archive_t *a = NULL;
-    if ((uint64_t)r.nodes + r.nnodes * 0x10ull > r.len || (uint64_t)r.ents + r.nents * 0x14ull > r.len ||
-        (uint64_t)r.strs + r.strsz > r.len || !r.nnodes)
+    if ((uint64_t)r.nodes + r.nnodes * 0x10ull > r.len ||
+        (uint64_t)r.ents + r.nents * 0x14ull > r.len || (uint64_t)r.strs + r.strsz > r.len ||
+        !r.nnodes)
         goto out;
+
     a = raw_new("RARC", f);
     if (!a) goto out;
     if (!rarc_dir(a, &r, 0, 0, 0)) a = raw_fail(a);
@@ -249,7 +293,8 @@ static bool brres_name(const uint8_t *b, uint32_t len, uint32_t off, char *out, 
 {
     if (off < 4 || off >= len) return false;
     uint32_t l = be32(b + off - 4);
-    if (l > len - off || l >= n) l = (uint32_t)strnlen((const char *)b + off, len - off < n - 1 ? len - off : n - 1);
+    if (l > len - off || l >= n)
+        l = (uint32_t)strnlen((const char *)b + off, len - off < n - 1 ? len - off : n - 1);
     memcpy(out, b + off, l);
     out[l] = '\0';
     tree_clean_name(out);
@@ -257,7 +302,8 @@ static bool brres_name(const uint8_t *b, uint32_t len, uint32_t off, char *out, 
 }
 
 /* One index group: entry 0 is the root, then `count` entries of 16 bytes. */
-static bool brres_group(archive_t *a, const uint8_t *b, uint32_t len, uint32_t grp, int parent, int depth)
+static bool brres_group(archive_t *a, const uint8_t *b, uint32_t len, uint32_t grp, int parent,
+                        int depth)
 {
     if (depth > 2 || grp + 8 > len) return false;
     uint32_t count = be32(b + grp + 4);
@@ -280,7 +326,8 @@ static bool brres_group(archive_t *a, const uint8_t *b, uint32_t len, uint32_t g
             char full[220], ext[5];
             for (int k = 0; k < 4; k++) {
                 char c = (char)b[at + k];
-                ext[k] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ? c : '_';
+                ext[k] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') :
+                         (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ? c : '_';
             }
             ext[4] = '\0';
             snprintf(full, sizeof(full), "%s.%s", nm, ext);
@@ -309,7 +356,10 @@ out:
 
 /* ---------------------------------------------------------------- ASH0 */
 
-typedef struct { const uint8_t *src; uint32_t size, pos, word, used; } ashbits;
+typedef struct {
+    const uint8_t *src;
+    uint32_t size, pos, word, used;
+} ashbits;
 
 static bool ash_feed(ashbits *b)
 {
@@ -334,7 +384,8 @@ static bool ash_read(ashbits *b, uint32_t n, uint32_t *v)
 }
 
 /* Huffman tree, stored as left / right child tables above the leaf range. */
-static bool ash_tree(ashbits *b, uint32_t width, uint32_t *left, uint32_t *right, uint32_t *root, uint32_t *work)
+static bool ash_tree(ashbits *b, uint32_t width, uint32_t *left, uint32_t *right, uint32_t *root,
+                     uint32_t *work)
 {
     const uint32_t max = 1u << width, cap = 2 * max - 1, wcap = 2 * max;
     uint32_t used = 0, nodes = 0, next = max;
@@ -355,14 +406,20 @@ static bool ash_tree(ashbits *b, uint32_t width, uint32_t *left, uint32_t *right
             uint32_t node = work[--used], idx = node & 0x3fffffffu;
             if (idx >= cap) return false;
             nodes--;
-            if (node & 0x80000000u) { right[idx] = *root; *root = idx; }
-            else { left[idx] = *root; break; }
+            if (node & 0x80000000u) {
+                right[idx] = *root;
+                *root = idx;
+            } else {
+                left[idx] = *root;
+                break;
+            }
         }
         if (!nodes) return true;
     }
 }
 
-static bool ash_sym(ashbits *b, uint32_t root, uint32_t max, const uint32_t *l, const uint32_t *r, uint32_t *v)
+static bool ash_sym(ashbits *b, uint32_t root, uint32_t max, const uint32_t *l, const uint32_t *r,
+                    uint32_t *v)
 {
     uint32_t s = root;
     while (s >= max) {
@@ -381,19 +438,32 @@ static bool ash_try(const uint8_t *in, uint32_t len, uint8_t *out, uint32_t osz,
     const uint32_t smax = 1u << 9, dmax = 1u << dbits;
     uint32_t *mem = calloc((2 * smax - 1) * 2 + (2 * dmax - 1) * 2 + 2 * dmax, sizeof(uint32_t));
     if (!mem) return false;
-    uint32_t *sl = mem, *sr = sl + 2 * smax - 1, *dl = sr + 2 * smax - 1, *dr = dl + 2 * dmax - 1, *work = dr + 2 * dmax - 1;
+    uint32_t *sl = mem, *sr = sl + 2 * smax - 1, *dl = sr + 2 * smax - 1, *dr = dl + 2 * dmax - 1,
+             *work = dr + 2 * dmax - 1;
+
     ashbits sb = { in, len, 0x0C, 0, 0 }, db = { in, len, be32(in + 8), 0, 0 };
     uint32_t sroot = 0, droot = 0;
     bool ok = ash_feed(&sb) && ash_feed(&db) && ash_tree(&sb, 9, sl, sr, &sroot, work) &&
               ash_tree(&db, dbits, dl, dr, &droot, work);
+
     for (uint32_t pos = 0; ok && pos < osz;) {
         uint32_t sym, dist;
-        if (!ash_sym(&sb, sroot, smax, sl, sr, &sym)) { ok = false; break; }
-        if (sym < 0x100) { out[pos++] = (uint8_t)sym; continue; }
+        if (!ash_sym(&sb, sroot, smax, sl, sr, &sym)) {
+            ok = false;
+            break;
+        }
+        if (sym < 0x100) {
+            out[pos++] = (uint8_t)sym;
+            continue;
+        }
         uint32_t n = sym - 0x100 + 3;
-        if (!ash_sym(&db, droot, dmax, dl, dr, &dist) || dist >= pos || n > osz - pos) { ok = false; break; }
+        if (!ash_sym(&db, droot, dmax, dl, dr, &dist) || dist >= pos || n > osz - pos) {
+            ok = false;
+            break;
+        }
         for (uint32_t k = 0; k < n; k++, pos++) out[pos] = out[pos - dist - 1];
     }
+
     free(mem);
     return ok;
 }
@@ -416,7 +486,10 @@ archive_t *arc_ash0_open(const src_t *f, const char *name)
     uint8_t *out = malloc(osz);
     bool ok = out && (ash_try(in, len, out, osz, 11) || ash_try(in, len, out, osz, 15));
     free(in);
-    if (!ok) { free(out); return NULL; }
+    if (!ok) {
+        free(out);
+        return NULL;
+    }
     static const char *const exts[] = { ".ash", ".ash0", NULL };
     char inner[256];
     inner_name(name, inner, sizeof(inner), exts);
@@ -433,7 +506,12 @@ static bool bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t 
     uint8_t t0[256], t1[256], stack[512];
     bool paired[256];
     while (dp < dsz) {
-        for (int i = 0; i < 256; i++) { t0[i] = (uint8_t)i; t1[i] = 0; paired[i] = false; }
+        for (int i = 0; i < 256; i++) {
+            t0[i] = (uint8_t)i;
+            t1[i] = 0;
+            paired[i] = false;
+        }
+
         uint32_t c = 0;
         while (c < 256) {
             if (sp >= ssz) return false;
@@ -454,9 +532,11 @@ static bool bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t 
                 }
             }
         }
+
         if (sp + 2 > ssz) return false;
         uint32_t blk = (uint32_t)src[sp] << 8 | src[sp + 1], sn = 0;
         sp += 2;
+
         while (blk || sn) {
             uint8_t b;
             if (sn) b = stack[--sn];
@@ -514,37 +594,52 @@ archive_t *arc_gfa_open(const src_t *f, const char *name)
     uint32_t len;
     uint8_t *d = read_all(f, &len);
     if (!d) return NULL;
+
     archive_t *a = NULL;
     uint8_t *blob = NULL;
     uint32_t info = le32(d + 0x0C), doff = le32(d + 0x14), dsz = le32(d + 0x18);
-    if ((uint64_t)info + 4 > len || (uint64_t)doff + 20 > len || (uint64_t)doff + dsz > len) goto out;
+    if ((uint64_t)info + 4 > len || (uint64_t)doff + 20 > len || (uint64_t)doff + dsz > len)
+        goto out;
+
     uint32_t n = le32(d + info);
     if (!n || n > 100000 || (uint64_t)info + 4 + n * 16ull > len) goto out;
     const uint8_t *cp = d + doff;
     if (memcmp(cp, "GFCP", 4)) goto out;
     uint32_t mode = le32(cp + 8), olen = le32(cp + 12), zsz = le32(cp + 16);
     if (!olen || olen > MAX_OUT || 20ull + zsz > dsz) goto out;
+
     blob = malloc(olen);
     if (!blob) goto out;
     bool ok = mode == 1 ? bpe_decode(blob, olen, cp + 20, zsz)
             : (mode == 2 || mode == 3) ? lz10_raw(blob, olen, cp + 20, zsz) : false;
     if (!ok) goto out;
+
     a = archive_alloc("GFA");
     if (!a) goto out;
     a->read = raw_read;
     a->base = *f;
     a->src = src_from_memory(blob, olen);
-    if (!a->src.ctx) { memset(&a->base, 0, sizeof(a->base)); archive_close(a); a = NULL; goto out; }
+    if (!a->src.ctx) {
+        memset(&a->base, 0, sizeof(a->base));
+        archive_close(a);
+        a = NULL;
+        goto out;
+    }
     blob = NULL;
+
     for (uint32_t i = 0; i < n; i++) {
         const uint8_t *r = d + info + 4 + i * 16;
         uint32_t no = le32(r + 4) & 0x00FFFFFF, sz = le32(r + 8), off = le32(r + 12);
         char nm[256];
         if (no && no < len) {
             uint32_t k = 0;
-            while (no + k < len && d[no + k] && k + 1 < sizeof(nm)) { nm[k] = (char)d[no + k]; k++; }
+            while (no + k < len && d[no + k] && k + 1 < sizeof(nm)) {
+                nm[k] = (char)d[no + k];
+                k++;
+            }
             nm[k] = 0;
         } else nm[0] = 0;
+
         if (!nm[0]) snprintf(nm, sizeof(nm), "file%04u.bin", (unsigned)i);
         if (off >= doff) off -= doff;
         if ((uint64_t)off + sz > olen) continue;
@@ -570,9 +665,15 @@ bool arc_brsar_probe(const src_t *f, const char *name)
     return read_head(f, h, 0x28) && !memcmp(h, "RSAR", 4) && be16(h + 4) == 0xFEFF;
 }
 
-typedef struct { const uint8_t *b; uint32_t n; } blk_t;
+typedef struct {
+    const uint8_t *b;
+    uint32_t n;
+} blk_t;
 
-static uint32_t bu32(const blk_t *k, uint64_t off) { return off + 4 <= k->n ? be32(k->b + off) : 0xFFFFFFFFu; }
+static uint32_t bu32(const blk_t *k, uint64_t off)
+{
+    return off + 4 <= k->n ? be32(k->b + off) : 0xFFFFFFFFu;
+}
 
 /* SYMB: a string table (count, then offsets) of NUL terminated names. */
 static const char *rsar_name(const blk_t *sy, uint32_t id)
@@ -601,13 +702,16 @@ static void rsar_rwar(archive_t *a, const src_t *f, uint64_t at, uint32_t size, 
     if (size < 0x40 || !src_read_full(f, at, h, 0x20) || memcmp(h, "RWAR", 4)) return;
     uint32_t tabl = be32(h + 0x10), dat = be32(h + 0x18);
     uint8_t t[12];
-    if ((uint64_t)tabl + 12 > size || (uint64_t)dat + 8 > size || !src_read_full(f, at + tabl, t, 12) ||
-        memcmp(t, "TABL", 4))
+    if ((uint64_t)tabl + 12 > size || (uint64_t)dat + 8 > size ||
+        !src_read_full(f, at + tabl, t, 12) || memcmp(t, "TABL", 4))
         return;
     uint32_t cnt = be32(t + 8);
     if (cnt > 4096 || tabl + 12 + cnt * 12ull > size) return;
     uint8_t *e = malloc(cnt * 12 + 1);
-    if (!e || !src_read_full(f, at + tabl + 12, e, cnt * 12)) { free(e); return; }
+    if (!e || !src_read_full(f, at + tabl + 12, e, cnt * 12)) {
+        free(e);
+        return;
+    }
     for (uint32_t i = 0; i < cnt; i++) {
         uint32_t off = be32(e + i * 12 + 4), sz = be32(e + i * 12 + 8);
         if (!sz || (uint64_t)dat + off + sz > size) continue;
@@ -623,24 +727,36 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
     (void)name;
     uint8_t h[0x28];
     if (!read_head(f, h, 0x28)) return NULL;
+
     uint32_t so = be32(h + 0x10), ss = be32(h + 0x14), io = be32(h + 0x18), is = be32(h + 0x1C);
-    if (ss < 8 || is < 8 || ss > 16u << 20 || is > 16u << 20 || (uint64_t)so + ss > f->size || (uint64_t)io + is > f->size)
+    if (ss < 8 || is < 8 || ss > 16u << 20 || is > 16u << 20 || (uint64_t)so + ss > f->size ||
+        (uint64_t)io + is > f->size)
         return NULL;
+
     uint8_t *sb = malloc(ss), *ib = malloc(is);
     archive_t *a = NULL;
     uint8_t *done = NULL;
     if (!sb || !ib || !src_read_full(f, so, sb, ss) || !src_read_full(f, io, ib, is) ||
         memcmp(sb, "SYMB", 4) || memcmp(ib, "INFO", 4))
         goto out;
+
     blk_t sy = { sb + 8, ss - 8 }, in = { ib + 8, is - 8 };
-    uint32_t ftab = bu32(&in, 0x1C), fcnt = bu32(&in, ftab), gtab = bu32(&in, 0x24), gcnt = bu32(&in, gtab);
-    uint32_t btab = bu32(&in, 0x0C), bcnt = bu32(&in, btab), stab = bu32(&in, 0x04), scnt = bu32(&in, stab);
+    uint32_t ftab = bu32(&in, 0x1C), fcnt = bu32(&in, ftab), gtab = bu32(&in, 0x24),
+             gcnt = bu32(&in, gtab);
+    uint32_t btab = bu32(&in, 0x0C), bcnt = bu32(&in, btab), stab = bu32(&in, 0x04),
+             scnt = bu32(&in, stab);
+
     if (fcnt > in.n / 8 || gcnt > in.n / 8 || !gcnt) goto out;
     if (bcnt > in.n / 8) bcnt = 0;
     if (scnt > in.n / 8) scnt = 0;
+
     const char **fname = calloc(fcnt + 1, sizeof(*fname));
     done = calloc(fcnt + 1, 1);
-    if (!fname || !done) { free(fname); goto out; }
+    if (!fname || !done) {
+        free(fname);
+        goto out;
+    }
+
     /* File names: a bank's own name, else the first sound that uses the file. */
     for (uint32_t i = 0; i < bcnt; i++) {
         uint32_t e = bu32(&in, btab + 8 + i * 8ull), fid = bu32(&in, e + 4ull);
@@ -650,8 +766,13 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
         uint32_t e = bu32(&in, stab + 8 + i * 8ull), fid = bu32(&in, e + 4ull);
         if (fid < fcnt && !fname[fid]) fname[fid] = rsar_name(&sy, bu32(&in, e));
     }
+
     a = raw_new("BRSAR", f);
-    if (!a) { free(fname); goto out; }
+    if (!a) {
+        free(fname);
+        goto out;
+    }
+
     for (uint32_t g = 0; g < gcnt; g++) {
         uint32_t ge = bu32(&in, gtab + 8 + g * 8ull);
         uint32_t gdata = bu32(&in, ge + 0x10ull), gwave = bu32(&in, ge + 0x18ull);
@@ -680,7 +801,8 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
             snprintf(full, sizeof(full), "%s%s", stem, arc_name_has_ext(stem, ext) ? "" : ext);
             tree_add(&a->tree, gi, full, false, dsz, (uint64_t)gdata + doff, 0, 0);
             if (fid < fcnt) done[fid] = 1;
-            uint8_t wm[4];                   /* older archives keep raw samples here instead of an RWAR */
+            /* older archives keep raw samples here instead of an RWAR */
+            uint8_t wm[4];
             if (wsz >= 0x40 && wsz != 0xFFFFFFFFu && (uint64_t)gwave + woff + wsz <= f->size &&
                 src_read_full(f, (uint64_t)gwave + woff, wm, 4) && !memcmp(wm, "RWAR", 4)) {
                 snprintf(full, sizeof(full), "%s waves", stem);
@@ -689,6 +811,7 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
             }
         }
     }
+
     /* Sequences: every sequence sound, playable with its bank (A in the browser). Each entry is
      * its RSEQ file; the player finds the sound again by name. */
     int si = -1;
@@ -717,6 +840,7 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
         if (si < 0 && (si = tree_add(&a->tree, 0, "Sequences", true, 0, 0, 0, 0)) < 0) break;
         tree_add(&a->tree, si, nm, false, sz, off, 0, 0);
     }
+
     free(fname);
     if (a->tree.count <= 1) a = raw_fail(a);
 out:
@@ -744,6 +868,7 @@ archive_t *arc_ccf_open(const src_t *f, const char *name)
     uint32_t len;
     uint8_t *d = read_all(f, &len);
     if (!d) return NULL;
+
     uint32_t unit = be32(d + 16), n = be32(d + 20);
     archive_t *a = NULL;
     uint64_t total = 0;
@@ -753,6 +878,7 @@ archive_t *arc_ccf_open(const src_t *f, const char *name)
     a = archive_alloc("CCF");
     if (!a) goto out;
     a->read = raw_read;
+
     uint64_t pos = 0;
     for (uint32_t i = 0; i < n; i++) {
         const uint8_t *e = d + 32 + i * 32;
@@ -760,8 +886,10 @@ archive_t *arc_ccf_open(const src_t *f, const char *name)
         uint32_t csz = be32(e + 24), dsz = be32(e + 28);
         if (off + csz > len) continue;
         bool ok;
-        if (csz == dsz) { memcpy(blob + pos, d + off, dsz); ok = true; }
-        else {
+        if (csz == dsz) {
+            memcpy(blob + pos, d + off, dsz);
+            ok = true;
+        } else {
             uLongf got = dsz;
             ok = uncompress(blob + pos, &got, d + off, csz) == Z_OK && got == dsz;
         }
@@ -774,9 +902,15 @@ archive_t *arc_ccf_open(const src_t *f, const char *name)
         tree_add(&a->tree, 0, nm, false, dsz, pos, 0, 0);
         pos += dsz;
     }
+
     a->base = *f;
     a->src = src_from_memory(blob, total);
-    if (!a->src.ctx) { memset(&a->base, 0, sizeof(a->base)); archive_close(a); a = NULL; goto out; }
+    if (!a->src.ctx) {
+        memset(&a->base, 0, sizeof(a->base));
+        archive_close(a);
+        a = NULL;
+        goto out;
+    }
     blob = NULL;
 out:
     free(blob);
@@ -805,8 +939,11 @@ archive_t *arc_pac_open(const src_t *f, const char *name)
     uint32_t n = be16(h + 6);
     archive_t *a = raw_new("PAC", f);
     if (!a) return NULL;
-    static const char *const types[] = { "None", "MiscData", "ModelData", "TextureData", "AnimationData",
-                                         "SceneData", "Type6", "GroupData", "EffectData" };
+
+    static const char *const types[] = { "None",        "MiscData",      "ModelData",
+                                         "TextureData", "AnimationData", "SceneData",
+                                         "Type6",       "GroupData",     "EffectData" };
+
     uint64_t pos = 0x40;
     for (uint32_t i = 0; i < n && pos + 0x20 <= f->size; i++) {
         uint8_t e[0x24];
@@ -814,18 +951,23 @@ archive_t *arc_pac_open(const src_t *f, const char *name)
         uint32_t type = be16(e), idx = be16(e + 2), sz = be32(e + 4);
         uint64_t at = pos + 0x20;
         if (at + sz > f->size) break;
+
         uint8_t m[4] = { 0 };
         if (sz >= 4) src_read_full(f, at, m, 4);
         const char *ext = !memcmp(m, "bres", 4) ? ".brres" : !memcmp(m, "ARC\0", 4) ? ".pac" :
                           !memcmp(m, "REFF", 4) ? ".breff" : !memcmp(m, "REFT", 4) ? ".breft" :
-                          !memcmp(m, "RSAR", 4) ? ".brsar" : m[0] == 0x10 || m[0] == 0x11 ? ".lz" : ".bin";
+                          !memcmp(m, "RSAR", 4) ? ".brsar" :
+                          m[0] == 0x10 || m[0] == 0x11 ? ".lz" : ".bin";
+
         char nm[64];
         snprintf(nm, sizeof(nm), "%s[%u]%s", type < 9 ? types[type] : "Type", (unsigned)idx, ext);
         if (tree_find_child(&a->tree, 0, nm) >= 0)
-            snprintf(nm, sizeof(nm), "%s[%u]-%u%s", type < 9 ? types[type] : "Type", (unsigned)idx, (unsigned)i, ext);
+            snprintf(nm, sizeof(nm), "%s[%u]-%u%s", type < 9 ? types[type] : "Type", (unsigned)idx,
+                     (unsigned)i, ext);
         if (sz) tree_add(&a->tree, 0, nm, false, sz, at, 0, 0);
         pos = (at + sz + 0x1F) & ~0x1Full;
     }
+
     if (a->tree.count <= 1) return raw_fail(a);
     return a;
 }

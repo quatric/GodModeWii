@@ -21,7 +21,10 @@
 
 /* ---------------------------------------------------------------- the file as an unarr stream */
 
-typedef struct { const src_t *src; uint64_t pos; } sstream;
+typedef struct {
+    const src_t *src;
+    uint64_t pos;
+} sstream;
 
 static void ss_close(void *d) { free(d); }
 static size_t ss_read(void *d, void *buf, size_t n)
@@ -42,7 +45,9 @@ static size_t ss_read(void *d, void *buf, size_t n)
 static bool ss_seek(void *d, off64_t off, int origin)
 {
     sstream *s = d;
-    int64_t t = origin == SEEK_SET ? off : origin == SEEK_CUR ? (int64_t)s->pos + off : (int64_t)s->src->size + off;
+    int64_t t = origin == SEEK_SET   ? off
+                : origin == SEEK_CUR ? (int64_t)s->pos + off
+                                     : (int64_t)s->src->size + off;
     if (t < 0 || (uint64_t)t > s->src->size) return false;
     s->pos = (uint64_t)t;
     return true;
@@ -55,7 +60,8 @@ typedef struct {
     ar_stream *st;
     ar_archive *ar;             /* unarr */
     rar5_t *r5;                 /* or RAR5 */
-    int r5_at;                  /* RAR5: index of the entry rar5_next last returned, -1 before the first */
+    /* RAR5: index of the entry rar5_next last returned, -1 before the first */
+    int r5_at;
     int node;                   /* entry whose bytes are in whole / being streamed, or -1 */
     uint8_t *whole;
     uint64_t pos;               /* streaming: bytes of `node` already unpacked */
@@ -93,7 +99,10 @@ static bool r5_goto(zpriv *p, int idx)
     }
 }
 
-typedef struct { uint8_t *dst; size_t got, cap; } fill_t;
+typedef struct {
+    uint8_t *dst;
+    size_t got, cap;
+} fill_t;
 static bool fill_sink(void *ud, const uint8_t *d, size_t n)
 {
     fill_t *f = ud;
@@ -123,10 +132,18 @@ static int32_t z_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, ui
         free(p->whole);
         p->whole = NULL;
         p->node = -1;
-        if (!restart(p, nd)) { g_archive_err = "This file couldn't be found in the archive again"; return -1; }
+
+        if (!restart(p, nd)) {
+            g_archive_err = "This file couldn't be found in the archive again";
+            return -1;
+        }
+
         if (whole) {
             p->whole = malloc(nd->size ? nd->size : 1);
-            if (!p->whole) { g_archive_err = "Not enough memory to unpack this file"; return -1; }
+            if (!p->whole) {
+                g_archive_err = "Not enough memory to unpack this file";
+                return -1;
+            }
             bool ok;
             if (nd->c == E_RAR5) {
                 fill_t f = { p->whole, 0, nd->size };
@@ -136,7 +153,8 @@ static int32_t z_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, ui
             if (!ok) {
                 free(p->whole);
                 p->whole = NULL;
-                g_archive_err = "This file couldn't be unpacked (damaged, encrypted or an unsupported method)";
+                g_archive_err =
+                    "This file couldn't be unpacked (damaged, encrypted or an unsupported method)";
                 return -1;
             }
         } else if (nd->c == E_RAR5) {
@@ -145,24 +163,35 @@ static int32_t z_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, ui
         }
         p->node = idx;
     }
+
     if (whole) {
         memcpy(buf, p->whole + off, len);
         return (int32_t)len;
     }
+
     /* streaming (unarr): unpack and drop bytes up to off, then the bytes asked for */
     if (!p->scratch && !(p->scratch = malloc(0x10000))) return -1;
     while (p->pos < off) {
         uint64_t k = off - p->pos;
         if (k > 0x10000) k = 0x10000;
-        if (!ar_entry_uncompress(p->ar, p->scratch, (size_t)k)) { p->node = -1; return -1; }
+        if (!ar_entry_uncompress(p->ar, p->scratch, (size_t)k)) {
+            p->node = -1;
+            return -1;
+        }
         p->pos += k;
     }
-    if (!ar_entry_uncompress(p->ar, buf, len)) { p->node = -1; return -1; }
+
+    if (!ar_entry_uncompress(p->ar, buf, len)) {
+        p->node = -1;
+        return -1;
+    }
+
     p->pos += len;
     return (int32_t)len;
 }
 
-/* "a\b|c" -> "a/b_c": the tree splits on '/', and '|' separates archive levels in GodModeWii's paths. */
+/* "a\b|c" -> "a/b_c": the tree splits on '/', and '|' separates archive levels in GodModeWii's
+ * paths. */
 static void clean_path(char *s)
 {
     for (char *q = s; *q; q++) {
@@ -176,7 +205,8 @@ static int kind_of(const uint8_t *m)
     if (!memcmp(m, "Rar!\x1a\x07\x01\x00", 8)) return 5;
     if (!memcmp(m, "Rar!\x1a\x07\x00", 7)) return 4;
     if (!memcmp(m, "7z\xBC\xAF\x27\x1C", 6)) return 7;
-    if (m[0] == 'P' && m[1] == 'K' && ((m[2] == 3 && m[3] == 4) || (m[2] == 5 && m[3] == 6))) return 1;
+    if (m[0] == 'P' && m[1] == 'K' && ((m[2] == 3 && m[3] == 4) || (m[2] == 5 && m[3] == 6)))
+        return 1;
     return 0;
 }
 
@@ -190,14 +220,22 @@ bool arc_zip7zrar_probe(const src_t *f, const char *name)
 archive_t *arc_zip7zrar_open(const src_t *f, const char *name)
 {
     (void)name;
+
     uint8_t m[8];
     if (!src_read_full(f, 0, m, 8)) return NULL;
     int kind = kind_of(m);
     static const char *const kinds[] = { [1] = "zip", [4] = "RAR", [5] = "RAR5", [7] = "7z" };
+
     archive_t *a = archive_alloc(kinds[kind]);
     zpriv *p = calloc(1, sizeof(*p));
     sstream *ss = calloc(1, sizeof(*ss));
-    if (!a || !p || !ss) { free(p); free(ss); if (a) archive_close(a); return NULL; }
+    if (!a || !p || !ss) {
+        free(p);
+        free(ss);
+        if (a) archive_close(a);
+        return NULL;
+    }
+
     a->base = *f;
     a->src = a->base;
     a->priv = p;
@@ -207,12 +245,21 @@ archive_t *arc_zip7zrar_open(const src_t *f, const char *name)
     p->r5_at = -1;
     ss->src = &a->src;
     p->st = ar_open_stream(ss, ss_close, ss_read, ss_seek, ss_tell);
-    if (!p->st) { free(ss); goto fail; }
+    if (!p->st) {
+        free(ss);
+        goto fail;
+    }
+
     char nm[512];
     int count = 0;
+
     if (kind == 5) {
         p->r5 = rar5_open(p->st);
-        if (!p->r5) { g_archive_err = "This RAR5 archive couldn't be read"; goto fail; }
+        if (!p->r5) {
+            g_archive_err = "This RAR5 archive couldn't be read";
+            goto fail;
+        }
+
         rar5_entry e;
         int r;
         uint64_t total = 0;
@@ -221,14 +268,25 @@ archive_t *arc_zip7zrar_open(const src_t *f, const char *name)
             p->r5_at = i;
             snprintf(nm, sizeof(nm), "%s", e.name);
             clean_path(nm);
-            if (!e.skip || e.dir) tree_add_path(&a->tree, nm, e.dir, e.dir ? 0 : e.size, 0, (uint64_t)i, E_RAR5);
-            count++;                            /* rar5_next steps over the data itself: nothing is unpacked */
+            if (!e.skip || e.dir)
+                tree_add_path(&a->tree, nm, e.dir, e.dir ? 0 : e.size, 0, (uint64_t)i, E_RAR5);
+            /* rar5_next steps over the data itself: nothing is unpacked */
+            count++;
         }
-        if (r < 0 && !count) { g_archive_err = rar5_error(p->r5); goto fail; }
+        if (r < 0 && !count) {
+            g_archive_err = rar5_error(p->r5);
+            goto fail;
+        }
         rar5_limit_dict(p->r5, total);
+
     } else {
-        p->ar = kind == 1 ? ar_open_zip_archive(p->st, false) : kind == 4 ? ar_open_rar_archive(p->st) : ar_open_7z_archive(p->st);
-        if (!p->ar) { g_archive_err = "This archive couldn't be read (damaged, encrypted or unsupported)"; goto fail; }
+        p->ar = kind == 1   ? ar_open_zip_archive(p->st, false)
+                : kind == 4 ? ar_open_rar_archive(p->st)
+                            : ar_open_7z_archive(p->st);
+        if (!p->ar) {
+            g_archive_err = "This archive couldn't be read (damaged, encrypted or unsupported)";
+            goto fail;
+        }
         while (ar_parse_entry(p->ar)) {
             const char *en = ar_entry_get_name(p->ar);
             if (!en) continue;
@@ -236,11 +294,17 @@ archive_t *arc_zip7zrar_open(const src_t *f, const char *name)
             clean_path(nm);
             size_t l = strlen(nm);
             bool dir = l && nm[l - 1] == '/';
-            tree_add_path(&a->tree, nm, dir, dir ? 0 : ar_entry_get_size(p->ar), (uint64_t)ar_entry_get_offset(p->ar), 0, E_UNARR);
+            tree_add_path(&a->tree, nm, dir, dir ? 0 : ar_entry_get_size(p->ar),
+                          (uint64_t)ar_entry_get_offset(p->ar), 0, E_UNARR);
             count++;
         }
     }
-    if (!count) { if (!g_archive_err) g_archive_err = "The archive is empty or damaged"; goto fail; }
+
+    if (!count) {
+        if (!g_archive_err) g_archive_err = "The archive is empty or damaged";
+        goto fail;
+    }
+
     return a;
 fail:
     memset(&a->base, 0, sizeof(a->base));      /* the caller keeps the file on failure */

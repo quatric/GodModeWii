@@ -34,9 +34,11 @@ void ui_alert_window(bool on);
 bool ui_confirm(const char *title, int color, const char *text);
 #define UI_MENU_HOME (-2)      /* HOME pressed inside a menu (B / cancel is -1) */
 int  ui_menu(const char *title, const char **items, const bool *enabled, int n, int start);
-int  ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start, const char *strip);
+int  ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start,
+                const char *strip);
 bool ui_text_input(const char *title, char *buf, int maxlen);
-/* Like ui_text_input, but any printable ASCII and an empty result is allowed (editing file lines). */
+/* Like ui_text_input, but any printable ASCII and an empty result is allowed (editing file
+ * lines). */
 bool ui_text_edit(const char *title, char *buf, int maxlen);
 
 void ui_splash(const char *status);
@@ -54,7 +56,8 @@ void ui_busy_progress(u64 done, u64 total);
 void *ui_framebuffer(int *w, int *h);
 
 #ifdef GMW_AUTOTEST
-/* Test builds only: saves the framebuffer as sd:/shot_N.yuv (YUY2) and says the viewer should close. */
+/* Test builds only: saves the framebuffer as sd:/shot_N.yuv (YUY2) and says the viewer should
+ * close. */
 bool ui_test_dump(void);
 #define UI_TEST_SHOT() if (ui_test_dump()) break
 #else

@@ -19,9 +19,15 @@ static int open_depth;
 /* ---------------------------------------------------------------- bytes */
 
 uint16_t be16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
-uint32_t be32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
+uint32_t be32(const uint8_t *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+}
 uint64_t be64(const uint8_t *p) { return ((uint64_t)be32(p) << 32) | be32(p + 4); }
-uint32_t le32(const uint8_t *p) { return ((uint32_t)p[3] << 24) | ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0]; }
+uint32_t le32(const uint8_t *p)
+{
+    return ((uint32_t)p[3] << 24) | ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0];
+}
 
 bool arc_name_has_ext(const char *name, const char *ext)
 {
@@ -33,14 +39,19 @@ bool arc_name_has_ext(const char *name, const char *ext)
 /* ---------------------------------------------------------------- keys */
 
 /* Fixed Wii SD card key / IV for data.bin and content.bin headers (same on every console). */
-const uint8_t ARC_SD_KEY[16] = { 0xAB, 0x01, 0xB9, 0xD8, 0xE1, 0x62, 0x2B, 0x08, 0xAF, 0xBA, 0xD8, 0x4D, 0xBF, 0xC2, 0xA5, 0x5D };
-const uint8_t ARC_SD_IV[16]  = { 0x21, 0x67, 0x12, 0xE6, 0xAA, 0x1F, 0x68, 0x9F, 0x95, 0xC5, 0xA2, 0x23, 0x24, 0xDC, 0x6A, 0x98 };
+const uint8_t ARC_SD_KEY[16] = { 0xAB, 0x01, 0xB9, 0xD8, 0xE1, 0x62, 0x2B, 0x08,
+                                 0xAF, 0xBA, 0xD8, 0x4D, 0xBF, 0xC2, 0xA5, 0x5D };
+const uint8_t ARC_SD_IV[16]  = { 0x21, 0x67, 0x12, 0xE6, 0xAA, 0x1F, 0x68, 0x9F,
+                                 0x95, 0xC5, 0xA2, 0x23, 0x24, 0xDC, 0x6A, 0x98 };
 
 /* Common keys 0 (Wii), 1 (Korean Wii) and 2 (vWii) decrypt the title key in a WAD's ticket. */
 static const uint8_t COMMON_KEYS[3][16] = {
-    { 0xEB, 0xE4, 0x2A, 0x22, 0x5E, 0x85, 0x93, 0xE4, 0x48, 0xD9, 0xC5, 0x45, 0x73, 0x81, 0xAA, 0xF7 },
-    { 0x63, 0xB8, 0x2B, 0xB4, 0xF4, 0x61, 0x4E, 0x2E, 0x13, 0xF2, 0xFE, 0xFB, 0xBA, 0x4C, 0x9B, 0x7E },
-    { 0x30, 0xBF, 0xC7, 0x6E, 0x7C, 0x19, 0xAF, 0xBB, 0x23, 0x16, 0x33, 0x30, 0xCE, 0xD7, 0xC2, 0x8D },
+    { 0xEB, 0xE4, 0x2A, 0x22, 0x5E, 0x85, 0x93, 0xE4,
+      0x48, 0xD9, 0xC5, 0x45, 0x73, 0x81, 0xAA, 0xF7 },
+    { 0x63, 0xB8, 0x2B, 0xB4, 0xF4, 0x61, 0x4E, 0x2E,
+      0x13, 0xF2, 0xFE, 0xFB, 0xBA, 0x4C, 0x9B, 0x7E },
+    { 0x30, 0xBF, 0xC7, 0x6E, 0x7C, 0x19, 0xAF, 0xBB,
+      0x23, 0x16, 0x33, 0x30, 0xCE, 0xD7, 0xC2, 0x8D },
 };
 
 bool arc_common_key(int index, uint8_t key[16])
@@ -56,7 +67,10 @@ void archive_set_wfs_key_provider(archive_wfs_key_fn fn) { wfs_provider = fn; }
 
 static archive_sibling_fn sibling_provider;
 void archive_set_sibling_provider(archive_sibling_fn fn) { sibling_provider = fn; }
-bool archive_open_sibling(const char *name, src_t *out) { return sibling_provider && sibling_provider(name, out); }
+bool archive_open_sibling(const char *name, src_t *out)
+{
+    return sibling_provider && sibling_provider(name, out);
+}
 
 bool arc_wfs_key_at(int index, uint8_t key[16])
 {
@@ -79,12 +93,17 @@ bool src_read_full(const src_t *s, uint64_t off, void *buf, uint32_t len)
         if (busy_hook) busy_hook();
         int32_t n = s->read(s->ctx, off, p, len > 0x40000 ? 0x40000 : len);
         if (n <= 0) return false;
-        off += n; p += n; len -= n;
+        off += n;
+        p += n;
+        len -= n;
     }
     return true;
 }
 
-typedef struct { uint8_t *data; uint64_t size; } memsrc;
+typedef struct {
+    uint8_t *data;
+    uint64_t size;
+} memsrc;
 
 static int32_t mem_read(void *ctx, uint64_t off, void *buf, uint32_t len)
 {
@@ -107,7 +126,10 @@ src_t src_from_memory(uint8_t *data, uint64_t size)
     src_t s;
     memset(&s, 0, sizeof(s));
     memsrc *m = malloc(sizeof(*m));
-    if (!m) { free(data); return s; }
+    if (!m) {
+        free(data);
+        return s;
+    }
     m->data = data;
     m->size = size;
     s.read = mem_read;
@@ -141,11 +163,13 @@ void tree_free(tree_t *t)
 void tree_clean_name(char *name)
 {
     for (char *p = name; *p; p++)
-        if (*p == '/' || *p == '|' || *p == '\\' || (unsigned char)*p < 0x20 || (unsigned char)*p == 0x7F)
+        if (*p == '/' || *p == '|' || *p == '\\' || (unsigned char)*p < 0x20 ||
+            (unsigned char)*p == 0x7F)
             *p = '_';
 }
 
-int tree_add(tree_t *t, int parent, const char *name, bool is_dir, uint64_t size, uint64_t a, uint64_t b, uint32_t c)
+int tree_add(tree_t *t, int parent, const char *name, bool is_dir, uint64_t size, uint64_t a,
+             uint64_t b, uint32_t c)
 {
     if (t->count == t->cap) {
         int ncap = t->cap ? t->cap * 2 : 64;
@@ -198,10 +222,12 @@ int tree_find(const tree_t *t, const char *rel)
 }
 
 /* Adds "a/b/c", creating any missing folders on the way. */
-int tree_add_path(tree_t *t, const char *path, bool is_dir, uint64_t size, uint64_t a, uint64_t b, uint32_t c)
+int tree_add_path(tree_t *t, const char *path, bool is_dir, uint64_t size, uint64_t a, uint64_t b,
+                  uint32_t c)
 {
     char buf[256];
     snprintf(buf, sizeof(buf), "%s", path);
+
     int cur = 0;
     char *p = buf;
     for (;;) {
@@ -210,13 +236,19 @@ int tree_add_path(tree_t *t, const char *path, bool is_dir, uint64_t size, uint6
         char *slash = strchr(p, '/');
         bool last = !slash || !slash[strspn(slash, "/")];
         if (slash) *slash = '\0';
+
         int child = tree_find_child(t, cur, p);
         if (child < 0) {
-            child = tree_add(t, cur, p, last ? is_dir : true, last && !is_dir ? size : 0, last ? a : 0, last ? b : 0, last ? c : 0);
+            child = tree_add(t, cur, p, last ? is_dir : true, last && !is_dir ? size : 0,
+                             last ? a : 0, last ? b : 0, last ? c : 0);
             if (child < 0) return -1;
         } else if (last && !is_dir && !t->n[child].is_dir) {
-            t->n[child].size = size; t->n[child].a = a; t->n[child].b = b; t->n[child].c = c;
+            t->n[child].size = size;
+            t->n[child].a = a;
+            t->n[child].b = b;
+            t->n[child].c = c;
         }
+
         if (last) return child;
         cur = child;
         p = slash + 1;
@@ -230,7 +262,10 @@ archive_t *archive_alloc(const char *kind)
     archive_t *a = calloc(1, sizeof(*a));
     if (!a) return NULL;
     a->kind = kind;
-    if (!tree_init(&a->tree)) { free(a); return NULL; }
+    if (!tree_init(&a->tree)) {
+        free(a);
+        return NULL;
+    }
     return a;
 }
 
@@ -276,15 +311,18 @@ int archive_find(archive_t *a, const char *rel)
 
 /* Plaintext bytes [off, off+len) of a CBC stream stored at enc_off in src. Works from any
  * 16-byte block because the previous ciphertext block is the IV. */
-int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0[16], uint64_t enc_off,
-                        uint64_t plain_size, uint64_t off, void *buf, uint32_t len)
+int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0[16],
+                        uint64_t enc_off, uint64_t plain_size, uint64_t off, void *buf,
+                        uint32_t len)
 {
     if (off >= plain_size) return 0;
     if (len > plain_size - off) len = (uint32_t)(plain_size - off);
+
     enum { CHUNK = 16384 };
     static uint8_t tmp[CHUNK + 16];
     uint8_t *dst = buf;
     uint32_t done = 0;
+
     while (done < len) {
         uint64_t pos = off + done;
         uint64_t bs = pos & ~(uint64_t)15;
@@ -297,23 +335,28 @@ int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0
             memcpy(iv, iv0, 16);
             if (!src_read_full(src, enc_off, tmp + 16, nbytes)) return done ? (int32_t)done : -1;
         } else {
-            if (!src_read_full(src, enc_off + bs - 16, tmp, nbytes + 16)) return done ? (int32_t)done : -1;
+            if (!src_read_full(src, enc_off + bs - 16, tmp, nbytes + 16))
+                return done ? (int32_t)done : -1;
             memcpy(iv, tmp, 16);
         }
+
         aes128_cbc_decrypt(ctx, iv, tmp + 16, tmp + 16, nbytes);
+
         uint32_t skip = (uint32_t)(pos - bs);
         uint32_t take = nbytes - skip;
         if (take > len - done) take = len - done;
         memcpy(dst + done, tmp + 16 + skip, take);
         done += take;
     }
+
     return (int32_t)done;
 }
 
 /* ---------------------------------------------------------------- LZ10 / LZ11 */
 
 /* Nintendo LZ77: type byte 0x10 / 0x11, 24-bit size (0 = a 32-bit size follows). */
-static bool lz_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size, uint32_t *hdr_len)
+static bool lz_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size,
+                      uint32_t *hdr_len)
 {
     if (avail < 4 || (h[0] != 0x10 && h[0] != 0x11)) return false;
     *type = h[0];
@@ -327,7 +370,8 @@ static bool lz_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t 
     return *size != 0;
 }
 
-static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t out_size, uint32_t pos, uint8_t *out)
+static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t out_size,
+                      uint32_t pos, uint8_t *out)
 {
     uint32_t op = 0;
     while (op < out_size) {
@@ -339,6 +383,7 @@ static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t
                 out[op++] = in[pos++];
                 continue;
             }
+
             uint32_t len, disp;
             if (pos >= in_len) return false;
             uint8_t b0 = in[pos++];
@@ -368,20 +413,32 @@ static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t
                     disp = (((b0 & 0xF) << 8) | b1) + 1;
                 }
             }
+
             if (disp > op) return false;
             for (uint32_t k = 0; k < len && op < out_size; k++, op++)
                 out[op] = out[op - disp];
         }
     }
+
     return true;
 }
 
 static bool read_whole(const src_t *file, uint8_t **out, uint32_t *len)
 {
-    if (file->size > ARC_MAX_DECOMPRESSED) { g_archive_err = "File is too big to decompress in memory"; return false; }
+    if (file->size > ARC_MAX_DECOMPRESSED) {
+        g_archive_err = "File is too big to decompress in memory";
+        return false;
+    }
     uint8_t *buf = malloc(file->size ? (size_t)file->size : 1);
-    if (!buf) { g_archive_err = "Out of memory"; return false; }
-    if (!src_read_full(file, 0, buf, (uint32_t)file->size)) { free(buf); g_archive_err = "Read error"; return false; }
+    if (!buf) {
+        g_archive_err = "Out of memory";
+        return false;
+    }
+    if (!src_read_full(file, 0, buf, (uint32_t)file->size)) {
+        free(buf);
+        g_archive_err = "Read error";
+        return false;
+    }
     *out = buf;
     *len = (uint32_t)file->size;
     return true;
@@ -394,14 +451,17 @@ static bool read_whole(const src_t *file, uint8_t **out, uint32_t *len)
  * Menu files), run length 0x30 and LZH8 0x40 (Virtual Console, WiiWare).
  * Each decoder stops after `osz` bytes, so a probe can peek at the start. */
 
-static bool huff_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out, uint32_t osz, bool four)
+static bool huff_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out, uint32_t osz,
+                        bool four)
 {
     if (pos >= n) return false;
     uint32_t tsz = 2u * (src[pos] + 1u);
     if (tsz > n - pos) return false;
+
     const uint8_t *tree = src + pos, *bits = tree + tsz;
     uint32_t blen = n - pos - tsz, bp = 0, left = 0, op = 0, word = 0;
     int half = -1;
+
     while (op < osz) {
         uint32_t node = 1;
         uint8_t sym;
@@ -418,13 +478,21 @@ static bool huff_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
             uint8_t e = tree[node];
             uint32_t child = (node & ~1u) + 2 + 2 * (e & 0x3F) + (bit ? 1 : 0);
             if (child >= tsz) return false;
-            if (e & (bit ? 0x40 : 0x80)) { sym = tree[child]; break; }
+            if (e & (bit ? 0x40 : 0x80)) {
+                sym = tree[child];
+                break;
+            }
             node = child;
         }
+
         if (!four) out[op++] = sym;
         else if (half < 0) half = sym & 15;
-        else { out[op++] = (uint8_t)(half | (sym & 15) << 4); half = -1; }
+        else {
+            out[op++] = (uint8_t)(half | (sym & 15) << 4);
+            half = -1;
+        }
     }
+
     return true;
 }
 
@@ -449,7 +517,12 @@ static bool rl_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out
     return true;
 }
 
-typedef struct { const uint8_t *s; uint32_t n, pos; uint8_t pool; int left; } bitrd;
+typedef struct {
+    const uint8_t *s;
+    uint32_t n, pos;
+    uint8_t pool;
+    int left;
+} bitrd;
 
 static bool br_bits(bitrd *r, uint32_t cnt, uint32_t *v)
 {
@@ -483,9 +556,11 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
         if (!br_bits(&r, 9, &v)) return false;
         lt[i] = (uint16_t)v;
     }
+
     r.pos = lstart + lbytes;
     r.left = 0;
     if (r.pos + 1 > n) return false;
+
     uint32_t dbytes = (src[r.pos] + 1u) * 4, dstart = r.pos;
     r.pos++;
     for (uint32_t i = 1; r.pos - dstart < dbytes && i < 64; i++) {
@@ -493,9 +568,11 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
         if (!br_bits(&r, 5, &v)) return false;
         dt[i] = (uint8_t)v;
     }
+
     r.pos = dstart + dbytes;
     r.left = 0;
     if (r.pos > n) return false;
+
     uint32_t op = 0;
     while (op < osz) {
         uint32_t lo = 1;
@@ -506,7 +583,11 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
             if (nx >= 1024) return false;
             if (lt[lo] & (0x100u >> bit)) {
                 uint32_t len = lt[nx];
-                if (len < 0x100) { out[op++] = (uint8_t)len; break; }
+                if (len < 0x100) {
+                    out[op++] = (uint8_t)len;
+                    break;
+                }
+
                 len = (len & 0xFF) + 3;
                 uint32_t dlo = 1;
                 for (;;) {
@@ -525,7 +606,8 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
                             }
                         }
                         if (disp + 1 > op) return false;
-                        for (uint32_t k = 0; k < len && op < osz; k++, op++) out[op] = out[op - disp - 1];
+                        for (uint32_t k = 0; k < len && op < osz; k++, op++)
+                            out[op] = out[op - disp - 1];
                         break;
                     }
                     dlo = dn;
@@ -535,11 +617,13 @@ static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *o
             lo = nx;
         }
     }
+
     return true;
 }
 
 /* type byte, 24-bit size (0 = a 32-bit size follows); every CX codec */
-static bool cx_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size, uint32_t *hdr_len)
+static bool cx_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size,
+                      uint32_t *hdr_len)
 {
     if (avail < 4) return false;
     uint8_t t = h[0];
@@ -555,7 +639,8 @@ static bool cx_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t 
     return *size != 0;
 }
 
-static bool cx_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t pos, uint8_t *out, uint32_t osz)
+static bool cx_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t pos, uint8_t *out,
+                      uint32_t osz)
 {
     switch (type) {
     case 0x10: case 0x11: return lz_decode(in, in_len, type, osz, pos, out);
@@ -572,9 +657,15 @@ static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint3
     uint8_t type;
     uint32_t size, hl;
     if (skip > len || !cx_header(buf + skip, len - skip, &type, &size, &hl)) return NULL;
-    if (size > ARC_MAX_DECOMPRESSED) { g_archive_err = "Decompressed size is too big for memory"; return NULL; }
+    if (size > ARC_MAX_DECOMPRESSED) {
+        g_archive_err = "Decompressed size is too big for memory";
+        return NULL;
+    }
     uint8_t *out = malloc(size);
-    if (!out) { g_archive_err = "Out of memory"; return NULL; }
+    if (!out) {
+        g_archive_err = "Out of memory";
+        return NULL;
+    }
     if (!cx_decode(buf, len, type, skip + hl, out, size)) {
         free(out);
         g_archive_err = "Corrupt compressed data";
@@ -586,8 +677,8 @@ static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint3
 
 static bool lz_ext(const char *name)
 {
-    static const char *const ext[] = { ".lz", ".lz10", ".lz11", ".lz77", ".huff", ".huf", ".rl", ".rle", ".lzh8",
-                                       ".lh", ".cx", NULL };
+    static const char *const ext[] = { ".lz", ".lz10", ".lz11", ".lz77", ".huff", ".huf",
+                                       ".rl", ".rle", ".lzh8", ".lh", ".cx", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i])) return true;
     return false;
@@ -596,10 +687,11 @@ static bool lz_ext(const char *name)
 /* Nintendo files a compressed stream may hold, by their first four bytes. */
 static bool known_magic(const uint8_t *m)
 {
-    static const char *const tags[] = { "RSAR", "RSTM", "RWSD", "RBNK", "RSEQ", "RWAR", "RWAV", "bres", "RLYT", "RLAN",
-                                        "RFNT", "RFNA", "RFNU", "REFF", "REFT", "RARC", "Yaz0", "Yay0", "MESG", "J3D2",
-                                        "THP\0", "IMD5", "BNR1", "BNR2", "WIBN", "RKGD", "RKMD", "MsgS", "GFAC", "ASH0",
-                                        "CRAR", "SARC", "TPL\0", NULL };
+    static const char *const tags[] = { "RSAR", "RSTM", "RWSD", "RBNK", "RSEQ", "RWAR", "RWAV",
+                                        "bres", "RLYT", "RLAN", "RFNT", "RFNA", "RFNU", "REFF",
+                                        "REFT", "RARC", "Yaz0", "Yay0", "MESG", "J3D2", "THP\0",
+                                        "IMD5", "BNR1", "BNR2", "WIBN", "RKGD", "RKMD", "MsgS",
+                                        "GFAC", "ASH0", "CRAR", "SARC", "TPL\0", NULL };
     for (int i = 0; tags[i]; i++)
         if (!memcmp(m, tags[i], 4)) return true;
     return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
@@ -613,7 +705,8 @@ static bool probe_lz(const src_t *file, const char *name)
     uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
     if (n < 8 || !src_read_full(file, 0, h, n)) return false;
     uint32_t skip = !memcmp(h, "LZ77", 4) ? 4 : 0;
-    uint8_t t; uint32_t s, hl;
+    uint8_t t;
+    uint32_t s, hl;
     if (!cx_header(h + skip, n - skip, &t, &s, &hl)) return false;
     if (skip || lz_ext(name)) return true;
     if (s < 16 || s > ARC_MAX_DECOMPRESSED || (uint64_t)s * 64 < file->size) return false;
@@ -684,9 +777,16 @@ static int32_t single_read(archive_t *a, const tnode *n, uint64_t off, void *buf
 archive_t *archive_open_single(uint8_t *data, uint64_t size, const char *fname)
 {
     archive_t *a = archive_alloc("file");
-    if (!a) { free(data); return NULL; }
+    if (!a) {
+        free(data);
+        return NULL;
+    }
     a->src = src_from_memory(data, size);
-    if (!a->src.ctx) { tree_free(&a->tree); free(a); return NULL; }
+    if (!a->src.ctx) {
+        tree_free(&a->tree);
+        free(a);
+        return NULL;
+    }
     a->read = single_read;
     if (tree_add(&a->tree, 0, fname, false, size, 0, 0, 0) < 0) {
         src_close(&a->src);
@@ -702,7 +802,9 @@ archive_t *archive_open_single(uint8_t *data, uint64_t size, const char *fname)
 #define U8_MAGIC 0x55AA382Du
 #define MAX_U8_NODES 200000u
 
-typedef struct { uint64_t base; } u8priv;
+typedef struct {
+    uint64_t base;
+} u8priv;
 
 static int32_t u8_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)
 {
@@ -719,11 +821,16 @@ static bool u8_locate(const src_t *file, uint64_t *base)
     uint8_t h[0x90];
     uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
     if (n < 0x20 || !src_read_full(file, 0, h, n)) return false;
-    if (be32(h) == U8_MAGIC) { *base = 0; return true; }
+    if (be32(h) == U8_MAGIC) {
+        *base = 0;
+        return true;
+    }
     uint8_t m[4];
-    /* IMET at 0x40 (a disc's opening.bnr): U8 at 0x600; at 0x80 (a channel's 00000000.app): 0x640 */
+    /* IMET at 0x40 (a disc's opening.bnr): U8 at 0x600;
+     * at 0x80 (a channel's 00000000.app): 0x640 */
     for (uint32_t at = 0x40; at <= 0x80; at += 0x40)
-        if (n >= at + 4 && !memcmp(h + at, "IMET", 4) && src_read_full(file, at + 0x5C0, m, 4) && be32(m) == U8_MAGIC) {
+        if (n >= at + 4 && !memcmp(h + at, "IMET", 4) && src_read_full(file, at + 0x5C0, m, 4) &&
+            be32(m) == U8_MAGIC) {
             *base = at + 0x5C0;
             return true;
         }
@@ -752,55 +859,95 @@ static archive_t *open_u8(const src_t *file, const char *name)
     if (root_off != 0x20 || hdr_size < 0x20 + 12 || hdr_size > 64u * 1024 * 1024) return NULL;
 
     uint8_t *tab = malloc(hdr_size);
-    if (!tab) { g_archive_err = "Out of memory"; return NULL; }
-    if (!src_read_full(file, base + root_off, tab, hdr_size)) { free(tab); return NULL; }
+    if (!tab) {
+        g_archive_err = "Out of memory";
+        return NULL;
+    }
+    if (!src_read_full(file, base + root_off, tab, hdr_size)) {
+        free(tab);
+        return NULL;
+    }
     uint32_t count = be32(tab + 8);                 /* root node: its size is the node count */
-    if (count < 1 || count > MAX_U8_NODES || (uint64_t)count * 12 > hdr_size) { free(tab); return NULL; }
+    if (count < 1 || count > MAX_U8_NODES || (uint64_t)count * 12 > hdr_size) {
+        free(tab);
+        return NULL;
+    }
     const char *names = (const char *)tab + (size_t)count * 12;
     uint32_t names_len = hdr_size - count * 12;
 
     archive_t *a = archive_alloc("U8");
     u8priv *pr = calloc(1, sizeof(*pr));
-    if (!a || !pr) { free(tab); free(pr); archive_close(a); return NULL; }
+    if (!a || !pr) {
+        free(tab);
+        free(pr);
+        archive_close(a);
+        return NULL;
+    }
     a->priv = pr;
     a->destroy = u8_destroy;
     a->read = u8_read;
     pr->base = base;
 
-    struct { uint32_t end; int idx; } stack[64];
+    struct {
+        uint32_t end;
+        int idx;
+    } stack[64];
+
     int sp = 0;
     stack[sp].end = count;
     stack[sp].idx = 0;
     bool ok = true;
+
     for (uint32_t i = 1; i < count && ok; i++) {
         while (sp > 0 && i >= stack[sp].end) sp--;
         const uint8_t *nd = tab + (size_t)i * 12;
         uint32_t name_off = be32(nd) & 0x00FFFFFF;
         bool is_dir = nd[0] != 0;
         uint32_t x = be32(nd + 4), y = be32(nd + 8);
-        if (name_off >= names_len) { ok = false; break; }
+
+        if (name_off >= names_len) {
+            ok = false;
+            break;
+        }
+
         char name[256];
         size_t ml = strnlen(names + name_off, names_len - name_off);
         if (ml >= sizeof(name)) ml = sizeof(name) - 1;
         memcpy(name, names + name_off, ml);
         name[ml] = '\0';
         if (!name[0]) snprintf(name, sizeof(name), "node_%u", (unsigned)i);
+
         if (is_dir) {
-            if (y <= i || y > count || sp >= 63) { ok = false; break; }
+            if (y <= i || y > count || sp >= 63) {
+                ok = false;
+                break;
+            }
             /* a folder named "." (many channel contents keep everything in one): its contents go
              * straight into the folder holding it, so opening the archive shows them at once */
-            int idx = !strcmp(name, ".") || !strcmp(name, "..") ? stack[sp].idx
-                                                                : tree_add(&a->tree, stack[sp].idx, name, true, 0, 0, 0, 0);
-            if (idx < 0) { ok = false; break; }
+            int idx = !strcmp(name, ".") || !strcmp(name, "..") ?
+                      stack[sp].idx :
+                      tree_add(&a->tree, stack[sp].idx, name, true, 0, 0, 0, 0);
+            if (idx < 0) {
+                ok = false;
+                break;
+            }
             sp++;
             stack[sp].end = y;
             stack[sp].idx = idx;
         } else {
-            if (tree_add(&a->tree, stack[sp].idx, name, false, y, base + x, 0, 0) < 0) { ok = false; break; }
+            if (tree_add(&a->tree, stack[sp].idx, name, false, y, base + x, 0, 0) < 0) {
+                ok = false;
+                break;
+            }
         }
     }
+
     free(tab);
-    if (!ok) { archive_close(a); return NULL; }
+    if (!ok) {
+        archive_close(a);
+        return NULL;
+    }
+
     a->base = *file;
     a->src = a->base;
     return a;
@@ -816,13 +963,18 @@ static bool probe_imd5(const src_t *file, const char *name)
     return !memcmp(h, "IMD5", 4);
 }
 
-/* IMD5 header (0x20 bytes) then the payload, LZ77-compressed or not. A U8 payload is opened directly. */
+/* IMD5 header (0x20 bytes) then the payload, LZ77-compressed or not.
+ * A U8 payload is opened directly. */
 static archive_t *open_imd5(const src_t *file, const char *name)
 {
     uint8_t *raw;
     uint32_t rlen;
     if (!read_whole(file, &raw, &rlen)) return NULL;
-    if (rlen < 0x28 || memcmp(raw, "IMD5", 4)) { free(raw); return NULL; }
+    if (rlen < 0x28 || memcmp(raw, "IMD5", 4)) {
+        free(raw);
+        return NULL;
+    }
+
     uint32_t psize = be32(raw + 4);
     if (psize > rlen - 0x20) psize = rlen - 0x20;
     uint8_t *payload = NULL;
@@ -832,16 +984,22 @@ static archive_t *open_imd5(const src_t *file, const char *name)
     else
         payload = NULL;
     if (!payload) {
-        uint8_t ty; uint32_t sz, hl;
+        uint8_t ty;
+        uint32_t sz, hl;
         if (psize >= 4 && lz_header(raw + 0x20, psize, &ty, &sz, &hl))
             payload = lz_unpack(raw + 0x20, psize, 0, &plen);
     }
+
     if (!payload) {
         payload = malloc(psize ? psize : 1);
-        if (!payload) { free(raw); return NULL; }
+        if (!payload) {
+            free(raw);
+            return NULL;
+        }
         memcpy(payload, raw + 0x20, psize);
         plen = psize;
     }
+
     free(raw);
     char inner[256];
     const char *base = strrchr(name ? name : "", '/');
@@ -892,7 +1050,10 @@ bool archive_probe(const src_t *file, const char *name)
 archive_t *archive_open(const src_t *file, const char *name)
 {
     g_archive_err = NULL;
-    if (open_depth >= 4) { g_archive_err = "Archives are nested too deeply"; return NULL; }
+    if (open_depth >= 4) {
+        g_archive_err = "Archives are nested too deeply";
+        return NULL;
+    }
     open_depth++;
     archive_t *a = NULL;
     for (size_t i = 0; i < sizeof(formats) / sizeof(formats[0]) && !a; i++) {

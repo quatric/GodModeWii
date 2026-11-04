@@ -151,7 +151,8 @@ static bool tmd_is_stub_ios(const u8 *tmd)
 {
     const u8 *c = tmd + W_TMD_CONTENTS;
     return be64(tmd + W_TMD_SYSVER) >> 32 == 0 && be16(tmd + W_TMD_NCONT) == 3 &&
-           be16(c + 0x06) == 0x0001 && be16(c + 0x24 + 0x06) == 0x8001 && be16(c + 0x48 + 0x06) == 0x8001;
+           be16(c + 0x06) == 0x0001 && be16(c + 0x24 + 0x06) == 0x8001 &&
+           be16(c + 0x48 + 0x06) == 0x8001;
 }
 
 /* YAWM's stub detection for an installed IOS. */
@@ -181,8 +182,12 @@ static bool ios_is_stub(u8 ios)
 static bool has_korean_key(void)
 {
     u8 *ee = memalign(32, SEEPROM_SIZE);
-    if (!ee || !seeprom_read(ee)) { free(ee); return false; }
-    u8 data[16] = { 0x56, 0x52, 0x6f, 0x63, 0xa1, 0x2c, 0xd1, 0x32, 0x07, 0x99, 0x82, 0x3b, 0x1b, 0x08, 0x17, 0xd0 };
+    if (!ee || !seeprom_read(ee)) {
+        free(ee);
+        return false;
+    }
+    u8 data[16] = { 0x56, 0x52, 0x6f, 0x63, 0xa1, 0x2c, 0xd1, 0x32,
+                    0x07, 0x99, 0x82, 0x3b, 0x1b, 0x08, 0x17, 0xd0 };
     u8 iv[16] = { 0 };
     aes128_t c;
     aes128_init_dec(&c, ee + 0x74);
@@ -232,7 +237,9 @@ static bool fix_ticket(u8 *tik)
                 key[i] ^= iv[i];
             aes128_ecb_encrypt(wk, key, tik + W_TIK_KEY);
             memset(&c, 0, sizeof(c));
-            memset(key, 0, 16); memset(vk, 0, 16); memset(wk, 0, 16);
+            memset(key, 0, 16);
+            memset(vk, 0, 16);
+            memset(wk, 0, 16);
         }
     }
     fakesign_ticket(tik);
@@ -269,7 +276,9 @@ static bool cios_base60(vfs_file *f, const u8 *tik, const u8 *tmd, u64 data_off)
         ok = be32(tag) == 0x1EE7C105 && be32(tag + 4) == 1 && be32(tag + 12) == 60;
     }
     free(tag);
-    memset(&c, 0, sizeof(c)); memset(tk, 0, 16); memset(ck, 0, 16);
+    memset(&c, 0, sizeof(c));
+    memset(tk, 0, 16);
+    memset(ck, 0, 16);
     return ok;
 }
 
@@ -282,7 +291,8 @@ static u8 *load_content_map(u32 *count)
         return NULL;
     static fstats st ATTRIBUTE_ALIGN(32);
     u8 *buf = NULL;
-    if (ISFS_GetFileStats(fd, &st) >= 0 && st.file_length && st.file_length % 28 == 0 && st.file_length < META_MAX) {
+    if (ISFS_GetFileStats(fd, &st) >= 0 && st.file_length && st.file_length % 28 == 0 &&
+        st.file_length < META_MAX) {
         buf = memalign(32, (st.file_length + 31) & ~31u);
         if (buf && ISFS_Read(fd, buf, st.file_length) != (s32)st.file_length) {
             free(buf);
@@ -354,8 +364,9 @@ static int backup_save(u64 tid, char *where, size_t wsz, u32 *files_before)
         return -1;
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
-    snprintf(where, wsz, "%sGodModeWii/save-backups/%08x-%08x-%04d%02d%02d-%02d%02d%02d", g_devs[dev].root,
-             TID_HI(tid), TID_LO(tid), tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+    snprintf(where, wsz, "%sGodModeWii/save-backups/%08x-%08x-%04d%02d%02d-%02d%02d%02d",
+             g_devs[dev].root, TID_HI(tid), TID_LO(tid), tm->tm_year + 1900, tm->tm_mon + 1,
+             tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
     if (!mkdirs(where))
         return -1;
     char *src = data;
@@ -405,29 +416,40 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
 
     hb = read_blob(&f, 0, 0x20);
     if (!hb) goto out;
-    wadhdr h = { be32(hb), be32(hb + 8), be32(hb + 0xC), be32(hb + 0x10), be32(hb + 0x14), be32(hb + 0x18) };
+    wadhdr h = { be32(hb),        be32(hb + 8),    be32(hb + 0xC),
+                 be32(hb + 0x10), be32(hb + 0x14), be32(hb + 0x18) };
     if (h.hdr_len != 0x20 || be16(hb + 4) != 0x4973 || be16(hb + 6) != 0) {
-        snprintf(msg, msz, "This isn't an installable WAD (only \"Is\" type WADs are; boot2 \"ib\" WADs are not).");
+        snprintf(msg, msz,
+                 "This isn't an installable WAD (only \"Is\" type WADs are; boot2 \"ib\" WADs are not).");
         ret = ES_EINVAL;
         goto out;
     }
+
     u64 off = round64(h.hdr_len);
     certs = read_blob(&f, off, h.certs_len);
     off += round64(h.certs_len);
-    if (h.crl_len) { crl = read_blob(&f, off, h.crl_len); off += round64(h.crl_len); }
+    if (h.crl_len) {
+        crl = read_blob(&f, off, h.crl_len);
+        off += round64(h.crl_len);
+    }
     tik = read_blob(&f, off, h.tik_len);
     off += round64(h.tik_len);
     tmd = read_blob(&f, off, h.tmd_len);
     off += round64(h.tmd_len);
+
     u64 data_off = off;
-    if (!certs || !tik || !tmd || (h.crl_len && !crl) || h.tik_len < 0x2A4 || h.tmd_len < W_TMD_CONTENTS ||
-        be32(tik) != 0x00010001 || be32(tmd) != 0x00010001) {
+    if (!certs || !tik || !tmd || (h.crl_len && !crl) || h.tik_len < 0x2A4 ||
+        h.tmd_len < W_TMD_CONTENTS || be32(tik) != 0x00010001 || be32(tmd) != 0x00010001) {
         snprintf(msg, msz, "The WAD is damaged or uses an unsupported signature type.");
         ret = ES_EINVAL;
         goto out;
     }
+
     int ncont = be16(tmd + W_TMD_NCONT);
-    if (W_TMD_CONTENTS + (u32)ncont * 0x24 > h.tmd_len) { ret = ES_EINVAL; goto out; }
+    if (W_TMD_CONTENTS + (u32)ncont * 0x24 > h.tmd_len) {
+        ret = ES_EINVAL;
+        goto out;
+    }
 
     u64 tid = be64(tik + W_TIK_TID);
     u64 tmd_tid = be64(tmd + W_TMD_TID);
@@ -447,18 +469,23 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         goto out;
     }
     if (tid == TID(1, 2)) {
-        snprintf(msg, msz, "This is a System Menu WAD. Install it with YAWM ModMii Edition, which checks the region and keeps Priiloader.");
+        snprintf(msg, msz,
+                 "This is a System Menu WAD. Install it with YAWM ModMii Edition, which checks the region and keeps Priiloader.");
         ret = -999;
         goto out;
     }
+
     bool vwii_title = fix_ticket(tik) || vwii_flag;
     if (sysver >> 32 == 0) {                                /* an IOS */
         if (vwii_title != g_is_vwii) {
-            snprintf(msg, msz, g_is_vwii ? "This is a Wii IOS. Installing it on vWii could brick the console."
-                                         : "This is a vWii IOS. Installing it on a Wii could brick the console.");
+            snprintf(msg, msz,
+                     g_is_vwii ?
+                         "This is a Wii IOS. Installing it on vWii could brick the console." :
+                         "This is a vWii IOS. Installing it on a Wii could brick the console.");
             ret = -999;
             goto out;
         }
+
         u64 sm_ios = title_ios(TID(1, 2));
         if (tid == sm_ios) {
             if (tmd_is_stub_ios(tmd)) {
@@ -466,21 +493,27 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
                 ret = -999;
                 goto out;
             }
-            if (!g_is_vwii && (tid == TID(1, 70) || tid == TID(1, 80)) && !cios_base60(&f, tik, tmd, data_off) && has_korean_key()) {
-                snprintf(msg, msz, "Installing this System Menu IOS will brick a Wii with the Korean key. Remove it with KoreanKii first.");
+            if (!g_is_vwii && (tid == TID(1, 70) || tid == TID(1, 80)) &&
+                !cios_base60(&f, tik, tmd, data_off) && has_korean_key()) {
+                snprintf(msg, msz,
+                         "Installing this System Menu IOS will brick a Wii with the Korean key. Remove it with KoreanKii first.");
                 ret = -999;
                 goto out;
             }
         }
+
         static const u32 eula_rgn[2] = { 0x48414B00, 0x48414C00 };
         static const char regions[4] = { 'E', 'P', 'J', 'K' };
         for (int k = 0; k < 2; k++)
             for (int r = 0; r < 4; r++)
-                if (tid == title_ios(TID(0x10008, eula_rgn[k] | (u8)regions[r])) && tmd_is_stub_ios(tmd)) {
-                    snprintf(msg, msz, "This would stub the IOS the %s needs.", k ? "region select" : "EULA");
+                if (tid == title_ios(TID(0x10008, eula_rgn[k] | (u8)regions[r])) &&
+                    tmd_is_stub_ios(tmd)) {
+                    snprintf(msg, msz, "This would stub the IOS the %s needs.",
+                             k ? "region select" : "EULA");
                     ret = -999;
                     goto out;
                 }
+
         static const u32 hbc[5] = { 0x48415858, 0x4A4F4449, 0xAF1BF516, 0x4C554C5A, 0x4F484243 };
         for (int k = 0; k < 5; k++)
             if (tid == title_ios(TID(0x10001, hbc[k])) && tmd_is_stub_ios(tmd)) {
@@ -489,7 +522,8 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
                 goto out;
             }
     } else if (TID_HI(sysver) == 1 && TID_LO(sysver) < 256 && ios_is_stub((u8)TID_LO(sysver))) {
-        snprintf(msg, msz, "This title needs IOS%u, which is a stub or missing. Install IOS%u first.",
+        snprintf(msg, msz,
+                 "This title needs IOS%u, which is a stub or missing. Install IOS%u first.",
                  (unsigned)TID_LO(sysver), (unsigned)TID_LO(sysver));
         ret = -1036;
         goto out;
@@ -503,7 +537,8 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         int b = backup_save(tid, backup, sizeof(backup), &files_before);
         if (b < 0) {
             char q[300];
-            snprintf(q, sizeof(q), "%s\n\nThe save data of this title could not be backed up%s. Installing never deletes "
+            snprintf(q, sizeof(q),
+                     "%s\n\nThe save data of this title could not be backed up%s. Installing never deletes "
                      "save data, but without a backup there is nothing to fall back on.\n\nInstall anyway?",
                      name, backup_device() < 0 ? " (no writable SD card or USB drive)" : "");
             if (!ui_confirm("NO SAVE BACKUP", C_YELLOW, q)) {
@@ -527,17 +562,22 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         total += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
 
     progress(name, "Installing ticket...", 0, total);
-    ret = ES_AddTicket((signed_blob *)tik, h.tik_len, (signed_blob *)certs, h.certs_len, (signed_blob *)crl, h.crl_len);
+    ret = ES_AddTicket((signed_blob *)tik, h.tik_len, (signed_blob *)certs, h.certs_len,
+                       (signed_blob *)crl, h.crl_len);
     if (ret < 0) goto out;
     progress(name, "Installing title...", 0, total);
-    ret = ES_AddTitleStart((signed_blob *)tmd, h.tmd_len, (signed_blob *)certs, h.certs_len, (signed_blob *)crl, h.crl_len);
+    ret = ES_AddTitleStart((signed_blob *)tmd, h.tmd_len, (signed_blob *)certs, h.certs_len,
+                           (signed_blob *)crl, h.crl_len);
     if (ret < 0) goto out;
     started = true;
 
     u32 map_n = 0;
     map = load_content_map(&map_n);
     buf = memalign(32, CHUNK);
-    if (!buf) { ret = -996; goto out; }
+    if (!buf) {
+        ret = -996;
+        goto out;
+    }
 
     u64 pos = data_off;
     for (int i = 0; i < ncont; i++) {
@@ -549,16 +589,28 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
             done += len;
             continue;
         }
+
         char what[64];
-        snprintf(what, sizeof(what), "Installing content %d of %d (%08x)...", i + 1, ncont, (unsigned)cid);
+        snprintf(what, sizeof(what), "Installing content %d of %d (%08x)...", i + 1, ncont,
+                 (unsigned)cid);
         progress(name, what, done, total);
         s32 cfd = ES_AddContentStart(tid, cid);
-        if (cfd < 0) { ret = cfd; goto out; }
+        if (cfd < 0) {
+            ret = cfd;
+            goto out;
+        }
         for (u32 idx = 0; idx < len;) {
             u32 n = len - idx > CHUNK ? CHUNK : len - idx;
-            if (!read_at(&f, pos, buf, n)) { ES_AddContentFinish(cfd); ret = -996; goto out; }
+            if (!read_at(&f, pos, buf, n)) {
+                ES_AddContentFinish(cfd);
+                ret = -996;
+                goto out;
+            }
             ret = ES_AddContentData(cfd, buf, n);
-            if (ret < 0) { ES_AddContentFinish(cfd); goto out; }
+            if (ret < 0) {
+                ES_AddContentFinish(cfd);
+                goto out;
+            }
             idx += n;
             pos += n;
             done += n;
@@ -568,6 +620,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         ret = ES_AddContentFinish(cfd);
         if (ret < 0) goto out;
     }
+
     progress(name, "Finishing installation...", total, total);
     ret = ES_AddTitleFinish();
     if (ret < 0) goto out;
@@ -583,9 +636,11 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         count_tree(data, &after, &bytes);
         if (after != files_before)
             snprintf(note, nsz, "Warning: the save data had %u file(s) before and %u now.%s%s",
-                     (unsigned)files_before, (unsigned)after, backup[0] ? " The backup is in " : "", backup);
+                     (unsigned)files_before, (unsigned)after, backup[0] ? " The backup is in " : "",
+                     backup);
         else if (backup[0])
-            snprintf(note, nsz, "Save data kept (%u file(s)). A backup is in %s", (unsigned)files_before, backup);
+            snprintf(note, nsz, "Save data kept (%u file(s)). A backup is in %s",
+                     (unsigned)files_before, backup);
     }
     snprintf(msg, msz, "Installed %08x-%08x v%u.", TID_HI(tid), TID_LO(tid), (unsigned)version);
 
@@ -594,7 +649,13 @@ out:
         ES_AddTitleCancel();
     if (ret < 0 && !msg[0])
         snprintf(msg, msz, "%s (%d).", wad_strerror(ret), ret);
-    free(hb); free(certs); free(crl); free(tik); free(tmd); free(buf); free(map);
+    free(hb);
+    free(certs);
+    free(crl);
+    free(tik);
+    free(tmd);
+    free(buf);
+    free(map);
     vfs_close(&f);
     return ret;
 }
@@ -614,11 +675,15 @@ void wad_install_paths(char **paths, int n)
         const char *one = NULL;
         for (int i = 0; i < n && !one; i++)
             if (ftype_detect(paths[i]) == FT_WAD) one = paths[i];
-        snprintf(q, sizeof(q), "Install \"%s\" to the NAND?\n\nSave data is kept, and backed up to the SD card first when "
-                 "the title is already installed. Don't turn the console off while installing.", vfs_basename(one));
+        snprintf(q, sizeof(q),
+                 "Install \"%s\" to the NAND?\n\nSave data is kept, and backed up to the SD card first when "
+                 "the title is already installed. Don't turn the console off while installing.",
+                 vfs_basename(one));
     } else {
-        snprintf(q, sizeof(q), "Install %d WADs to the NAND?\n\nSave data is kept, and backed up to the SD card first when "
-                 "a title is already installed. Don't turn the console off while installing.", wads);
+        snprintf(q, sizeof(q),
+                 "Install %d WADs to the NAND?\n\nSave data is kept, and backed up to the SD card first when "
+                 "a title is already installed. Don't turn the console off while installing.",
+                 wads);
     }
     if (!ui_confirm("INSTALL WAD", C_YELLOW, q))
         return;
@@ -637,13 +702,16 @@ void wad_install_paths(char **paths, int n)
         if (r == 0) ok++;
         if (wads == 1) {
             char text[600];
-            snprintf(text, sizeof(text), "%s\n\n%s%s%s", vfs_basename(paths[i]), msg, note[0] ? "\n\n" : "", note);
-            ui_message(r == 0 ? "INSTALLED" : "INSTALL FAILED", r == 0 ? (note[0] == 'W' ? C_YELLOW : C_GREEN) : C_RED, text);
+            snprintf(text, sizeof(text), "%s\n\n%s%s%s", vfs_basename(paths[i]), msg,
+                     note[0] ? "\n\n" : "", note);
+            ui_message(r == 0 ? "INSTALLED" : "INSTALL FAILED",
+                       r == 0 ? (note[0] == 'W' ? C_YELLOW : C_GREEN) : C_RED, text);
             return;
         }
         if (rl < sizeof(report) - 1)
-            rl += snprintf(report + rl, sizeof(report) - rl, "%s %s: %s%s%s\n", r == 0 ? "OK  " : "FAIL",
-                           vfs_basename(paths[i]), msg, note[0] == 'W' ? " " : "", note[0] == 'W' ? note : "");
+            rl += snprintf(report + rl, sizeof(report) - rl, "%s %s: %s%s%s\n",
+                           r == 0 ? "OK  " : "FAIL", vfs_basename(paths[i]), msg,
+                           note[0] == 'W' ? " " : "", note[0] == 'W' ? note : "");
         if (rl >= sizeof(report)) rl = sizeof(report) - 1;
     }
     char title[48];

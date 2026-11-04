@@ -18,7 +18,10 @@ void ptr_show(void);
 void ptr_hide(void);
 
 /* A held with the pointer on screen. Feed it every frame with the held buttons. */
-typedef struct { bool down, dragged, ptr_press; int x0, y0, lx, ly; } ptr_drag;
+typedef struct {
+    bool down, dragged, ptr_press;
+    int x0, y0, lx, ly;
+} ptr_drag;
 enum { PD_NONE, PD_MOVE, PD_TAP };
 /* PD_MOVE while dragging (*dx / *dy: the movement this frame), PD_TAP when A was let go without
  * dragging. A pressed while nothing points at the screen is left to the caller (PD_NONE). */

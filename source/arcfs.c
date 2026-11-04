@@ -27,7 +27,8 @@ struct entry {
 };
 
 static entry cache[CACHE_N];
-static entry pins[USB_SLOTS];       /* USB drives read through the WFS reader, one archive per drive */
+/* USB drives read through the WFS reader, one archive per drive */
+static entry pins[USB_SLOTS];
 static u32 clock_tick;
 static bool provider_set;
 
@@ -53,7 +54,10 @@ static int32_t filesrc_read(void *ctx, uint64_t off, void *buf, uint32_t len)
         uint32_t n = len - done;
         if (n > BOUNCE) n = BOUNCE;
         s32 r = vfs_read(&s->f, s->bounce, n);
-        if (r < 0) { s->pos = (u64)-1; return done ? (int32_t)done : -1; }
+        if (r < 0) {
+            s->pos = (u64)-1;
+            return done ? (int32_t)done : -1;
+        }
         if (r == 0) break;
         memcpy(dst + done, s->bounce, r);
         done += (uint32_t)r;
@@ -116,7 +120,8 @@ static void nestsrc_close(void *ctx)
 
 /* Keys for Wii U volumes come from files on the SD card:
  *   sd:/wfs/usb.key, mlc.key   the 16 byte AES keys themselves
- *   sd:/wfs/otp.bin (+ seeprom.bin)  a Wii U's OTP / SEEPROM dump; the USB key is derived from both, the MLC key from the OTP
+ *   sd:/wfs/otp.bin (+ seeprom.bin)  a Wii U's OTP / SEEPROM dump; the USB key is derived from
+ *                                    both, the MLC key from the OTP
  * (the same files are looked for in the root of the card). */
 #define WFS_KEYS_MAX 8
 static uint8_t wfs_keys[WFS_KEYS_MAX][16];
@@ -129,7 +134,10 @@ static int read_small(const char *path, uint8_t *out, uint32_t max)
     if (!vfs_open_read(&f, path))
         return -1;
     uint8_t *b = memalign(32, (max + 31) & ~31u);
-    if (!b) { vfs_close(&f); return -1; }
+    if (!b) {
+        vfs_close(&f);
+        return -1;
+    }
     uint32_t got = 0;
     while (got < max) {
         s32 r = vfs_read(&f, b + got, max - got);
@@ -175,7 +183,8 @@ static void load_wfs_keys(void)
             int sn = read_small(path, seeprom, sizeof(seeprom));
             if (sn >= 0xC0) {
                 uint8_t usb[16];
-                aes128_ecb_encrypt(otp + 0x130, seeprom + 0xB0, usb);      /* USB: seed encrypted with the OTP key */
+                /* USB: seed encrypted with the OTP key */
+                aes128_ecb_encrypt(otp + 0x130, seeprom + 0xB0, usb);
                 add_key(usb);
                 memset(usb, 0, sizeof(usb));
             }
@@ -226,7 +235,9 @@ static void init_providers(void)
 
 /* ---------------------------------------------------------------- raw USB source */
 
-typedef struct { int slot; } rawsrc;
+typedef struct {
+    int slot;
+} rawsrc;
 
 static int32_t rawsrc_read(void *ctx, uint64_t off, void *buf, uint32_t len)
 {
@@ -248,7 +259,8 @@ static void entry_free(entry *e)
 void arcfs_flush(void)
 {
     wfs_keys_loaded = false;
-    for (int pass = 0; pass < CACHE_N; pass++)          /* freeing a nested archive releases its parent */
+    /* freeing a nested archive releases its parent */
+    for (int pass = 0; pass < CACHE_N; pass++)
         for (int i = 0; i < CACHE_N; i++)
             if (cache[i].a && cache[i].refs == 0)
                 entry_free(&cache[i]);
@@ -295,6 +307,7 @@ static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t 
     if (n >= sizeof(buf)) return false;
     memcpy(buf, spec, n);
     buf[n] = '\0';
+
     const char *bar = NULL;
     for (const char *p = buf; *p; p++)
         if (*p == '|') bar = p;
@@ -302,12 +315,14 @@ static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t 
         snprintf(name, namesz, "%s", vfs_basename(buf));
         return filesrc_make(out, buf);
     }
+
     entry *parent = get_archive(spec, (size_t)(bar - buf));
     if (!parent) return false;
     const char *inner = bar + 1;
     while (*inner == '/') inner++;
     int node = archive_find(parent->a, inner);
     if (node < 0 || parent->a->tree.n[node].is_dir) return false;
+
     nestsrc *s = calloc(1, sizeof(*s));
     if (!s) return false;
     s->parent = parent;
@@ -317,6 +332,7 @@ static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t 
     out->close = nestsrc_close;
     out->ctx = s;
     out->size = parent->a->tree.n[node].size;
+
     const char *base = strrchr(inner, '/');
     snprintf(name, namesz, "%s", base ? base + 1 : inner);
     return true;
@@ -325,7 +341,10 @@ static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t 
 static entry *get_archive(const char *spec, size_t n)
 {
     char key[KEY_MAX];
-    if (n >= sizeof(key)) { g_archive_err = "Path is too long"; return NULL; }
+    if (n >= sizeof(key)) {
+        g_archive_err = "Path is too long";
+        return NULL;
+    }
     memcpy(key, spec, n);
     key[n] = '\0';
     entry *e = cache_lookup(key);
@@ -339,19 +358,27 @@ static entry *get_archive(const char *spec, size_t n)
         if (!g_archive_err) g_archive_err = "Can't read that file";
         return NULL;
     }
+
     opening = key;
     busy_hook = ui_busy_tick;
     ui_busy_begin(name);
     archive_t *a = archive_open(&src, name);
     ui_busy_end();
     opening = NULL;
+
     if (!a) {
         if (src.close) src.close(src.ctx);
         if (!g_archive_err) g_archive_err = "Not a supported archive";
         return NULL;
     }
+
     e = cache_slot();
-    if (!e) { archive_close(a); g_archive_err = "Too many archives open"; return NULL; }
+    if (!e) {
+        archive_close(a);
+        g_archive_err = "Too many archives open";
+        return NULL;
+    }
+
     snprintf(e->key, sizeof(e->key), "%s", key);
     e->a = a;
     e->refs = 0;
@@ -375,9 +402,13 @@ static bool resolve(const char *path, entry **e, int *node)
         size_t l = strlen(rel);
         while (l && rel[l - 1] == '/') rel[--l] = '\0';
         *node = archive_find((*e)->a, rel);
-        if (*node < 0) { g_archive_err = "Not found on the volume"; return false; }
+        if (*node < 0) {
+            g_archive_err = "Not found on the volume";
+            return false;
+        }
         return true;
     }
+
     *e = get_archive(path, (size_t)(bar - path));
     if (!*e) return false;
     const char *inner = bar + 1;
@@ -386,8 +417,12 @@ static bool resolve(const char *path, entry **e, int *node)
     snprintf(rel, sizeof(rel), "%s", inner);
     size_t l = strlen(rel);
     while (l && rel[l - 1] == '/') rel[--l] = '\0';
+
     *node = archive_find((*e)->a, rel);
-    if (*node < 0) { g_archive_err = "Not found in the archive"; return false; }
+    if (*node < 0) {
+        g_archive_err = "Not found in the archive";
+        return false;
+    }
     return true;
 }
 

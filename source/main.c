@@ -58,8 +58,8 @@ static bool detect_vwii(void)
     return ret >= 0 && x > 0;
 }
 
-/* exit() returns through the stub HBC leaves behind. A forwarder channel leaves none, so HBC is then started by
- * title ID, newest first, as USB Loader GX does. */
+/* exit() returns through the stub HBC leaves behind. A forwarder channel leaves none, so HBC is
+ * then started by title ID, newest first, as USB Loader GX does. */
 static void exit_to_loader(void)
 {
     static const u64 hbc[] = { 0x000100014F484243ll, 0x000100014C554C5All, 0x00010001AF1BF516ll,
@@ -83,7 +83,8 @@ static bool check_for_update(void)
     u64 start = gettime(), polled = 0;
     bool online = false;
     while (WIIUPDATE_State() == WIIUPDATE_CHECKING) {
-        /* Each poll is an IOS call, so the network start-up isn't asked about more than every 100 ms. */
+        /* Each poll is an IOS call, so the network start-up isn't asked about more than every
+         * 100 ms. */
         if (!online && ticks_to_millisecs(diff_ticks(polled, gettime())) >= 100) {
             polled = gettime();
             if (net_gethostip()) {
@@ -91,17 +92,22 @@ static bool check_for_update(void)
                 ui_splash("Checking for updates...   B  Skip");
             }
         }
-        if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) || ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
+        if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) ||
+            ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
             WIIUPDATE_Cancel();
             return false;
         }
     }
+
     if (!WIIUPDATE_TakeNotice())
         return false;
+
     char text[300];
     if (WIIUPDATE_CanInstall()) {
-        snprintf(text, sizeof text, "%s\n\nUpdate now? GodModeWii will download it, install it over this copy and "
-                 "return to the loader.", WIIUPDATE_Message());
+        snprintf(text, sizeof text,
+                 "%s\n\nUpdate now? GodModeWii will download it, install it over this copy and "
+                 "return to the loader.",
+                 WIIUPDATE_Message());
         return ui_confirm("UPDATE AVAILABLE", C_GREEN, text);
     }
     snprintf(text, sizeof text, "%s\n\nDownload it from\n%s", WIIUPDATE_Message(), WIIUPDATE_Url());
@@ -115,14 +121,18 @@ static bool install_update(void)
 {
     if (WIIUPDATE_Install() < 0)
         return false;
+
     wiiupdate_install_state st;
     int shown = -1;
-    while ((st = WIIUPDATE_InstallState()) == WIIUPDATE_INSTALL_DOWNLOADING || st == WIIUPDATE_INSTALL_EXTRACTING) {
+
+    while ((st = WIIUPDATE_InstallState()) == WIIUPDATE_INSTALL_DOWNLOADING ||
+           st == WIIUPDATE_INSTALL_EXTRACTING) {
         int pct = WIIUPDATE_Progress();
         if (pct != shown) {
             char status[96];
             snprintf(status, sizeof status, "%s %s...  %d%%%s",
-                     st == WIIUPDATE_INSTALL_DOWNLOADING ? "Downloading" : "Installing", WIIUPDATE_Latest(), pct,
+                     st == WIIUPDATE_INSTALL_DOWNLOADING ? "Downloading" : "Installing",
+                     WIIUPDATE_Latest(), pct,
                      st == WIIUPDATE_INSTALL_DOWNLOADING ? "   B  Cancel" : "");
             ui_splash(status);
             ui_bar(ui_rows() / 2 + 3, (ui_cols() - 50) / 2, 50, pct, C_GREEN);
@@ -131,14 +141,18 @@ static bool install_update(void)
         if (DetectInput(IN_DOWN) & WPAD_BUTTON_B)
             WIIUPDATE_Cancel();
     }
+
     WIIUPDATE_Wait(5000);
     ui_splash("");
+
     char text[200];
     if (st == WIIUPDATE_INSTALL_DONE) {
-        snprintf(text, sizeof text, "GodModeWii %s is installed. Press A to return to the loader.", WIIUPDATE_Latest());
+        snprintf(text, sizeof text, "GodModeWii %s is installed. Press A to return to the loader.",
+                 WIIUPDATE_Latest());
         ui_message("UPDATED", C_GREEN, text);
         return true;
     }
+
     snprintf(text, sizeof text, "The update could not be installed (%s). This copy is unchanged.",
              WIIUPDATE_InstallError());
     ui_message("UPDATE FAILED", C_RED, text);
@@ -158,7 +172,8 @@ int main(int argc, char **argv)
 
     /* NAND permissions: the same ISFS patch FSToolBox-Mod applies, and only
      * that one (the hash / identify / setuid patches are not needed here). */
-    if (AHBPROT_DISABLED && !g_is_dolphin)     /* the scan is pointless (and very slow) in an emulator */
+    /* the scan is pointless (and very slow) in an emulator */
+    if (AHBPROT_DISABLED && !g_is_dolphin)
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
@@ -169,12 +184,14 @@ int main(int argc, char **argv)
 #else
     bool update = check_for_update();
 #endif
+
     ui_splash("Looking for drives...");
     u64 began = ticks_to_millisecs(gettime());
     risk_startup_poll_begin();
     vfs_init();
     bool toggled = risk_startup_poll_end(2500, began);
     risk_load_forced();
+
     if (toggled) {
         bool saved = risk_toggle_forced();
         if (!saved)
@@ -184,32 +201,39 @@ int main(int argc, char **argv)
                        "Dangerous permissions are now ALWAYS enabled, and stay that way every time this program starts. "
                        "Nothing will ask for a warning or code first.");
         else
-            ui_message("RISKY MODE OFF", C_GREEN, "Dangerous permissions are no longer forced. Risky changes ask for the warning and code again.");
+            ui_message("RISKY MODE OFF", C_GREEN,
+                       "Dangerous permissions are no longer forced. Risky changes ask for the warning and code again.");
     } else if (risk_forced()) {
         ui_message("RISKY MODE FORCED ON", C_RED,
                    "Dangerous permissions are ALWAYS enabled. Nothing will ask for a warning or code first.");
     }
 
 #ifdef GMW_AUTOTEST
-    /* Test builds only: open each path listed in sd:/gmwtest.txt (the viewers dump the screen), then stop. */
+    /* Test builds only: open each path listed in sd:/gmwtest.txt (the viewers dump the screen),
+     * then stop. */
     {
         extern bool media_open(const char *path);
+
         FILE *tf = fopen("sd:/gmwtest.txt", "r");
         char line[512];
+
         while (tf && fgets(line, sizeof line, tf)) {
             line[strcspn(line, "\r\n")] = 0;
             if (!line[0]) continue;
-            if (!strncmp(line, "@frame ", 7)) {         /* the next layout opens paused on this frame */
+            /* the next layout opens paused on this frame */
+            if (!strncmp(line, "@frame ", 7)) {
                 extern int g_lyt_test_frame;
                 g_lyt_test_frame = atoi(line + 7);
                 continue;
             }
-            if (!strcmp(line, "@wiiload")) {        /* one wiiload upload (sent from the PC), logged */
+            /* one wiiload upload (sent from the PC), logged */
+            if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);
                 char prog[512] = "";
                 wiiload_run(prog, sizeof prog);
                 continue;
             }
+
             bool ok = media_open(line);
             /* note how far into the path it got: each archive level, then the file */
             FILE *lg = fopen("sd:/gmwtest.log", "a");
@@ -217,7 +241,8 @@ int main(int argc, char **argv)
                 char part[512];
                 for (char *bar = strchr(line, '|'); bar; bar = strchr(bar + 1, '|')) {
                     snprintf(part, sizeof part, "%.*s|/", (int)(bar - line), line);
-                    vfs_entry *list; int n = -1;
+                    vfs_entry *list;
+                    int n = -1;
                     bool listed = vfs_list_visible(part, &list, &n);
                     fprintf(lg, "  list %s: %s (%d)%s%s\n", part, listed ? "ok" : "failed", n,
                             listed ? "" : " ", listed ? "" : arcfs_error());
@@ -226,11 +251,14 @@ int main(int argc, char **argv)
                 vfs_file vf;
                 bool rd = vfs_open_read(&vf, line);
                 if (rd) vfs_close(&vf);
-                fprintf(lg, "%s: viewer %s, file %s\n", line, ok ? "opened" : "failed", rd ? "readable" : "unreadable");
+                fprintf(lg, "%s: viewer %s, file %s\n", line, ok ? "opened" : "failed",
+                        rd ? "readable" : "unreadable");
                 fclose(lg);
             }
         }
+
         if (tf) fclose(tf);
+
         FILE *done = fopen("sd:/gmwtest.done", "w");
         if (done) fclose(done);
         vfs_shutdown();
@@ -251,7 +279,8 @@ int main(int argc, char **argv)
         SYS_ResetSystem(SYS_POWEROFF, 0, 0);
         break;
     case EXIT_RESTART:
-        if (g_is_vwii)                  /* the vWii NandLoader hands control back to the Wii U menu */
+        /* the vWii NandLoader hands control back to the Wii U menu */
+        if (g_is_vwii)
             WII_LaunchTitle(0x0000000100000200ll);
         SYS_ResetSystem(SYS_RESTART, 0, 0);
         break;

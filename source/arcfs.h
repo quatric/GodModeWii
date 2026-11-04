@@ -11,7 +11,8 @@
  * Supported: U8 (+ IMET / IMD5), LZ10 / LZ11, WAD, content.bin, data.bin, VFF. */
 
 bool arcfs_is_path(const char *path);                 /* has a '|' */
-bool arcfs_container(const char *path, char *out, size_t outsz);   /* "x.wad|/a" -> "x.wad"; the archive file itself */
+/* "x.wad|/a" -> "x.wad"; the archive file itself */
+bool arcfs_container(const char *path, char *out, size_t outsz);
 bool arcfs_can_open(const char *path);                /* a file that is one of the formats above */
 const char *arcfs_error(void);
 
@@ -22,10 +23,13 @@ s32  arcfs_read(vfs_file *f, void *buf, u32 len);
 bool arcfs_seek(vfs_file *f, u64 off);
 void arcfs_close(vfs_file *f);
 
-bool arcfs_dev_pinned(int dev);                       /* a USB volume shown through the WFS reader */
-bool arcfs_mount_wfs(int dev, int usb_slot);          /* try to read the raw drive as a Wii U WFS volume */
+/* a USB volume shown through the WFS reader */
+bool arcfs_dev_pinned(int dev);
+/* try to read the raw drive as a Wii U WFS volume */
+bool arcfs_mount_wfs(int dev, int usb_slot);
 void arcfs_unpin_all(void);                           /* before the USB handles are closed */
 
-void arcfs_flush(void);                               /* drop cached archives nobody is reading (after any change) */
+/* drop cached archives nobody is reading (after any change) */
+void arcfs_flush(void);
 
 #endif

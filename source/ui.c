@@ -53,7 +53,8 @@ void ui_init(void)
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
     console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
-    /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw over the screen. */
+    /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw
+     * over the screen. */
     devoptab_list[STD_ERR] = &discard_tab;
     VIDEO_Configure(rmode);
     VIDEO_SetNextFramebuffer(xfb);
@@ -71,7 +72,6 @@ void ui_init(void)
 
 int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
-
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
 void ui_goto(int row, int col) { printf("\x1b[%d;%dH", row + 1, col + 1); }
@@ -115,9 +115,19 @@ void ui_reset(void)
  * dashes go plain, and anything else is one '?'. Never longer than src, so dst may be src. */
 static const char *fold(u32 cp, char *one)
 {
-    static const char latin1[] = "AAAAAA?CEEEEIIII" "DNOOOOOxOUUUUY??" "aaaaaa?ceeeeiiii" "dnooooo/ouuuuy?y";
-    static const char ext_a[] = "AaAaAaCcCcCcCcDd" "DdEeEeEeEeEeGgGg" "GgGgHhHhIiIiIiIi" "Ii??JjKkkLlLlLlL"
-                                "lLlNnNnNnnNnOoOo" "Oo??RrRrRrSsSsSs" "SsTtTtTtUuUuUuUu" "UuUuWwYyYZzZzZzs";
+    static const char latin1[] = "AAAAAA?CEEEEIIII"
+                                 "DNOOOOOxOUUUUY??"
+                                 "aaaaaa?ceeeeiiii"
+                                 "dnooooo/ouuuuy?y";
+    static const char ext_a[] = "AaAaAaCcCcCcCcDd"
+                                "DdEeEeEeEeEeGgGg"
+                                "GgGgHhHhIiIiIiIi"
+                                "Ii??JjKkkLlLlLlL"
+                                "lLlNnNnNnnNnOoOo"
+                                "Oo??RrRrRrSsSsSs"
+                                "SsTtTtTtUuUuUuUu"
+                                "UuUuWwYyYZzZzZzs";
+
     switch (cp) {
     case 0xA0: return " ";
     case 0xC6: return "AE";
@@ -134,6 +144,7 @@ static const char *fold(u32 cp, char *one)
     case 0x201C: case 0x201D: return "\"";
     case 0x2026: return "...";
     }
+
     one[0] = cp >= 0xC0 && cp <= 0xFF ? latin1[cp - 0xC0]
              : cp >= 0x100 && cp <= 0x17F ? ext_a[cp - 0x100]
              : '?';
@@ -371,8 +382,14 @@ void ui_message_pages(const char *title, int color, const char *const *pages, in
             u32 p = DetectInput(IN_DOWN);
             if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
                 return;
-            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS)) { i = (i + 1) % n; break; }
-            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS)) { i = (i + n - 1) % n; break; }
+            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS)) {
+                i = (i + 1) % n;
+                break;
+            }
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS)) {
+                i = (i + n - 1) % n;
+                break;
+            }
         }
     }
 }
@@ -393,7 +410,8 @@ int ui_menu(const char *title, const char **items, const bool *enabled, int n, i
     return ui_menu_ex(title, items, enabled, n, start, "A  Select        B  Back");
 }
 
-int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start, const char *strip)
+int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n, int start,
+               const char *strip)
 {
     int w = 0;
     for (int i = 0; i < n; i++)
@@ -445,7 +463,8 @@ static const char CHARSET[] =
     " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     ".-_()[]+,!#&'@~";
 
-static bool text_input(const char *title, char *buf, int maxlen, const char *charset, bool allow_empty)
+static bool text_input(const char *title, char *buf, int maxlen, const char *charset,
+                       bool allow_empty)
 {
     int w = box_width();
     int len = strlen(buf);
@@ -461,8 +480,13 @@ static bool text_input(const char *title, char *buf, int maxlen, const char *cha
         for (int i = 0; i < vis; i++) {
             int idx = off + i;
             char c = idx < len ? buf[idx] : ' ';
-            if (idx == pos) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-            else            { ui_bg(C_BLACK); ui_color(C_YELLOW, true); }
+            if (idx == pos) {
+                ui_bg(C_CYAN);
+                ui_color(C_BLACK, false);
+            } else {
+                ui_bg(C_BLACK);
+                ui_color(C_YELLOW, true);
+            }
             putchar(c);
         }
         ui_bg(WIN_BG);
@@ -477,6 +501,7 @@ static bool text_input(const char *title, char *buf, int maxlen, const char *cha
         if (p & WPAD_BUTTON_DOWN) step = -1;
         if (p & WPAD_BUTTON_PLUS) step = 10;
         if (p & WPAD_BUTTON_MINUS) step = -10;
+
         if (step) {
             if (pos >= len) {
                 if (len >= maxlen) continue;
@@ -488,11 +513,17 @@ static bool text_input(const char *title, char *buf, int maxlen, const char *cha
             idx = ((idx + step) % cs + cs) % cs;
             buf[pos] = charset[idx];
         }
+
         if (p & WPAD_BUTTON_RIGHT) {
             if (pos < len - 1) pos++;
-            else if (len < maxlen && pos == len - 1) { buf[len++] = 'a'; buf[len] = '\0'; pos++; }
+            else if (len < maxlen && pos == len - 1) {
+                buf[len++] = 'a';
+                buf[len] = '\0';
+                pos++;
+            }
         }
         if (p & WPAD_BUTTON_LEFT) { if (pos > 0) pos--; }
+
         if (p & WPAD_BUTTON_2) {
             if (len < maxlen) {
                 memmove(buf + pos + 1, buf + pos, len - pos + 1);
@@ -507,6 +538,7 @@ static bool text_input(const char *title, char *buf, int maxlen, const char *cha
                 if (pos >= len && pos > 0) pos--;
             }
         }
+
         if (p & WPAD_BUTTON_A) {
             while (!allow_empty && len > 0 && buf[len - 1] == ' ') buf[--len] = '\0';
             return allow_empty || len > 0;
@@ -579,7 +611,10 @@ void ui_busy_end(void)
 
 static void busy_draw(void)
 {
-    int w = g_cols - 16 < 50 ? g_cols - 16 : 50, c = (g_cols - w) / 2, r = g_rows / 2 + 3, in = w - 4;   /* under the splash text */
+    /* under the splash text */
+    int w = g_cols - 16 < 50 ? g_cols - 16 : 50, c = (g_cols - w) / 2, r = g_rows / 2 + 3,
+        in = w - 4;
+
     char bar[96], line[128];
     int cells = in - 7;                                  /* "[" cells "] 100%" */
     if (cells > (int)sizeof(bar) - 1) cells = sizeof(bar) - 1;
@@ -591,23 +626,31 @@ static void busy_draw(void)
         if (pos > span) pos = 2 * span - pos;
         for (int i = 0; i < cells; i++) bar[i] = i >= pos && i < pos + blk ? '#' : '.';
     }
+
     bar[cells] = 0;
     static const char spin[] = "|/-\\";
     ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
     ui_fill(r, c, w, ' ');
-    ui_field(r, c + 1, w - 2, "+%.*s+", w - 4, "------------------------------------------------------------------------------");
+    ui_field(r, c + 1, w - 2, "+%.*s+", w - 4,
+             "------------------------------------------------------------------------------");
+
     snprintf(line, sizeof(line), "Loading %s %c", busy_what, spin[busy_frame & 3]);
     ui_fill(r + 1, c, w, ' ');
     ui_field(r + 1, c + 2, in, "%s", line);
+
     if (busy_pct >= 0) snprintf(line, sizeof(line), "[%s] %3d%%", bar, busy_pct);
-    else snprintf(line, sizeof(line), "[%s] %3us", bar, (unsigned)(ticks_to_millisecs(gettime() - busy_start) / 1000));
+    else
+        snprintf(line, sizeof(line), "[%s] %3us", bar,
+                 (unsigned)(ticks_to_millisecs(gettime() - busy_start) / 1000));
     ui_fill(r + 2, c, w, ' ');
     ui_color(C_YELLOW, true);
     ui_field(r + 2, c + 2, in, "%s", line);
     ui_color(C_WHITE, true);
+
     ui_fill(r + 3, c, w, ' ');
-    ui_field(r + 3, c + 1, w - 2, "+%.*s+", w - 4, "------------------------------------------------------------------------------");
+    ui_field(r + 3, c + 1, w - 2, "+%.*s+", w - 4,
+             "------------------------------------------------------------------------------");
     ui_reset();
     fflush(stdout);
 }

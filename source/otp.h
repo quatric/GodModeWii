@@ -11,7 +11,8 @@ typedef struct {
     u8 boot1_hash[20];
     u8 common_key[16];
     u8 ng_id[4];
-    union {                     /* the first two bytes of nand_hmac overlap the last two of ng_priv */
+    /* the first two bytes of nand_hmac overlap the last two of ng_priv */
+    union {
         struct {
             u8 ng_priv[30];
             u8 _pad1[18];

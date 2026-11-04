@@ -17,7 +17,8 @@ static const char *const ARROW[AH] = {
 
 #define SW 8                                    /* saved words per row: 16 pixels from an even x */
 static u32 saved[AH][SW];
-static int sx = -1, sy, sw_n, sh_n;             /* where the saved block is (sx < 0: nothing saved) */
+/* where the saved block is (sx < 0: nothing saved) */
+static int sx = -1, sy, sw_n, sh_n;
 
 void ptr_begin(void)
 {
@@ -54,14 +55,18 @@ void ptr_show(void)
     if (!fb) return;
     bool on = ptr_get(&x, &y);
     if (on && sx >= 0 && x == sx + (x & 1) && y == sy) return;      /* hasn't moved */
+
     ptr_hide();
     if (!on || x < 0 || y < 0 || x >= fw || y >= fh) return;
+
     sx = x & ~1;
     sy = y;
     sw_n = (fw - sx) / 2 < SW ? (fw - sx) / 2 : SW;
     sh_n = fh - sy < AH ? fh - sy : AH;
+
     for (int r = 0; r < sh_n; r++) {
-        /* The framebuffer is uncached and takes whole words: each pixel pair is read, changed, written. */
+        /* The framebuffer is uncached and takes whole words:
+         * each pixel pair is read, changed, written. */
         u32 *row = (u32 *)(fb + (sy + r) * fw * 2) + sx / 2;
         for (int k = 0; k < sw_n; k++) saved[r][k] = row[k];
         for (int k = 0; k < sw_n; k++) {
@@ -75,6 +80,7 @@ void ptr_show(void)
                 w = (w & ~(0xFFu << sh)) | yv << sh;
                 hit = true;
             }
+
             if (hit) w = (w & 0xFF00FF00u) | 0x00800080u;      /* grey: no colour in the pair */
             row[k] = w;
         }
@@ -94,15 +100,21 @@ int ptr_drag_update(ptr_drag *d, u32 held, int *dx, int *dy)
         d->y0 = d->ly = y;
         return PD_NONE;
     }
+
     if (!a) {
         bool was = d->down && d->ptr_press && !d->dragged;
         d->down = d->ptr_press = false;
         return was ? PD_TAP : PD_NONE;
     }
+
     if (!d->ptr_press || !on) return PD_NONE;   /* pointed off the screen mid-drag: wait for it */
     /* Pressing A wobbles the remote by more than IR jitter; under this it is still a tap. */
     if (!d->dragged && abs(x - d->x0) + abs(y - d->y0) < 16) return PD_NONE;
-    if (!d->dragged) { d->lx = d->x0; d->ly = d->y0; }
+    if (!d->dragged) {
+        d->lx = d->x0;
+        d->ly = d->y0;
+    }
+
     d->dragged = true;
     *dx = x - d->lx;
     *dy = y - d->ly;

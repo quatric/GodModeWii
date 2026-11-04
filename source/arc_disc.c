@@ -35,7 +35,8 @@ typedef struct {
     uint64_t raw_off;               /* partition start (ticket) */
     bool clustered;                 /* Wii: 0x8000 byte clusters with a 0x400 byte hash block */
     bool encrypted;
-    int rvz;                        /* RVZ / WIA partition whose stored (decrypted) data this is, or -1 */
+    /* RVZ / WIA partition whose stored (decrypted) data this is, or -1 */
+    int rvz;
     aes128_t key;
 } part_t;
 
@@ -70,14 +71,21 @@ static bool disc_read(const src_t *s, disc_t *d, uint64_t off, uint8_t *buf, uin
         } else if (d->kind == C_WBFS) {
             uint64_t i = off >> d->shift, m = (1ull << d->shift) - 1;
             unit = (1ull << d->shift) - (off & m);
-            if (i >= d->nwlba || !d->wlba[i]) { hole = true; phys = 0; }
-            else phys = ((uint64_t)d->wlba[i] << d->shift) + (off & m);
+            if (i >= d->nwlba || !d->wlba[i]) {
+                hole = true;
+                phys = 0;
+            } else
+                phys = ((uint64_t)d->wlba[i] << d->shift) + (off & m);
         } else {
             uint64_t i = off / d->bs;
             unit = d->bs - off % d->bs;
-            if (i >= d->ncmap || d->cmap[i] == 0xFFFFFFFFu) { hole = true; phys = 0; }
-            else phys = 0x8000ull + (uint64_t)d->cmap[i] * d->bs + off % d->bs;
+            if (i >= d->ncmap || d->cmap[i] == 0xFFFFFFFFu) {
+                hole = true;
+                phys = 0;
+            } else
+                phys = 0x8000ull + (uint64_t)d->cmap[i] * d->bs + off % d->bs;
         }
+
         uint32_t n = unit < len ? (uint32_t)unit : len;
         if (hole) memset(buf, 0, n);
         else if (!src_read_full(s, phys, buf, n)) return false;
@@ -85,6 +93,7 @@ static bool disc_read(const src_t *s, disc_t *d, uint64_t off, uint8_t *buf, uin
         off += n;
         len -= n;
     }
+
     return true;
 }
 
@@ -101,8 +110,10 @@ static bool part_read(const src_t *s, disc_t *d, int pi, uint64_t off, uint8_t *
         if (n > len) n = len;
         if (d->cache_part != pi || d->cache_cl != cl) {
             if (!disc_read(s, d, p->data_off + cl * CLUSTER, d->enc, CLUSTER)) return false;
-            if (p->encrypted) aes128_cbc_decrypt(&p->key, d->enc + 0x3D0, d->enc + 0x400, d->dec, CL_DATA);
-            else memcpy(d->dec, d->enc + 0x400, CL_DATA);
+            if (p->encrypted)
+                aes128_cbc_decrypt(&p->key, d->enc + 0x3D0, d->enc + 0x400, d->dec, CL_DATA);
+            else
+                memcpy(d->dec, d->enc + 0x400, CL_DATA);
             d->cache_part = pi;
             d->cache_cl = cl;
         }
@@ -164,14 +175,23 @@ static bool setup_container(const src_t *f, disc_t *d)
     uint8_t h[0x20];
     if (!src_read_full(f, 0, h, sizeof(h))) return false;
     d->kind = container_of(h, f->size);
-    if (d->kind == C_RAW) { d->disc_size = f->size; return true; }
+
+    if (d->kind == C_RAW) {
+        d->disc_size = f->size;
+        return true;
+    }
+
     if (d->kind == C_RVZ) {
         const char *err;
         d->rvz = rvz_open(f, &err);
-        if (!d->rvz) { g_archive_err = err; return false; }
+        if (!d->rvz) {
+            g_archive_err = err;
+            return false;
+        }
         d->disc_size = rvz_iso_size(d->rvz);
         return true;
     }
+
     if (d->kind == C_WBFS) {
         uint32_t hd_shift = h[8], wb_shift = h[9];
         if (hd_shift < 9 || hd_shift > 16 || wb_shift < 15 || wb_shift > 30) return false;
@@ -183,19 +203,27 @@ static bool setup_container(const src_t *f, disc_t *d)
         if (!d->wlba) return false;
         uint64_t info = 1ull << hd_shift;           /* first disc's info block */
         uint8_t *raw = malloc(d->nwlba * 2ull);
-        if (!raw || !src_read_full(f, info + 0x100, raw, d->nwlba * 2)) { free(raw); return false; }
+        if (!raw || !src_read_full(f, info + 0x100, raw, d->nwlba * 2)) {
+            free(raw);
+            return false;
+        }
         for (uint32_t i = 0; i < d->nwlba; i++) d->wlba[i] = be16(raw + i * 2);
         free(raw);
         d->disc_size = wii_secs * CLUSTER;
         return true;
     }
+
     /* CISO: little endian block size, then one presence byte per block */
     d->bs = le32(h + 4);
     if (d->bs < 0x8000 || d->bs > 0x1000000 || (d->bs & (d->bs - 1))) return false;
     d->ncmap = 0x8000 - 8;
     d->cmap = malloc(d->ncmap * 4ull);
     uint8_t *m = malloc(d->ncmap);
-    if (!d->cmap || !m || !src_read_full(f, 8, m, d->ncmap)) { free(m); return false; }
+    if (!d->cmap || !m || !src_read_full(f, 8, m, d->ncmap)) {
+        free(m);
+        return false;
+    }
+
     uint32_t k = 0, last = 0;
     for (uint32_t i = 0; i < d->ncmap; i++) {
         d->cmap[i] = m[i] ? k++ : 0xFFFFFFFFu;
@@ -207,7 +235,8 @@ static bool setup_container(const src_t *f, disc_t *d)
     return true;
 }
 
-static void add_part(disc_t *d, uint64_t data_off, uint64_t data_size, uint64_t raw_off, bool clustered)
+static void add_part(disc_t *d, uint64_t data_off, uint64_t data_size, uint64_t raw_off,
+                     bool clustered)
 {
     part_t *p = &d->part[d->nparts++];
     memset(p, 0, sizeof(*p));
@@ -252,11 +281,20 @@ static bool add_files(archive_t *a, disc_t *d, int pi, int parent, int shift)
     uint64_t fo = (uint64_t)be32(boot + 0x424) << shift;
     uint32_t fs = (uint32_t)((uint64_t)be32(boot + 0x428) << shift);
     if (!fo || fs < 12 || fs > FST_MAX) return false;
+
     uint8_t *fst = malloc(fs + 1);
-    if (!fst || !part_read(&a->src, d, pi, fo, fst, fs)) { free(fst); return false; }
+    if (!fst || !part_read(&a->src, d, pi, fo, fst, fs)) {
+        free(fst);
+        return false;
+    }
     fst[fs] = 0;
+
     uint32_t count = be32(fst + 8);
-    if (!count || count > fs / 12) { free(fst); return false; }
+    if (!count || count > fs / 12) {
+        free(fst);
+        return false;
+    }
+
     const char *names = (const char *)fst + count * 12;
     uint32_t nlen = fs - count * 12;
     int files = tree_add(&a->tree, parent, "files", true, 0, 0, 0, 0);
@@ -266,6 +304,7 @@ static bool add_files(archive_t *a, disc_t *d, int pi, int parent, int shift)
     end[0] = count;
     node[0] = files;
     bool ok = files >= 0;
+
     for (uint32_t i = 1; ok && i < count; i++) {
         while (depth > 0 && i >= end[depth]) depth--;
         const uint8_t *e = fst + i * 12;
@@ -278,7 +317,10 @@ static bool add_files(archive_t *a, disc_t *d, int pi, int parent, int shift)
         if (e[0]) {
             uint32_t next = be32(e + 8);
             int idx = tree_add(&a->tree, node[depth], nm, true, 0, 0, 0, 0);
-            if (idx < 0) { ok = false; break; }
+            if (idx < 0) {
+                ok = false;
+                break;
+            }
             if (next > i + 1 && next <= count && depth < 63) {
                 depth++;
                 end[depth] = next;
@@ -289,6 +331,7 @@ static bool add_files(archive_t *a, disc_t *d, int pi, int parent, int shift)
             if (tree_add(&a->tree, node[depth], nm, false, be32(e + 8), off, pi, 0) < 0) ok = false;
         }
     }
+
     free(fst);
     return ok;
 }
@@ -301,6 +344,7 @@ static bool open_wii(archive_t *a, disc_t *d)
         uint32_t n = be32(pt + g * 8);
         uint64_t to = (uint64_t)be32(pt + g * 8 + 4) << 2;
         if (!n || n > MAX_PARTS) continue;
+
         uint8_t ent[MAX_PARTS * 8];
         if (!disc_read(&a->src, d, to, ent, n * 8)) continue;
         for (uint32_t i = 0; i < n && d->nparts < MAX_PARTS; i++) {
@@ -308,42 +352,63 @@ static bool open_wii(archive_t *a, disc_t *d)
             uint32_t type = be32(ent + i * 8 + 4);
             uint8_t ph[0x2C0];
             if (!disc_read(&a->src, d, po, ph, sizeof(ph))) continue;
-            uint64_t doff = po + ((uint64_t)be32(ph + 0x2B8) << 2), dsz = (uint64_t)be32(ph + 0x2BC) << 2;
+            uint64_t doff = po + ((uint64_t)be32(ph + 0x2B8) << 2),
+                     dsz = (uint64_t)be32(ph + 0x2BC) << 2;
+
             int pi = d->nparts;
             add_part(d, doff, dsz, po, true);
             part_t *p = &d->part[pi];
+
             /* Hash and encryption can be turned off on development discs (header 0x60 / 0x61). */
             uint8_t flags[2];
             p->encrypted = !(disc_read(&a->src, d, 0x60, flags, 2) && flags[1]);
             if (d->kind == C_RVZ) {             /* stored decrypted, without hashes */
                 p->encrypted = false;
                 for (int k = 0; k < rvz_partitions(d->rvz); k++)
-                    if (rvz_part_disc_offset(d->rvz, k) == doff) { p->rvz = k; p->data_size = rvz_part_size(d->rvz, k); }
+                    if (rvz_part_disc_offset(d->rvz, k) == doff) {
+                        p->rvz = k;
+                        p->data_size = rvz_part_size(d->rvz, k);
+                    }
             } else if (p->encrypted) {
                 uint8_t ck[16], iv[16] = { 0 }, tk[16];
-                if (!arc_common_key(ph[0x1F1], ck)) { d->nparts--; continue; }
+                if (!arc_common_key(ph[0x1F1], ck)) {
+                    d->nparts--;
+                    continue;
+                }
                 aes128_t c;
                 aes128_init_dec(&c, ck);
                 memcpy(iv, ph + 0x1DC, 8);
                 aes128_cbc_decrypt(&c, iv, ph + 0x1BF, tk, 16);
                 aes128_init_dec(&p->key, tk);
             }
+
             char pn[24];
-            const char *tn = type == 0 ? "DATA" : type == 1 ? "UPDATE" : type == 2 ? "CHANNEL" : NULL;
-            if (tn) snprintf(pn, sizeof(pn), "%s", tn);
-            else snprintf(pn, sizeof(pn), "P%u-%c%c%c%c", (unsigned)pi, type >> 24 & 0xFF, type >> 16 & 0xFF,
-                          type >> 8 & 0xFF, type & 0xFF);
+            const char *tn = type == 0   ? "DATA"
+                             : type == 1 ? "UPDATE"
+                             : type == 2 ? "CHANNEL"
+                                         : NULL;
+            if (tn)
+                snprintf(pn, sizeof(pn), "%s", tn);
+            else
+                snprintf(pn, sizeof(pn), "P%u-%c%c%c%c", (unsigned)pi, type >> 24 & 0xFF,
+                         type >> 16 & 0xFF, type >> 8 & 0xFF, type & 0xFF);
+
             tree_clean_name(pn);
-            if (tree_find_child(&a->tree, 0, pn) >= 0) snprintf(pn + strlen(pn), sizeof(pn) - strlen(pn), "-%d", pi);
+            if (tree_find_child(&a->tree, 0, pn) >= 0)
+                snprintf(pn + strlen(pn), sizeof(pn) - strlen(pn), "-%d", pi);
             int dir = tree_add(&a->tree, 0, pn, true, 0, 0, 0, 0);
             if (dir < 0) return false;
             tree_add(&a->tree, dir, "ticket.bin", false, 0x2A4, po, pi, 1);
             uint32_t tmd_sz = be32(ph + 0x2A4);
             uint64_t tmd_off = (uint64_t)be32(ph + 0x2A8) << 2;
-            if (tmd_sz && tmd_sz < 0x10000) tree_add(&a->tree, dir, "tmd.bin", false, tmd_sz, po + tmd_off, pi, 1);
+            if (tmd_sz && tmd_sz < 0x10000)
+                tree_add(&a->tree, dir, "tmd.bin", false, tmd_sz, po + tmd_off, pi, 1);
+
             uint8_t chk[0x20];
-            if (d->kind == C_RVZ && p->rvz < 0) continue;                     /* no data stored for it */
-            if (!part_read(&a->src, d, pi, 0, chk, sizeof(chk))) continue;   /* unreadable: show the ticket only */
+            /* no data stored for it */
+            if (d->kind == C_RVZ && p->rvz < 0) continue;
+            /* unreadable: show the ticket only */
+            if (!part_read(&a->src, d, pi, 0, chk, sizeof(chk))) continue;
             add_sys(a, d, pi, dir, 2);
             add_files(a, d, pi, dir, 2);
         }
@@ -358,10 +423,12 @@ archive_t *arc_disc_open(const src_t *f, const char *name)
     archive_t *a = NULL;
     if (!d) goto fail;
     if (!setup_container(f, d)) goto fail;
+
     d->enc = malloc(CLUSTER);
     d->dec = malloc(CL_DATA);
     d->cache_part = -1;
     if (!d->enc || !d->dec) goto fail;
+
     a = archive_alloc("disc image");
     if (!a) goto fail;
     a->base = *f;
@@ -369,6 +436,7 @@ archive_t *arc_disc_open(const src_t *f, const char *name)
     a->read = disc_node_read;
     a->destroy = disc_destroy;
     a->priv = d;
+
     uint8_t h[0x20];
     if (!disc_read(f, d, 0, h, sizeof(h))) goto fail_a;
     bool ok;
@@ -379,6 +447,7 @@ archive_t *arc_disc_open(const src_t *f, const char *name)
         add_sys(a, d, 0, 0, 0);
         ok = add_files(a, d, 0, 0, 0);
     } else ok = false;
+
     if (!ok || a->tree.count <= 1) goto fail_a;
     return a;
 fail_a:
@@ -387,6 +456,13 @@ fail_a:
     archive_close(a);
     return NULL;
 fail:
-    if (d) { free(d->wlba); free(d->cmap); free(d->enc); free(d->dec); rvz_close(d->rvz); free(d); }
+    if (d) {
+        free(d->wlba);
+        free(d->cmap);
+        free(d->enc);
+        free(d->dec);
+        rvz_close(d->rvz);
+        free(d);
+    }
     return NULL;
 }

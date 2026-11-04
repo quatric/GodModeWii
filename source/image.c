@@ -63,11 +63,19 @@ typedef struct {
 static const char *fmt_name(int f)
 {
     switch (f) {
-    case TF_I4: return "I4"; case TF_I8: return "I8"; case TF_IA4: return "IA4"; case TF_IA8: return "IA8";
-    case TF_RGB565: return "RGB565"; case TF_RGB5A3: return "RGB5A3"; case TF_RGBA8: return "RGBA8";
-    case TF_C4: return "C4"; case TF_C8: return "C8"; case TF_C14X2: return "C14X2"; case TF_CMPR: return "CMPR";
-    case IMG_RGBA: return "RGBA";
-    default: return "?";
+    case TF_I4:     return "I4";
+    case TF_I8:     return "I8";
+    case TF_IA4:    return "IA4";
+    case TF_IA8:    return "IA8";
+    case TF_RGB565: return "RGB565";
+    case TF_RGB5A3: return "RGB5A3";
+    case TF_RGBA8:  return "RGBA8";
+    case TF_C4:     return "C4";
+    case TF_C8:     return "C8";
+    case TF_C14X2:  return "C14X2";
+    case TF_CMPR:   return "CMPR";
+    case IMG_RGBA:  return "RGBA";
+    default:        return "?";
     }
 }
 
@@ -84,9 +92,22 @@ static int bpp(int f)
 static void blk(int f, int *bw, int *bh)
 {
     switch (f) {
-    case TF_I4: case TF_C4: case TF_CMPR: *bw = 8; *bh = 8; break;
-    case TF_I8: case TF_IA4: case TF_C8: *bw = 8; *bh = 4; break;
-    default: *bw = 4; *bh = 4; break;
+    case TF_I4:
+    case TF_C4:
+    case TF_CMPR:
+        *bw = 8;
+        *bh = 8;
+        break;
+    case TF_I8:
+    case TF_IA4:
+    case TF_C8:
+        *bw = 8;
+        *bh = 4;
+        break;
+    default:
+        *bw = 4;
+        *bh = 4;
+        break;
     }
 }
 
@@ -98,20 +119,42 @@ static u32 tex_size(int f, int w, int h)
     return W * H * bpp(f) / 8;
 }
 
-static void c565(u16 v, u8 *o) { o[0] = ((v >> 11) & 31) * 255 / 31; o[1] = ((v >> 5) & 63) * 255 / 63; o[2] = (v & 31) * 255 / 31; o[3] = 255; }
+static void c565(u16 v, u8 *o)
+{
+    o[0] = ((v >> 11) & 31) * 255 / 31;
+    o[1] = ((v >> 5) & 63) * 255 / 63;
+    o[2] = (v & 31) * 255 / 31;
+    o[3] = 255;
+}
 
 static void c5a3(u16 v, u8 *o)
 {
-    if (v & 0x8000) { o[0] = ((v >> 10) & 31) * 255 / 31; o[1] = ((v >> 5) & 31) * 255 / 31; o[2] = (v & 31) * 255 / 31; o[3] = 255; }
-    else { o[0] = ((v >> 8) & 15) * 17; o[1] = ((v >> 4) & 15) * 17; o[2] = (v & 15) * 17; o[3] = ((v >> 12) & 7) * 255 / 7; }
+    if (v & 0x8000) {
+        o[0] = ((v >> 10) & 31) * 255 / 31;
+        o[1] = ((v >> 5) & 31) * 255 / 31;
+        o[2] = (v & 31) * 255 / 31;
+        o[3] = 255;
+    } else {
+        o[0] = ((v >> 8) & 15) * 17;
+        o[1] = ((v >> 4) & 15) * 17;
+        o[2] = (v & 15) * 17;
+        o[3] = ((v >> 12) & 7) * 255 / 7;
+    }
 }
 
 static void pal_color(const img_t *im, u32 idx, u8 *o)
 {
-    if (!im->pal || idx >= (u32)im->palcount) { o[0] = o[1] = o[2] = (u8)idx; o[3] = 255; return; }
+    if (!im->pal || idx >= (u32)im->palcount) {
+        o[0] = o[1] = o[2] = (u8)idx;
+        o[3] = 255;
+        return;
+    }
     u16 v = be16(im->pal + idx * 2);
-    if (im->palfmt == 0) { o[0] = o[1] = o[2] = v & 0xFF; o[3] = v >> 8; }
-    else if (im->palfmt == 1) c565(v, o);
+    if (im->palfmt == 0) {
+        o[0] = o[1] = o[2] = v & 0xFF;
+        o[3] = v >> 8;
+    } else if (im->palfmt == 1)
+        c565(v, o);
     else c5a3(v, o);
 }
 
@@ -122,6 +165,7 @@ static bool gx_decode(const img_t *im, u8 *out)
     if (tex_size(f, w, h) > im->avail) return false;
     blk(f, &bw, &bh);
     const u8 *s = im->data;
+
     for (int by = 0; by < h; by += bh)
         for (int bx = 0; bx < w; bx += bw) {
             if (f == TF_CMPR) {
@@ -152,32 +196,53 @@ static bool gx_decode(const img_t *im, u8 *out)
                 }
                 continue;
             }
+
             if (f == TF_RGBA8) {
                 for (int i = 0; i < 16; i++) {
                     int px = bx + (i & 3), py = by + (i >> 2);
                     if (px >= w || py >= h) continue;
                     u8 *o = out + (py * w + px) * 4;
-                    o[3] = s[i * 2]; o[0] = s[i * 2 + 1];
-                    o[1] = s[32 + i * 2]; o[2] = s[32 + i * 2 + 1];
+                    o[3] = s[i * 2];
+                    o[0] = s[i * 2 + 1];
+                    o[1] = s[32 + i * 2];
+                    o[2] = s[32 + i * 2 + 1];
                 }
                 s += 64;
                 continue;
             }
+
             for (int y = 0; y < bh; y++)
                 for (int x = 0; x < bw; x++) {
                     int px = bx + x, py = by + y, i = y * bw + x;
                     u8 c[4];
                     switch (f) {
-                    case TF_I4: { u8 v = (s[i / 2] >> (i & 1 ? 0 : 4)) & 15; c[0] = c[1] = c[2] = v * 17; c[3] = 255; break; }
-                    case TF_I8: c[0] = c[1] = c[2] = s[i]; c[3] = 255; break;
-                    case TF_IA4: c[0] = c[1] = c[2] = (s[i] & 15) * 17; c[3] = (s[i] >> 4) * 17; break;
-                    case TF_IA8: c[0] = c[1] = c[2] = s[i * 2 + 1]; c[3] = s[i * 2]; break;
+                    case TF_I4: {
+                        u8 v = (s[i / 2] >> (i & 1 ? 0 : 4)) & 15;
+                        c[0] = c[1] = c[2] = v * 17;
+                        c[3] = 255;
+                        break;
+                    }
+                    case TF_I8:
+                        c[0] = c[1] = c[2] = s[i];
+                        c[3] = 255;
+                        break;
+                    case TF_IA4:
+                        c[0] = c[1] = c[2] = (s[i] & 15) * 17;
+                        c[3] = (s[i] >> 4) * 17;
+                        break;
+                    case TF_IA8:
+                        c[0] = c[1] = c[2] = s[i * 2 + 1];
+                        c[3] = s[i * 2];
+                        break;
                     case TF_RGB565: c565(be16(s + i * 2), c); break;
                     case TF_RGB5A3: c5a3(be16(s + i * 2), c); break;
                     case TF_C4: pal_color(im, (s[i / 2] >> (i & 1 ? 0 : 4)) & 15, c); break;
                     case TF_C8: pal_color(im, s[i], c); break;
                     case TF_C14X2: pal_color(im, be16(s + i * 2) & 0x3FFF, c); break;
-                    default: c[0] = c[1] = c[2] = 0; c[3] = 255; break;
+                    default:
+                        c[0] = c[1] = c[2] = 0;
+                        c[3] = 255;
+                        break;
                     }
                     if (px < w && py < h) memcpy(out + (py * w + px) * 4, c, 4);
                 }
@@ -191,12 +256,17 @@ u32 image_gx_size(int fmt, int w, int h)
     return tex_size(fmt, w, h);
 }
 
-u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *pal, int palfmt, int palcount)
+u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *pal, int palfmt,
+                    int palcount)
 {
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return NULL;
-    img_t im = { .fmt = fmt, .w = w, .h = h, .data = data, .avail = avail, .pal = pal, .palfmt = palfmt, .palcount = palcount };
+    img_t im = { .fmt = fmt, .w = w, .h = h, .data = data, .avail = avail, .pal = pal,
+                 .palfmt = palfmt, .palcount = palcount };
     u8 *out = malloc(w * h * 4);
-    if (out && !gx_decode(&im, out)) { free(out); out = NULL; }
+    if (out && !gx_decode(&im, out)) {
+        free(out);
+        out = NULL;
+    }
     return out;
 }
 
@@ -206,10 +276,14 @@ static bool valid_fmt(int f) { return (f >= 0 && f <= 6) || (f >= 8 && f <= 10) 
 
 static img_t *add(set_t *s, int fmt, int w, int h, u32 off, const char *label)
 {
-    if (s->n >= MAX_IMAGES || !valid_fmt(fmt) || w <= 0 || h <= 0 || w > 4096 || h > 4096 || off >= s->len) return NULL;
+    if (s->n >= MAX_IMAGES || !valid_fmt(fmt) || w <= 0 || h <= 0 || w > 4096 || h > 4096 ||
+        off >= s->len)
+        return NULL;
     img_t *im = &s->img[s->n];
     memset(im, 0, sizeof(*im));
-    im->fmt = fmt; im->w = w; im->h = h;
+    im->fmt = fmt;
+    im->w = w;
+    im->h = h;
     im->data = s->buf + off;
     im->avail = s->len - off;
     snprintf(im->label, sizeof(im->label), "%s", label);
@@ -277,11 +351,16 @@ static void parse_tex0(set_t *s, u32 at, const char *label)
     const u8 *t = s->buf + at;
     img_t *im = add(s, be32(t + 0x20), be16(t + 0x1C), be16(t + 0x1E), at + be32(t + 0x10), label);
     if (im && (im->fmt == TF_C4 || im->fmt == TF_C8 || im->fmt == TF_C14X2) && s->pal_buf) {
-        const u8 *p = s->pal_buf;            /* a PLT0: data offset at +0x10, format +0x18, count +0x1C */
+        /* a PLT0: data offset at +0x10, format +0x18, count +0x1C */
+        const u8 *p = s->pal_buf;
         u32 plen = be32(p + 4);
         u32 doff = be32(p + 0x10);
         int cnt = be16(p + 0x1C);
-        if (doff + cnt * 2u <= plen) { im->pal = p + doff; im->palfmt = be32(p + 0x18); im->palcount = cnt; }
+        if (doff + cnt * 2u <= plen) {
+            im->pal = p + doff;
+            im->palfmt = be32(p + 0x18);
+            im->palcount = cnt;
+        }
     }
 }
 
@@ -338,9 +417,11 @@ static u32 fna_rle(const u8 *src, u32 n, u32 target, u8 *dst)
 static u32 fna_huff(const u8 *t, u32 n, u32 target, u8 *dst, int low)
 {
     if (n < 2) return 0;
+
     u8 bl = t[1], half = 0;
     bool pending = false;
     u32 out = 0, cx = 1, bp = ((u32)t[0] + 1) * 2 & 0xFFFF;
+
     while (out < target) {
         if (bp + 4 > n) return out;
         u32 w = t[bp] | t[bp + 1] << 8 | t[bp + 2] << 16 | (u32)t[bp + 3] << 24;
@@ -351,11 +432,22 @@ static u32 fna_huff(const u8 *t, u32 n, u32 target, u8 *dst, int low)
             bool leaf = bit ? (bl & 0x40) != 0 : (bl & 0x80) != 0;
             u32 idx = cx * 2 + bit;
             if (idx >= n) return out;
-            if (!leaf) { bl = t[idx]; cx += (bl & 0x3F) + 1; continue; }
+            if (!leaf) {
+                bl = t[idx];
+                cx += (bl & 0x3F) + 1;
+                continue;
+            }
+
             u8 v = t[idx];
             if (low == 8) dst[out++] = v;
-            else if (pending) { dst[out++] = half | v << 4; pending = false; }
-            else { half = v; pending = true; }
+            else if (pending) {
+                dst[out++] = half | v << 4;
+                pending = false;
+            } else {
+                half = v;
+                pending = true;
+            }
+
             bl = t[1];
             cx = 1;
         }
@@ -388,9 +480,13 @@ static void parse_brfnt(set_t *s)
                 s->kind = "BRFNA font";
                 int w = be16(g + 0x18), h = be16(g + 0x1A);
                 fmt &= 0xFF;
-                if (!sheet || sheet > (4u << 20) || cnt > 256 || !valid_fmt(fmt) || tex_size(fmt, w, h) > sheet) break;
+                if (!sheet || sheet > (4u << 20) || cnt > 256 || !valid_fmt(fmt) ||
+                    tex_size(fmt, w, h) > sheet)
+                    break;
+
                 s->extra = memalign(32, sheet * cnt);
                 if (!s->extra) break;
+
                 u32 at = data, end = pos + sz <= s->len ? pos + sz : s->len;
                 for (u32 k = 0; k < cnt && at + 4 <= end; k++) {
                     u32 cs = be32(s->buf + at);
@@ -400,7 +496,9 @@ static void parse_brfnt(set_t *s)
                         DCFlushRange(d, sheet);
                         img_t *im = &s->img[s->n++];
                         memset(im, 0, sizeof(*im));
-                        im->fmt = fmt; im->w = w; im->h = h;
+                        im->fmt = fmt;
+                        im->w = w;
+                        im->h = h;
                         im->data = d;
                         im->avail = sheet;
                         snprintf(im->label, sizeof(im->label), "sheet %u", (unsigned)k + 1);
@@ -409,6 +507,7 @@ static void parse_brfnt(set_t *s)
                 }
                 break;
             }
+
             for (u32 k = 0; k < cnt && data + (u64)sheet * (k + 1) <= s->len; k++) {
                 char lab[32];
                 snprintf(lab, sizeof(lab), "sheet %u", (unsigned)k + 1);
@@ -416,6 +515,7 @@ static void parse_brfnt(set_t *s)
             }
             break;
         }
+
         if (sz < 8) break;
         pos += sz;
     }
@@ -424,7 +524,8 @@ static void parse_brfnt(set_t *s)
 static void parse_breft(set_t *s)
 {
     s->kind = "BREFT";
-    u32 root = 0x18;                                /* file header 0x10, then the REFT block's 8-byte header */
+    /* file header 0x10, then the REFT block's 8-byte header */
+    u32 root = 0x18;
     if (root + 0x10 > s->len) return;
     u32 list = root + be32(s->buf + root);
     if (list + 8 > s->len) return;
@@ -451,14 +552,20 @@ static img_t *add_rgba(set_t *s, int w, int h, u8 *rgba, const char *kind)
     if (!rgba) return NULL;
     img_t *im = &s->img[0];
     memset(im, 0, sizeof(*im));
-    im->fmt = IMG_RGBA; im->w = w; im->h = h; im->rgba = rgba;
+    im->fmt = IMG_RGBA;
+    im->w = w;
+    im->h = h;
+    im->rgba = rgba;
     snprintf(im->label, sizeof(im->label), "%s", kind);
     s->kind = kind;
     s->n = 1;
     return im;
 }
 
-typedef struct { const u8 *p; u32 left; } pngsrc;
+typedef struct {
+    const u8 *p;
+    u32 left;
+} pngsrc;
 static void png_read_mem(png_structp png, png_bytep out, png_size_t n)
 {
     pngsrc *r = png_get_io_ptr(png);
@@ -475,7 +582,12 @@ static void load_png(set_t *s)
     u8 *rgba = NULL;
     png_bytep *rows = NULL;
     if (!info) goto out;
-    if (setjmp(png_jmpbuf(png))) { free(rgba); rgba = NULL; goto out; }
+    if (setjmp(png_jmpbuf(png))) {
+        free(rgba);
+        rgba = NULL;
+        goto out;
+    }
+
     pngsrc r = { s->buf, s->len };
     png_set_read_fn(png, &r, png_read_mem);
     png_read_info(png, info);
@@ -487,9 +599,15 @@ static void load_png(set_t *s)
     png_set_add_alpha(png, 0xFF, PNG_FILLER_AFTER);
     png_set_interlace_handling(png);
     png_read_update_info(png, info);
+
     rgba = malloc(w * h * 4);
     rows = malloc(h * sizeof(png_bytep));
-    if (!rgba || !rows) { free(rgba); rgba = NULL; goto out; }
+    if (!rgba || !rows) {
+        free(rgba);
+        rgba = NULL;
+        goto out;
+    }
+
     for (u32 y = 0; y < h; y++) rows[y] = rgba + y * w * 4;
     png_read_image(png, rows);
     add_rgba(s, w, h, rgba, "PNG");
@@ -498,7 +616,10 @@ out:
     png_destroy_read_struct(&png, info ? &info : NULL, NULL);
 }
 
-struct jerr { struct jpeg_error_mgr mgr; jmp_buf jb; };
+struct jerr {
+    struct jpeg_error_mgr mgr;
+    jmp_buf jb;
+};
 static void jpeg_fail(j_common_ptr c) { longjmp(((struct jerr *)c->err)->jb, 1); }
 
 static void load_jpeg(set_t *s)
@@ -508,29 +629,45 @@ static void load_jpeg(set_t *s)
     u8 *rgba = NULL, *row = NULL;
     cinfo.err = jpeg_std_error(&err.mgr);
     err.mgr.error_exit = jpeg_fail;
-    if (setjmp(err.jb)) { jpeg_destroy_decompress(&cinfo); free(rgba); free(row); return; }
+    if (setjmp(err.jb)) {
+        jpeg_destroy_decompress(&cinfo);
+        free(rgba);
+        free(row);
+        return;
+    }
+
     jpeg_create_decompress(&cinfo);
     jpeg_mem_src(&cinfo, s->buf, s->len);
     jpeg_read_header(&cinfo, TRUE);
     cinfo.out_color_space = JCS_RGB;
-    while (cinfo.image_width / cinfo.scale_denom > 4096 || cinfo.image_height / cinfo.scale_denom > 4096) {
-        if (cinfo.scale_denom >= 8) { jpeg_destroy_decompress(&cinfo); return; }
+    while (cinfo.image_width / cinfo.scale_denom > 4096 ||
+           cinfo.image_height / cinfo.scale_denom > 4096) {
+        if (cinfo.scale_denom >= 8) {
+            jpeg_destroy_decompress(&cinfo);
+            return;
+        }
         cinfo.scale_denom *= 2;
     }
+
     jpeg_start_decompress(&cinfo);
     u32 w = cinfo.output_width, h = cinfo.output_height;
     rgba = malloc(w * h * 4);
     row = malloc(w * 3);
     if (!rgba || !row) longjmp(err.jb, 1);
+
     while (cinfo.output_scanline < h) {
         u32 y = cinfo.output_scanline;
         JSAMPROW rp = row;
         jpeg_read_scanlines(&cinfo, &rp, 1);
         for (u32 x = 0; x < w; x++) {
             u8 *o = rgba + (y * w + x) * 4;
-            o[0] = row[x * 3]; o[1] = row[x * 3 + 1]; o[2] = row[x * 3 + 2]; o[3] = 255;
+            o[0] = row[x * 3];
+            o[1] = row[x * 3 + 1];
+            o[2] = row[x * 3 + 2];
+            o[3] = 255;
         }
     }
+
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
     free(row);
@@ -555,9 +692,14 @@ static u8 *load_file(const char *path, u32 *len)
 {
     vfs_file f;
     if (!vfs_open_read(&f, path)) return NULL;
-    if (f.size > FILE_MAX || f.size < 8) { vfs_close(&f); return NULL; }
+    if (f.size > FILE_MAX || f.size < 8) {
+        vfs_close(&f);
+        return NULL;
+    }
+
     u32 n = (u32)f.size, got = 0;
     u8 *b = memalign(32, (n + 31) & ~31u);
+
     ui_busy_begin(vfs_basename(path));
     while (b && got < n) {
         ui_busy_progress(got, n);
@@ -567,13 +709,25 @@ static u8 *load_file(const char *path, u32 *len)
     }
     ui_busy_end();
     vfs_close(&f);
-    if (b && got != n) { free(b); return NULL; }
+    if (b && got != n) {
+        free(b);
+        return NULL;
+    }
+
     if (b && n > 10 && !memcmp(b, "DKZF", 4)) {             /* Donkey Konga .tpl.dkz: zlib inside */
         uLongf dn = be32(b + 4);
         u8 *u = dn && dn <= FILE_MAX ? memalign(32, (dn + 31) & ~31u) : NULL;
-        if (u && uncompress(u, &dn, b + 8, n - 8) == Z_OK) { free(b); b = u; n = (u32)dn; }
-        else { free(u); free(b); return NULL; }
+        if (u && uncompress(u, &dn, b + 8, n - 8) == Z_OK) {
+            free(b);
+            b = u;
+            n = (u32)dn;
+        } else {
+            free(u);
+            free(b);
+            return NULL;
+        }
     }
+
     if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
         u32 un;
         u8 *u = arc_lz_unwrap(b, n, &un);
@@ -582,6 +736,7 @@ static u8 *load_file(const char *path, u32 *len)
         b = u;
         n = un;
     }
+
     *len = n;
     return b;
 }
@@ -597,7 +752,10 @@ static u8 *sibling_palette(const char *path)
     if (l > 5 && !strcasecmp(p + l - 5, ".tex0")) memcpy(p + l - 5, ".plt0", 5);
     u32 len;
     u8 *b = load_file(p, &len);
-    if (b && (len < 0x20 || memcmp(b, "PLT0", 4))) { free(b); b = NULL; }
+    if (b && (len < 0x20 || memcmp(b, "PLT0", 4))) {
+        free(b);
+        b = NULL;
+    }
     return b;
 }
 
@@ -606,7 +764,8 @@ static u8 *sibling_palette(const char *path)
  * palette (format, width x height entries), then GX tiled mips. */
 static void parse_txtr(set_t *s)
 {
-    static const int gx[] = { TF_I4, TF_I8, TF_IA4, TF_IA8, TF_C4, TF_C8, TF_C14X2, TF_RGB565, TF_RGB5A3, TF_RGBA8, TF_CMPR };
+    static const int gx[] = { TF_I4,    TF_I8,     TF_IA4,    TF_IA8,   TF_C4,  TF_C8,
+                              TF_C14X2, TF_RGB565, TF_RGB5A3, TF_RGBA8, TF_CMPR };
     if (s->len < 12) return;
     u32 f = be32(s->buf), mips = be32(s->buf + 8);
     u32 w = be16(s->buf + 4), h = be16(s->buf + 6), off = 12;
@@ -630,10 +789,15 @@ static bool load_set(set_t *s, const char *path)
     memset(s, 0, sizeof(*s));
     s->buf = load_file(path, &s->len);
     if (!s->buf) return false;
+
     const u8 *b = s->buf;
     if (be32(b) == 0x0020AF30) parse_tpl(s);
-    else if (!memcmp(b, "TEX0", 4)) { s->kind = "TEX0"; s->pal_buf = sibling_palette(path); parse_tex0(s, 0, vfs_basename(path)); }
-    else if (!memcmp(b, "RFNT", 4) || !memcmp(b, "RFNU", 4) || !memcmp(b, "RFNA", 4)) parse_brfnt(s);
+    else if (!memcmp(b, "TEX0", 4)) {
+        s->kind = "TEX0";
+        s->pal_buf = sibling_palette(path);
+        parse_tex0(s, 0, vfs_basename(path));
+    } else if (!memcmp(b, "RFNT", 4) || !memcmp(b, "RFNU", 4) || !memcmp(b, "RFNA", 4))
+        parse_brfnt(s);
     else if (!memcmp(b, "REFT", 4)) parse_breft(s);
     else if (!memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4)) parse_j3d(s);
     else if (!memcmp(b, "\x89PNG", 4)) load_png(s);
@@ -644,16 +808,22 @@ static bool load_set(set_t *s, const char *path)
         add(s, TF_RGB5A3, 96, 32, 0x20, "banner");
     }
     else if (!memcmp(b, "WIBN", 4) && s->len >= 0xA0 + 192 * 64 * 2) {
-        s->kind = "Wii save banner";                    /* banner.bin: 192x64 banner, then 48x48 icon frames */
+        /* banner.bin: 192x64 banner, then 48x48 icon frames */
+        s->kind = "Wii save banner";
         add(s, TF_RGB5A3, 192, 64, 0xA0, "banner");
-        for (u32 off = 0xA0 + 192 * 64 * 2, k = 1; off + 48 * 48 * 2 <= s->len && k <= 8; off += 48 * 48 * 2, k++) {
+        for (u32 off = 0xA0 + 192 * 64 * 2, k = 1; off + 48 * 48 * 2 <= s->len && k <= 8;
+             off += 48 * 48 * 2, k++) {
             char lab[16];
             snprintf(lab, sizeof(lab), "icon %u", (unsigned)k);
             add(s, TF_RGB5A3, 48, 48, off, lab);
         }
     }
     else if (arc_name_has_ext(path, ".txtr")) parse_txtr(s);
-    else if (arc_name_has_ext(path, ".bti")) { s->kind = "BTI"; parse_bti_at(s, 0, vfs_basename(path)); }
+    else if (arc_name_has_ext(path, ".bti")) {
+        s->kind = "BTI";
+        parse_bti_at(s, 0, vfs_basename(path));
+    }
+
     return s->n > 0;
 }
 
@@ -684,12 +854,14 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
     int fw, fh;
     u8 *fb = ui_framebuffer(&fw, &fh);
     if (!fb) return;
-    int top = 48, bottom = fh - 32;                 /* between the two top text lines and the bottom one */
+    /* between the two top text lines and the bottom one */
+    int top = 48, bottom = fh - 32;
     int vw = fw, vh = bottom - top;
     int cx = w / 2 + panx, cy = h / 2 + pany;
     for (int y = top; y < bottom; y++) {        /* the text lines above and below are left alone */
-        /* The framebuffer is uncached: a byte store there writes the whole 32-bit word (the other three
-         * bytes become zero, which shows as green), so each pair of pixels goes out as one word. */
+        /* The framebuffer is uncached: a byte store there writes the whole 32-bit word (the other
+         * three bytes become zero, which shows as green), so each pair of pixels goes out as one
+         * word. */
         u32 *row = (u32 *)(fb + y * fw * 2);
         int sy = y - top - vh / 2;
         sy = sy >= 0 ? cy + (sy * 256) / scale : cy - ((-sy * 256) + scale - 1) / scale;
@@ -701,8 +873,11 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
                     int sx = x + k - vw / 2;
                     sx = sx >= 0 ? cx + (sx * 256) / scale : cx - ((-sx * 256) + scale - 1) / scale;
                     int br, bgc, bb;
-                    if (bg == BG_CHECK) { int c = (((x + k) >> 4) ^ (y >> 4)) & 1 ? 0x99 : 0x66; br = bgc = bb = c; }
-                    else if (bg == BG_WHITE) br = bgc = bb = 255;
+                    if (bg == BG_CHECK) {
+                        int c = (((x + k) >> 4) ^ (y >> 4)) & 1 ? 0x99 : 0x66;
+                        br = bgc = bb = c;
+                    } else if (bg == BG_WHITE)
+                        br = bgc = bb = 255;
                     else br = bgc = bb = 0;
                     if (sx >= 0 && sy >= 0 && sx < w && sy < h) {
                         const u8 *p = rgba + (sy * w + sx) * 4;
@@ -710,13 +885,20 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
                         r = (p[0] * a + br * (255 - a)) / 255;
                         g = (p[1] * a + bgc * (255 - a)) / 255;
                         b = (p[2] * a + bb * (255 - a)) / 255;
-                    } else { r = br / 3; g = bgc / 3; b = bb / 3; }
+                    } else {
+                        r = br / 3;
+                        g = bgc / 3;
+                        b = bb / 3;
+                    }
                 }
+
                 int u, v;
                 rgb_to_yuv(r, g, b, &yy[k], &u, &v);
-                uu += u; vv += v;
+                uu += u;
+                vv += v;
             }
-            row[x / 2] = (u32)yy[0] << 24 | (u32)(uu / 2) << 16 | (u32)yy[1] << 8 | (u32)(vv / 2);   /* Y0 U Y1 V */
+            /* Y0 U Y1 V */
+            row[x / 2] = (u32)yy[0] << 24 | (u32)(uu / 2) << 16 | (u32)yy[1] << 8 | (u32)(vv / 2);
         }
     }
 }
@@ -752,11 +934,16 @@ static bool neighbour(const char *path, int dir, char *out, size_t outsz)
     const char *me = vfs_basename(path);
     int at = -1;
     for (int i = 0; i < n; i++)
-        if (!strcmp(e[i].name, me)) { at = i; break; }
+        if (!strcmp(e[i].name, me)) {
+            at = i;
+            break;
+        }
     bool ok = false;
     for (int k = 1; at >= 0 && k < n && !ok; k++) {
         int i = ((at + dir * k) % n + n) % n;
-        if (!e[i].is_dir && vfs_join(out, outsz, parent, e[i].name) && ftype_detect(out) == FT_IMAGE) ok = true;
+        if (!e[i].is_dir && vfs_join(out, outsz, parent, e[i].name) &&
+            ftype_detect(out) == FT_IMAGE)
+            ok = true;
     }
     free(e);
     return ok;
@@ -771,21 +958,30 @@ static bool view(const char *start_path)
     set_t *s = calloc(1, sizeof(set_t));
     if (!s) return false;
     ui_splash("Loading image...");
-    if (!load_set(s, path)) { free_set(s); free(s); return false; }
+    if (!load_set(s, path)) {
+        free_set(s);
+        free(s);
+        return false;
+    }
 
     int cur = 0, zoom = ZOOM_NATIVE, panx = 0, pany = 0, bg = BG_CHECK;
-    bool info = true, redraw = true, fit = false, full = true;  /* opens at 1:1 (native size); 1: scale to fit */
+    /* opens at 1:1 (native size); 1: scale to fit */
+    bool info = true, redraw = true, fit = false, full = true;
     u8 *rgba = NULL;
-    bool owned = false;                         /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
+    /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
+    bool owned = false;
     int shown = -1;
     const char *err = NULL;
+
     int fw_all, fh_all;
     ui_framebuffer(&fw_all, &fh_all);
     int lr_held = 0, lr_dir = 0;                /* Left / Right: frames held, which one */
     bool lr_panned = false;
     ptr_drag drag = { 0 };
-    int swipe = 0, scale_now = 256;             /* sideways drag on a whole picture; current scale */
+    /* sideways drag on a whole picture; current scale */
+    int swipe = 0, scale_now = 256;
     ptr_begin();
+
     for (;;) {
         img_t *im = &s->img[cur];
         if (shown != cur) {
@@ -793,21 +989,30 @@ static bool view(const char *start_path)
             rgba = NULL;
             owned = false;
             err = NULL;
+
             if (im->fmt == IMG_RGBA) {
                 rgba = im->rgba;
             } else {
                 rgba = malloc(im->w * im->h * 4);
                 owned = rgba != NULL;
                 if (!rgba) err = "Out of memory";
-                else if (!gx_decode(im, rgba)) { free(rgba); rgba = NULL; owned = false; err = "Truncated texture data"; }
+                else if (!gx_decode(im, rgba)) {
+                    free(rgba);
+                    rgba = NULL;
+                    owned = false;
+                    err = "Truncated texture data";
+                }
             }
             shown = cur;
-            zoom = ZOOM_NATIVE; panx = pany = 0;
+            zoom = ZOOM_NATIVE;
+            panx = pany = 0;
             redraw = true;
         }
+
         if (redraw) {
             int fw, fh;
             ui_framebuffer(&fw, &fh);
+
             int scale = ZOOMS[zoom];
             if (fit && rgba) {                      /* the largest size that shows all of it */
                 int fx = (fw * 256) / im->w, fy = ((fh - 80) * 256) / im->h;
@@ -815,37 +1020,50 @@ static bool view(const char *start_path)
                 if (scale < 1) scale = 1;
             }
             int pct = (scale * 100 + 128) / 256;
-            /* Only the first time: clearing the screen before every redraw made it flash. The picture
-             * area is redrawn whole and the text lines are overwritten in place. */
+            /* Only the first time: clearing the screen before every redraw made it flash. The
+             * picture area is redrawn whole and the text lines are overwritten in place. */
+
             ptr_hide();
             if (full) ui_clear();
             full = false;
             scale_now = scale;
             if (rgba) blit(rgba, im->w, im->h, scale, panx, pany, bg);
             else blit_clear();
+
             ui_color(C_WHITE, true);
-            ui_field(0, 0, ui_cols() - 1, " %s  %s  [%d/%d] %s", s->kind ? s->kind : "IMAGE", vfs_basename(path), cur + 1, s->n, im->label);
+            ui_field(0, 0, ui_cols() - 1, " %s  %s  [%d/%d] %s", s->kind ? s->kind : "IMAGE",
+                     vfs_basename(path), cur + 1, s->n, im->label);
             if (info)
-                ui_field(1, 0, ui_cols() - 1, " %dx%d %s%s  %s %d%%", im->w, im->h, fmt_name(im->fmt),
-                         im->pal ? " +palette" : "", fit ? "fit" : "zoom", pct);
+                ui_field(1, 0, ui_cols() - 1, " %dx%d %s%s  %s %d%%", im->w, im->h,
+                         fmt_name(im->fmt), im->pal ? " +palette" : "", fit ? "fit" : "zoom", pct);
             else
                 ui_field(1, 0, ui_cols() - 1, "%s", "");
-            if (err) { ui_color(C_RED, true); ui_field(3, 2, ui_cols() - 4, "%s", err); }
+            if (err) {
+                ui_color(C_RED, true);
+                ui_field(3, 2, ui_cols() - 4, "%s", err);
+            }
+
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next  +/- Zoom  1 Fit/1:1  A Bg  Point+A: Pan  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1,
+                     " <> Prev/Next  +/- Zoom  1 Fit/1:1  A Bg  Point+A: Pan  2 Info  B Close");
             ui_reset();
             redraw = false;
             UI_TEST_SHOT();
         }
+
         ptr_show();
         u32 p = input_pressed();
         u32 held = INPUT_ButtonsHeld();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
+
         int step = im->w / 8 > 8 ? im->w / 8 : 8;
-        bool whole = fit || !rgba || ((im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80);
+        bool whole =
+            fit || !rgba ||
+            ((im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80);
 
         /* The pointer: drag with A held to move a big picture; on one that fits, a sideways swipe
-         * flips like Left / Right. A without dragging changes the background, as the button does. */
+         * flips like Left / Right. A without dragging changes the background, as the button
+         * does. */
         int pdx, pdy, pev = ptr_drag_update(&drag, held, &pdx, &pdy);
         int pflip = 0;
         if (pev == PD_MOVE && !whole) {
@@ -855,23 +1073,37 @@ static bool view(const char *start_path)
         } else if (pev == PD_MOVE) {
             swipe += pdx;
         }
+
         if (!drag.down) {
             if (swipe <= -80) pflip = 1;            /* dragged the picture left: the next one */
             else if (swipe >= 80) pflip = -1;
             swipe = 0;
         }
-        if (pev == PD_TAP) { bg = (bg + 1) % BG_COUNT; redraw = true; }
+        if (pev == PD_TAP) {
+            bg = (bg + 1) % BG_COUNT;
+            redraw = true;
+        }
+
         int wheel = ptr_wheel();
         if (wheel < 0) p |= WPAD_BUTTON_PLUS;       /* mouse wheel: zoom */
         if (wheel > 0) p |= WPAD_BUTTON_MINUS;
-        if (!whole && (p & WPAD_BUTTON_UP))    { pany -= step; redraw = true; }
-        if (!whole && (p & WPAD_BUTTON_DOWN))  { pany += step; redraw = true; }
+
+        if (!whole && (p & WPAD_BUTTON_UP)) {
+            pany -= step;
+            redraw = true;
+        }
+        if (!whole && (p & WPAD_BUTTON_DOWN)) {
+            pany += step;
+            redraw = true;
+        }
 
         /* Left / Right: a press flips to the previous / next image (in the file, then the folder's
-         * next image file). On a picture bigger than the screen, holding the button pans instead. */
+         * next image file). On a picture bigger than the screen, holding the button pans
+         * instead. */
         int flip = 0;
         if (whole) {
-            /* All of it is on screen: every press flips at once (holding repeats, as in the menus). */
+            /* All of it is on screen: every press flips at once (holding repeats, as in the
+             * menus). */
             lr_held = 0;
             if (p & WPAD_BUTTON_LEFT) flip = -1;
             else if (p & WPAD_BUTTON_RIGHT) flip = 1;
@@ -904,12 +1136,18 @@ static bool view(const char *start_path)
                 set_t *ns = calloc(1, sizeof(set_t));
                 bool moved = false;
                 /* the next image file that loads, skipping ones that don't */
-                for (int tries = 0; ns && tries < 64 && neighbour(cand, flip, np, sizeof(np)); tries++) {
+                for (int tries = 0; ns && tries < 64 && neighbour(cand, flip, np, sizeof(np));
+                     tries++) {
                     if (!strcmp(np, path)) break;
                     snprintf(cand, sizeof(cand), "%s", np);
-                    if (load_set(ns, cand)) { moved = true; snprintf(path, sizeof(path), "%s", cand); break; }
+                    if (load_set(ns, cand)) {
+                        moved = true;
+                        snprintf(path, sizeof(path), "%s", cand);
+                        break;
+                    }
                     free_set(ns);
                 }
+
                 if (moved) {
                     if (owned) free(rgba);
                     rgba = NULL;
@@ -925,15 +1163,41 @@ static bool view(const char *start_path)
                 }
             }
         }
-        if ((p & WPAD_BUTTON_PLUS) && (fit || zoom < ZOOM_COUNT - 1))  { if (!fit) zoom++; fit = false; redraw = true; }
-        if ((p & WPAD_BUTTON_MINUS) && (fit || zoom > 0)) { if (!fit) zoom--; fit = false; redraw = true; }
+
+        if ((p & WPAD_BUTTON_PLUS) && (fit || zoom < ZOOM_COUNT - 1)) {
+            if (!fit) zoom++;
+            fit = false;
+            redraw = true;
+        }
+        if ((p & WPAD_BUTTON_MINUS) && (fit || zoom > 0)) {
+            if (!fit) zoom--;
+            fit = false;
+            redraw = true;
+        }
+
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && rgba &&
             (im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80)
-            panx = pany = 0;                        /* back to all of it on screen: centre it again */
-        if ((p & WPAD_BUTTON_A) && !ptr_drag_owns_a(&drag)) { bg = (bg + 1) % BG_COUNT; redraw = true; }
-        if (p & WPAD_BUTTON_2) { info = !info; redraw = true; }
-        if (p & WPAD_BUTTON_1) { fit = !fit; if (!fit) { zoom = ZOOM_NATIVE; panx = pany = 0; } redraw = true; }
+            /* back to all of it on screen: centre it again */
+            panx = pany = 0;
+
+        if ((p & WPAD_BUTTON_A) && !ptr_drag_owns_a(&drag)) {
+            bg = (bg + 1) % BG_COUNT;
+            redraw = true;
+        }
+        if (p & WPAD_BUTTON_2) {
+            info = !info;
+            redraw = true;
+        }
+        if (p & WPAD_BUTTON_1) {
+            fit = !fit;
+            if (!fit) {
+                zoom = ZOOM_NATIVE;
+                panx = pany = 0;
+            }
+            redraw = true;
+        }
     }
+
     ptr_hide();
     if (owned) free(rgba);
     free_set(s);
@@ -951,8 +1215,9 @@ bool image_is_name(const char *name)
         inner[strlen(inner) - 4] = 0;
         name = inner;
     }
-    static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".brfna", ".breft", ".bmd", ".bdl",
-                                       ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", ".txtr", NULL };
+    static const char *const ext[] = { ".tpl",   ".bti", ".tex0",      ".brtex", ".brfnt", ".brfna",
+                                       ".breft", ".bmd", ".bdl",       ".png",   ".jpg",   ".jpeg",
+                                       ".webp",  ".bnr", "banner.bin", ".txtr",  NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
             return true;

@@ -32,7 +32,8 @@ static ftype_t by_name(const char *name)
 static ftype_t lz_inner(const char *inner)
 {
     static const char *const model[] = { ".brres", ".mdl0", ".bmd", ".bdl", NULL };
-    static const char *const image[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".brfna", ".breft", NULL };
+    static const char *const image[] = { ".tpl",   ".bti",   ".tex0",  ".brtex",
+                                         ".brfnt", ".brfna", ".breft", NULL };
     if (ext_any(inner, model)) return FT_MODEL;
     if (ext_any(inner, image)) return FT_IMAGE;
     return FT_NONE;
@@ -64,23 +65,30 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
     }
     if (n >= 4) {
         /* NW4R / NW4C / NW4F audio */
-        if (M("RSTM") || M("CSTM") || M("FSTM") || M("RWAV") || M("CWAV") || M("FWAV") || M("BNS ")) return FT_STREAM;
+        if (M("RSTM") || M("CSTM") || M("FSTM") || M("RWAV") || M("CWAV") || M("FWAV") || M("BNS "))
+            return FT_STREAM;
         if (M("IMD5") && n >= 0x24 && !memcmp(h + 0x20, "BNS ", 4)) return FT_STREAM;
-        if (M("STRM") && n >= 0x40 && be16(h + 8) <= 1) return FT_STREAM;          /* AST: PCM16 / ADPCM */
+        /* AST: PCM16 / ADPCM */
+        if (M("STRM") && n >= 0x40 && be16(h + 8) <= 1) return FT_STREAM;
         if (M("RSEQ")) return FT_SEQ;
         if (M("MThd")) return FT_MIDI;
         if (n >= 12 && M("RIFF") && !memcmp(h + 8, "RMID", 4)) return FT_MIDI;
-        if (n >= 12 && (M("RIFF") || M("RF64") || M("riff")) && !memcmp(h + 8, "WAVE", 4)) return FT_AUDIO;
-        if (n >= 12 && M("FORM") && (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4))) return FT_AUDIO;
+        if (n >= 12 && (M("RIFF") || M("RF64") || M("riff")) && !memcmp(h + 8, "WAVE", 4))
+            return FT_AUDIO;
+        if (n >= 12 && M("FORM") && (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4)))
+            return FT_AUDIO;
         if (M("fLaC") || M("OggS") || M("ID3")) return FT_AUDIO;
 
         if (M("MOC5") || M("THP\0") || M("PARA") || M("KFH")) return FT_VIDEO;
 
         if (be32(h) == 0x0020AF30u) return FT_IMAGE;                                   /* TPL */
-        if (M("TEX0") || M("RFNT") || M("RFNU") || M("RFNA") || M("REFT") || M("DKZF") || M("\x89PNG")) return FT_IMAGE;
+        if (M("TEX0") || M("RFNT") || M("RFNU") || M("RFNA") || M("REFT") || M("DKZF") ||
+            M("\x89PNG"))
+            return FT_IMAGE;
         if (h[0] == 0xFF && h[1] == 0xD8 && h[2] == 0xFF) return FT_IMAGE;            /* JPEG */
         if (n >= 12 && M("RIFF") && !memcmp(h + 8, "WEBP", 4)) return FT_IMAGE;
-        if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;                     /* GameCube / Wii save banners */
+        /* GameCube / Wii save banners */
+        if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;
 
         if (M("bres") || M("MDL0")) return FT_MODEL;
         if (n >= 8 && (M("J3D2") || M("J3D1")) &&
@@ -94,11 +102,15 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (M("RKMD")) return FT_KMP;
 
         /* WAD: header size 0x20, then "Is" (installable), "ib" (boot2) or "Bk" (backup) */
-        if (n >= 8 && be32(h) == 0x20 && (!memcmp(h + 4, "Is", 2) || !memcmp(h + 4, "ib", 2) || !memcmp(h + 4, "Bk", 2)))
+        if (n >= 8 && be32(h) == 0x20 &&
+            (!memcmp(h + 4, "Is", 2) || !memcmp(h + 4, "ib", 2) || !memcmp(h + 4, "Bk", 2)))
             return FT_WAD;
-        /* a channel's NAND contents (0000000N.app) are often its DOL / ELF: browse them, never launch them */
+        /* a channel's NAND contents (0000000N.app) are often its DOL / ELF: browse them, never
+         * launch them */
         bool app = name && arc_name_has_ext(name, ".app");
-        if (!app && n >= 0x14 && M("\x7F" "ELF") && h[4] == 1 && h[5] == 2 && be16(h + 0x12) == 20) return FT_PROGRAM;
+        if (!app && n >= 0x14 && M("\x7F" "ELF") && h[4] == 1 && h[5] == 2 &&
+            be16(h + 0x12) == 20)
+            return FT_PROGRAM;
         if (!app && dol(h, n, size)) return FT_PROGRAM;
     }
     return name ? by_name(name) : FT_NONE;

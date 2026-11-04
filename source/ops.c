@@ -172,10 +172,12 @@ bool ops_tree_info(const char *path, u64 *bytes, u32 *files, u32 *dirs)
         return true;
     }
     (*dirs)++;
+
     vfs_entry *list;
     int n;
     if (!vfs_list(path, &list, &n))
         return false;
+
     bool ok = true;
     for (int i = 0; i < n; i++) {
         char child[VFS_PATH_MAX];
@@ -188,6 +190,7 @@ bool ops_tree_info(const char *path, u64 *bytes, u32 *files, u32 *dirs)
             (*files)++;
         }
     }
+
     free(list);
     return ok;
 }
@@ -200,34 +203,46 @@ static bool write_error_log(const char *src, const char *dst, u64 size)
     char logp[VFS_PATH_MAX];
     if (snprintf(logp, sizeof(logp), "%s.errors.txt", dst) >= (int)sizeof(logp))
         return false;
+
     vfs_file lf;
     if (!vfs_open_write(&lf, logp))
         return false;
     const size_t cap = 4096;
     char *buf = memalign(32, cap);
-    if (!buf) { vfs_close(&lf); return false; }
+    if (!buf) {
+        vfs_close(&lf);
+        return false;
+    }
+
     size_t len = 0;
     bool ok = true;
     u32 n = virt_disc_error_count();
-    len += snprintf(buf + len, cap - len, "Disc read errors\n\nSource: %s\nCopy: %s\nFile size: %llu bytes\n", src, dst, (unsigned long long)size);
-    len += snprintf(buf + len, cap - len, "Unreadable ranges: %u%s (%llu bytes in total)\n", (unsigned)n,
+    len += snprintf(buf + len, cap - len,
+                    "Disc read errors\n\nSource: %s\nCopy: %s\nFile size: %llu bytes\n", src, dst,
+                    (unsigned long long)size);
+    len += snprintf(buf + len, cap - len, "Unreadable ranges: %u%s (%llu bytes in total)\n",
+                    (unsigned)n,
                     virt_disc_error_overflow() ? " (the last one is a merge of many more)" : "",
                     (unsigned long long)virt_disc_error_bytes());
-    len += snprintf(buf + len, cap - len, "Those bytes were written as zeros. Offsets are inside the copied file; the\n"
+    len += snprintf(buf + len, cap - len,
+                    "Those bytes were written as zeros. Offsets are inside the copied file; the\n"
                     "disc offset is where the drive failed to read (data area for Wii discs).\n\n");
+
     for (u32 i = 0; i <= n && ok; i++) {
         if (i < n) {
             u64 fo, dof, ln;
             virt_disc_error_get(i, &fo, &dof, &ln);
-            len += snprintf(buf + len, cap - len, "0x%llX - 0x%llX  (%llu bytes)  disc offset 0x%llX\n",
-                            (unsigned long long)fo, (unsigned long long)(fo + ln - 1), (unsigned long long)ln,
-                            (unsigned long long)dof);
+            len += snprintf(buf + len, cap - len,
+                            "0x%llX - 0x%llX  (%llu bytes)  disc offset 0x%llX\n",
+                            (unsigned long long)fo, (unsigned long long)(fo + ln - 1),
+                            (unsigned long long)ln, (unsigned long long)dof);
         }
         if (len > cap - 160 || i == n) {
             ok = vfs_write(&lf, buf, (u32)len) == (s32)len;
             len = 0;
         }
     }
+
     free(buf);
     return vfs_close_checked(&lf) && ok;
 }
@@ -270,9 +285,11 @@ static bool copy_file(const char *src, const char *dst)
 
     bool ok = true;
     /* Discs: a bad sector doesn't stop the copy; it is zero-filled and written to a log. */
+
     bool disc_src = vfs_dev_of(src) == DEV_DISC && !vfs_is_archive(src);
     if (disc_src)
         virt_disc_tolerate(true, input_cancel_held);
+
     for (;;) {
         errno = 0;
         s32 r = vfs_read(&in, X.buf, CHUNK);
@@ -288,7 +305,8 @@ static bool copy_file(const char *src, const char *dst)
             break;
         errno = 0;
         if (vfs_write(&out, X.buf, r) != r) {
-            fail(g_write_err ? g_write_err : io_error("Write error (disk full?)", X.file_done), dst);
+            fail(g_write_err ? g_write_err : io_error("Write error (disk full?)", X.file_done),
+                 dst);
             ok = false;
             break;
         }
@@ -299,6 +317,7 @@ static bool copy_file(const char *src, const char *dst)
             break;
         }
     }
+
     u32 disc_errs = 0;
     if (disc_src) {
         disc_errs = virt_disc_error_count();
@@ -307,11 +326,13 @@ static bool copy_file(const char *src, const char *dst)
             X.disc_err_bytes += virt_disc_error_bytes();
         }
     }
+
     vfs_close(&in);
     if (!vfs_close_checked(&out) && ok) {
         fail(g_write_err ? g_write_err : "Write error", dst);
         ok = false;
     }
+
     if (disc_src && ok && disc_errs && !write_error_log(src, dst, X.file_total))
         fail("Could not write the read-error log", dst);
     if (disc_src)
@@ -336,7 +357,8 @@ static bool ask_overwrite(const char *dst)
 {
     if (X.policy == POL_OVERWRITE) return true;
     if (X.policy == POL_SKIP) return false;
-    static const char *items[] = { "Overwrite", "Overwrite all", "Skip", "Skip all", "Cancel operation" };
+    static const char *items[] = { "Overwrite", "Overwrite all", "Skip", "Skip all",
+                                   "Cancel operation" };
     char title[VFS_NAME_MAX + 16];
     snprintf(title, sizeof(title), "Exists: %s", vfs_basename(dst));
     int r = ui_menu(title, items, NULL, 5, 2);
@@ -499,24 +521,30 @@ static void summary(const char *verb, bool ok)
 {
     char msg[512];
     u64 el = (now_ms() - X.start_ms) / 1000;
+
     if (X.cancelled)
         snprintf(msg, sizeof(msg), "Cancelled after %u file(s).", (unsigned)X.files_done);
     else if (X.fails) {
         char sz[32];
         ui_fmt_size(sz, sizeof(sz), X.done_bytes);
-        snprintf(msg, sizeof(msg), "%s %u file(s)%s%s in %us.\n\n%d problem(s). Press Right to browse them.",
-                 verb, (unsigned)X.files_done, X.done_bytes ? ", " : "", X.done_bytes ? sz : "", (unsigned)el, X.fails);
+        snprintf(msg, sizeof(msg),
+                 "%s %u file(s)%s%s in %us.\n\n%d problem(s). Press Right to browse them.", verb,
+                 (unsigned)X.files_done, X.done_bytes ? ", " : "", X.done_bytes ? sz : "",
+                 (unsigned)el, X.fails);
     } else {
         char sz[32];
         ui_fmt_size(sz, sizeof(sz), X.done_bytes);
         snprintf(msg, sizeof(msg), "%s %u file(s)%s%s in %us.", verb, (unsigned)X.files_done,
                  X.done_bytes ? ", " : "", X.done_bytes ? sz : "", (unsigned)el);
     }
+
     if (X.disc_err_files && !X.cancelled) {
         char sz[32], extra[200];
         ui_fmt_size(sz, sizeof(sz), X.disc_err_bytes);
-        snprintf(extra, sizeof(extra), "\n\n%d file(s) had unreadable disc areas (%s written as zeros). A .errors.txt next to each lists the byte ranges.",
-                 X.disc_err_files, sz);
+        snprintf(
+            extra, sizeof(extra),
+            "\n\n%d file(s) had unreadable disc areas (%s written as zeros). A .errors.txt next to each lists the byte ranges.",
+            X.disc_err_files, sz);
         strncat(msg, extra, sizeof(msg) - strlen(msg) - 1);
         if (X.fails) {
             ui_alert_window(true);
@@ -525,6 +553,7 @@ static void summary(const char *verb, bool ok)
             return;
         }
         ui_message("DONE - DISC READ ERRORS", C_YELLOW, msg);
+
     } else if (X.fails && !X.cancelled) {
         ui_alert_window(true);
         summary_pages("FINISHED WITH ERRORS", msg);
@@ -538,16 +567,21 @@ static void summary(const char *verb, bool ok)
 bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
 {
     if (vfs_is_readonly(dst_dir) || (cut && vfs_is_readonly(srcs[0]))) {
-        ui_message("READ-ONLY", C_YELLOW, "That location is read-only (SEEPROM, disc, keys and archives can only be copied from).");
+        ui_message(
+            "READ-ONLY", C_YELLOW,
+            "That location is read-only (SEEPROM, disc, keys and archives can only be copied from).");
         return false;
     }
     if (!risk_authorize(dst_dir, cut ? "move files into" : "copy files into"))
         return false;
     if (vfs_is_card(vfs_dev_of(dst_dir)) &&
-        !ui_confirm("MEMORY CARD", C_YELLOW, "Write these saves to the memory card? Saves already on the card are not replaced. Never remove the card while writing."))
+        !ui_confirm(
+            "MEMORY CARD", C_YELLOW,
+            "Write these saves to the memory card? Saves already on the card are not replaced. Never remove the card while writing."))
         return false;
     if (cut && vfs_is_card(vfs_dev_of(srcs[0])) &&
-        !ui_confirm("MEMORY CARD", C_YELLOW, "Moving takes the saves off the card once they are copied. Continue?"))
+        !ui_confirm("MEMORY CARD", C_YELLOW,
+                    "Moving takes the saves off the card once they are copied. Continue?"))
         return false;
     if (cut)
         for (int i = 0; i < n; i++)
@@ -558,7 +592,8 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
     for (int i = 0; i < n; i++) {
         bool is_dir;
         if (vfs_stat(srcs[i], &is_dir, NULL) && is_dir && vfs_is_within(dst_dir, srcs[i])) {
-            ui_message("NOT ALLOWED", C_RED, "You can't paste a folder into itself or one of its own subfolders.");
+            ui_message("NOT ALLOWED", C_RED,
+                       "You can't paste a folder into itself or one of its own subfolders.");
             return false;
         }
     }
@@ -580,7 +615,8 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
         char newname[VFS_NAME_MAX];
         snprintf(newname, sizeof(newname), "%s", name);
 
-        bool same_dir = vfs_parent(srcs[i], parent, sizeof(parent)) && strcasecmp(parent, dst_dir) == 0;
+        bool same_dir =
+            vfs_parent(srcs[i], parent, sizeof(parent)) && strcasecmp(parent, dst_dir) == 0;
         if (same_dir) {
             if (cut)
                 continue;                       /* moving onto itself is a no-op */
@@ -593,8 +629,11 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
         /* same device and free destination: a plain rename is instant */
         if (cut && vfs_dev_of(srcs[i]) == vfs_dev_of(dst) && !vfs_exists(dst) &&
             name_fits(dst_dir, newname) && vfs_rename(srcs[i], dst)) {
-            u64 b = 0; u32 f = 0, d = 0;
-            (void)b; (void)f; (void)d;
+            u64 b = 0;
+            u32 f = 0, d = 0;
+            (void)b;
+            (void)f;
+            (void)d;
             continue;
         }
 
@@ -638,7 +677,9 @@ bool ops_delete(char **srcs, int n)
 {
     for (int i = 0; i < n; i++)
         if (vfs_is_readonly(srcs[i])) {
-            ui_message("READ-ONLY", C_YELLOW, "That location is read-only (SEEPROM, disc, keys and archives can only be copied from).");
+            ui_message(
+                "READ-ONLY", C_YELLOW,
+                "That location is read-only (SEEPROM, disc, keys and archives can only be copied from).");
             return false;
         }
     for (int i = 0; i < n; i++)

@@ -16,7 +16,8 @@ typedef enum {
     FT_MIDI,            /* standard MIDI, RIFF RMID */
     FT_SEQ,             /* RSEQ in a BRSAR */
     FT_VIDEO,           /* Mobiclip (MOC5), THP, Flipnote PPM / KWZ */
-    FT_IMAGE,           /* TPL, TEX0, BRFNT / BRFNA, BREFT, PNG, JPEG, WebP, banners, BTI, TXTR, DKZ */
+    /* TPL, TEX0, BRFNT / BRFNA, BREFT, PNG, JPEG, WebP, banners, BTI, TXTR, DKZ */
+    FT_IMAGE,
     FT_MODEL,           /* BRRES, MDL0, J3D BMD / BDL */
     FT_BMG,
     FT_BREFF,

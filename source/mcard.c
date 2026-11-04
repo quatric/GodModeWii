@@ -154,7 +154,10 @@ void mcard_refresh(int dev)
     slot_t *s = &slots[chn];
     forget(dev);
     g_devs[dev].note[0] = '\0';
-    if (g_is_vwii) { set_note(dev, "not available in vWii"); return; }
+    if (g_is_vwii) {
+        set_note(dev, "not available in vWii");
+        return;
+    }
 
     if (!card_inited) {
         CARD_Init(NULL, NULL);
@@ -162,13 +165,25 @@ void mcard_refresh(int dev)
     }
     s32 mem = 0, sect = 0;
     s32 r = CARD_ProbeEx(chn, &mem, &sect);
-    if (r == CARD_ERROR_NOCARD)     { set_note(dev, "no card"); return; }
-    if (r == CARD_ERROR_WRONGDEVICE) { set_note(dev, "not a memory card"); return; }
-    if (r < 0)                      { set_note(dev, "card not readable"); return; }
+    if (r == CARD_ERROR_NOCARD) {
+        set_note(dev, "no card");
+        return;
+    }
+    if (r == CARD_ERROR_WRONGDEVICE) {
+        set_note(dev, "not a memory card");
+        return;
+    }
+    if (r < 0) {
+        set_note(dev, "card not readable");
+        return;
+    }
 
     if (!s->work)
         s->work = memalign(32, CARD_WORKAREA_SIZE);
-    if (!s->work) { set_note(dev, "out of memory"); return; }
+    if (!s->work) {
+        set_note(dev, "out of memory");
+        return;
+    }
 
     r = CARD_ERROR_BUSY;
     for (int tries = 0; tries < 20 && (r == CARD_ERROR_BUSY || r == CARD_ERROR_IOERROR); tries++) {
@@ -176,14 +191,23 @@ void mcard_refresh(int dev)
         if (r == CARD_ERROR_BUSY || r == CARD_ERROR_IOERROR)
             usleep(100 * 1000);
     }
-    if (r == CARD_ERROR_BROKEN)     { set_note(dev, "card damaged"); return; }
-    if (r < 0 && r != CARD_ERROR_ENCODING) { set_note(dev, "mount failed (%d)", (int)r); return; }
+    if (r == CARD_ERROR_BROKEN) {
+        set_note(dev, "card damaged");
+        return;
+    }
+    if (r < 0 && r != CARD_ERROR_ENCODING) {
+        set_note(dev, "mount failed (%d)", (int)r);
+        return;
+    }
     s->mounted = true;
 
     s->mem = mem;
     s->sect = sect;
     g_devs[dev].mounted = true;
-    if (!reload(dev)) { forget(dev); set_note(dev, "out of memory"); }
+    if (!reload(dev)) {
+        forget(dev);
+        set_note(dev, "out of memory");
+    }
 }
 
 static save_t *find(int dev, const char *rel)
@@ -282,6 +306,7 @@ s32 mcard_read(vfs_file *f, void *buf, u32 len)
         memcpy(dst + done, bounce + skip, take);
         done += take;
     }
+
     f->pos += done;
     return (s32)done;
 }
@@ -382,28 +407,43 @@ s32 mcard_write(vfs_file *f, const void *buf, u32 len)
             u32 n = GCI_HEADER - w->hdr_have;
             if (n > left) n = left;
             memcpy(w->hdr + w->hdr_have, src, n);
-            w->hdr_have += n; src += n; left -= n;
+            w->hdr_have += n;
+            src += n;
+            left -= n;
             if (w->hdr_have == GCI_HEADER) {
                 u32 blocks = be16(w->hdr + 0x38);
                 u32 sector = 0;
                 CARD_GetSectorSize(chan_of(f->dev), &sector);
                 if (!sector) sector = 8192;
-                if (w->hdr[6] != 0xFF || !w->hdr[8] || !blocks || blocks > 2043)
-                    { werr(w, "Not a valid .gci save"); return -1; }
+                if (w->hdr[6] != 0xFF || !w->hdr[8] || !blocks || blocks > 2043) {
+                    werr(w, "Not a valid .gci save");
+                    return -1;
+                }
                 w->data_len = blocks * sector;
                 w->data = memalign(32, w->data_len);
-                if (!w->data) { werr(w, "Not enough memory for this save"); return -1; }
+                if (!w->data) {
+                    werr(w, "Not enough memory for this save");
+                    return -1;
+                }
             }
             continue;
         }
+
         u32 n = w->data_len - w->data_have;
-        if (n == 0) { werr(w, "File is larger than its .gci header says"); return -1; }
+        if (n == 0) {
+            werr(w, "File is larger than its .gci header says");
+            return -1;
+        }
         if (n > left) n = left;
         memcpy(w->data + w->data_have, src, n);
-        w->data_have += n; src += n; left -= n;
+        w->data_have += n;
+        src += n;
+        left -= n;
+
         if (w->data_have == w->data_len && !commit(f->dev, w))
             return -1;
     }
+
     f->pos += len;
     return (s32)len;
 }

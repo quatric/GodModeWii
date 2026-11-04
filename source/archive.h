@@ -15,7 +15,8 @@
  * ever written. */
 
 typedef struct src {
-    int32_t (*read)(void *ctx, uint64_t off, void *buf, uint32_t len);   /* bytes read, short at EOF, <0 on error */
+    /* bytes read, short at EOF, <0 on error */
+    int32_t (*read)(void *ctx, uint64_t off, void *buf, uint32_t len);
     void (*close)(void *ctx);                                           /* optional */
     void *ctx;
     uint64_t size;
@@ -43,9 +44,12 @@ typedef struct tree {
 
 bool tree_init(tree_t *t);                   /* creates the root (index 0) */
 void tree_free(tree_t *t);
-int  tree_add(tree_t *t, int parent, const char *name, bool is_dir, uint64_t size, uint64_t a, uint64_t b, uint32_t c);
-int  tree_add_path(tree_t *t, const char *path, bool is_dir, uint64_t size, uint64_t a, uint64_t b, uint32_t c);
-int  tree_find(const tree_t *t, const char *rel);   /* "" or "/" = root, "a/b" = nodes; -1 if missing */
+int  tree_add(tree_t *t, int parent, const char *name, bool is_dir, uint64_t size, uint64_t a,
+              uint64_t b, uint32_t c);
+int  tree_add_path(tree_t *t, const char *path, bool is_dir, uint64_t size, uint64_t a, uint64_t b,
+                   uint32_t c);
+/* "" or "/" = root, "a/b" = nodes; -1 if missing */
+int  tree_find(const tree_t *t, const char *rel);
 int  tree_find_child(const tree_t *t, int parent, const char *name);
 void tree_clean_name(char *name);            /* no '/' '|' or control characters */
 
@@ -57,7 +61,8 @@ struct archive {
     tree_t tree;
     int32_t (*read)(archive_t *a, const tnode *node, uint64_t off, void *buf, uint32_t len);
     void (*destroy)(archive_t *a);
-    bool (*expand)(archive_t *a, int node);     /* optional: fills in the children of a folder on demand */
+    /* optional: fills in the children of a folder on demand */
+    bool (*expand)(archive_t *a, int node);
     void *priv;
 };
 
@@ -83,7 +88,8 @@ bool archive_probe(const src_t *file, const char *name);
 archive_t *archive_open(const src_t *file, const char *name);
 void archive_close(archive_t *a);
 
-/* Lazy archives: make sure the children of a folder are in the tree / look a path up (expanding on the way). */
+/* Lazy archives: make sure the children of a folder are in the tree / look a path up
+ * (expanding on the way). */
 bool archive_expand(archive_t *a, int node);
 int  archive_find(archive_t *a, const char *rel);
 
@@ -99,10 +105,13 @@ bool arc_name_has_ext(const char *name, const char *ext);
 bool arc_lz_name(const char *name, char *out, size_t outsz);
 uint8_t *arc_lz_unwrap(const uint8_t *buf, uint32_t len, uint32_t *out_len);
 archive_t *archive_alloc(const char *kind);
-archive_t *archive_open_memory(uint8_t *data, uint64_t size, const char *name);   /* consumes data; NULL (and frees it) if not an archive */
-archive_t *archive_open_single(uint8_t *data, uint64_t size, const char *fname);  /* one-file archive over a decompressed buffer */
-int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0[16], uint64_t enc_off,
-                        uint64_t plain_size, uint64_t off, void *buf, uint32_t len);
+/* consumes data; NULL (and frees it) if not an archive */
+archive_t *archive_open_memory(uint8_t *data, uint64_t size, const char *name);
+/* one-file archive over a decompressed buffer */
+archive_t *archive_open_single(uint8_t *data, uint64_t size, const char *fname);
+int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0[16],
+                        uint64_t enc_off, uint64_t plain_size, uint64_t off, void *buf,
+                        uint32_t len);
 
 /* formats that live in their own files */
 bool arc_vff_probe(const src_t *file, const char *name);
@@ -123,7 +132,8 @@ bool arc_ccf_probe(const src_t *file, const char *name);
 archive_t *arc_ccf_open(const src_t *file, const char *name);
 bool arc_pac_probe(const src_t *file, const char *name);
 archive_t *arc_pac_open(const src_t *file, const char *name);
-bool arc_retro_probe(const src_t *file, const char *name);     /* Retro Studios .pak (Metroid Prime, DKC Returns) */
+/* Retro Studios .pak (Metroid Prime, DKC Returns) */
+bool arc_retro_probe(const src_t *file, const char *name);
 archive_t *arc_retro_open(const src_t *file, const char *name);
 /* arc_more.c: VCRA, SSZL, RFL_Res, GPAK, GPKG, BLPKG, ... */
 bool arc_more_probe(const src_t *file, const char *name);

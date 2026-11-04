@@ -109,9 +109,18 @@ void keys_refresh(void)
     d->mounted = false;
     clear_all();
 
-    if (g_is_vwii)         { snprintf(d->note, sizeof(d->note), "not available in vWii"); return; }
-    if (g_is_dolphin)      { snprintf(d->note, sizeof(d->note), "not available in Dolphin"); return; }
-    if (!AHBPROT_DISABLED) { snprintf(d->note, sizeof(d->note), "needs Homebrew Channel (AHBPROT)"); return; }
+    if (g_is_vwii) {
+        snprintf(d->note, sizeof(d->note), "not available in vWii");
+        return;
+    }
+    if (g_is_dolphin) {
+        snprintf(d->note, sizeof(d->note), "not available in Dolphin");
+        return;
+    }
+    if (!AHBPROT_DISABLED) {
+        snprintf(d->note, sizeof(d->note), "needs Homebrew Channel (AHBPROT)");
+        return;
+    }
 
     u8 otp[OTP_SIZE];
     if (!otp_read_all(otp)) {
@@ -158,8 +167,9 @@ void keys_refresh(void)
     if (have_seeprom) {
         u8 *bm = calloc(1, 0x400);
         if (bm) {
-            snprintf((char *)bm, 0x100, "BackupMii v1, ConsoleID: %08x\n", (unsigned)(
-                     ((u32)o->ng_id[0] << 24) | ((u32)o->ng_id[1] << 16) | ((u32)o->ng_id[2] << 8) | o->ng_id[3]));
+            snprintf((char *)bm, 0x100, "BackupMii v1, ConsoleID: %08x\n",
+                     (unsigned)(((u32)o->ng_id[0] << 24) | ((u32)o->ng_id[1] << 16) |
+                                ((u32)o->ng_id[2] << 8) | o->ng_id[3]));
             memcpy(bm + 0x100, otp, OTP_SIZE);
             memcpy(bm + 0x200, seep, SEEPROM_SIZE);
             add_file("bootmii_keys.bin", bm, 0x400);
@@ -179,8 +189,9 @@ void keys_refresh(void)
     memset(seep, 0, sizeof(seep));
 
     char note[48];
-    snprintf(note, sizeof(note), "%08X  read-only", (unsigned)(
-             ((u32)o->ng_id[0] << 24) | ((u32)o->ng_id[1] << 16) | ((u32)o->ng_id[2] << 8) | o->ng_id[3]));
+    snprintf(note, sizeof(note), "%08X  read-only",
+             (unsigned)(((u32)o->ng_id[0] << 24) | ((u32)o->ng_id[1] << 16) |
+                        ((u32)o->ng_id[2] << 8) | o->ng_id[3]));
     snprintf(d->note, sizeof(d->note), "%s", note);
     d->mounted = nfiles > 0;
 }
@@ -218,6 +229,7 @@ bool keys_list(const char *rel, vfs_entry **out, int *count)
     vfs_entry *l = calloc(nfiles + 1, sizeof(vfs_entry));
     if (!l)
         return false;
+
     int n = 0;
     for (int i = 0; i < nfiles; i++) {
         bool sub;
@@ -234,16 +246,19 @@ bool keys_list(const char *rel, vfs_entry **out, int *count)
         l[n].size = sub ? 0 : files[i].size;
         n++;
     }
+
     /* directories first, then by name */
     for (int a = 1; a < n; a++) {
         vfs_entry t = l[a];
         int b = a;
-        while (b > 0 && (l[b - 1].is_dir != t.is_dir ? !l[b - 1].is_dir : strcasecmp(l[b - 1].name, t.name) > 0)) {
+        while (b > 0 && (l[b - 1].is_dir != t.is_dir ? !l[b - 1].is_dir :
+                                                       strcasecmp(l[b - 1].name, t.name) > 0)) {
             l[b] = l[b - 1];
             b--;
         }
         l[b] = t;
     }
+
     *out = l;
     *count = n;
     return true;

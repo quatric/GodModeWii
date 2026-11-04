@@ -50,13 +50,15 @@
 static bool editable_here(const char *path)
 {
     if (vfs_is_readonly(path)) {
-        ui_message("READ-ONLY", C_YELLOW, "This file is read-only. Copy it to the SD card or a USB drive to edit it.");
+        ui_message("READ-ONLY", C_YELLOW,
+                   "This file is read-only. Copy it to the SD card or a USB drive to edit it.");
         return false;
     }
 #ifndef BTN_UP
     int dev = vfs_dev_of(path);
     if (dev >= 0 && vfs_is_virtual(dev)) {
-        ui_message("READ-ONLY", C_YELLOW, "Virtual drives can't be edited. Copy the file to the SD card or a USB drive first.");
+        ui_message("READ-ONLY", C_YELLOW,
+                   "Virtual drives can't be edited. Copy the file to the SD card or a USB drive first.");
         return false;
     }
 #endif
@@ -80,7 +82,8 @@ static bool write_back(const char *path, const u8 *data, u32 len)
     if (!vfs_close_checked(&f))
         ok = false;
     if (!ok)
-        ui_message("ERROR", C_RED, g_write_err ? g_write_err : "Writing failed. The file may be incomplete.");
+        ui_message("ERROR", C_RED,
+                   g_write_err ? g_write_err : "Writing failed. The file may be incomplete.");
     return ok;
 }
 
@@ -100,6 +103,7 @@ static u8 *load_file(const char *path, u32 max, u32 *len, size_t extra)
         ui_message("TOO BIG", C_YELLOW, msg);
         return NULL;
     }
+
     u32 size = (u32)f.size;
     u8 *buf = memalign(32, size + extra + 32);
     if (!buf) {
@@ -107,6 +111,7 @@ static u8 *load_file(const char *path, u32 max, u32 *len, size_t extra)
         ui_message("ERROR", C_RED, "Out of memory.");
         return NULL;
     }
+
     u32 got = 0;
     while (got < size) {
         u32 n = size - got > 32768 ? 32768 : size - got;
@@ -116,6 +121,7 @@ static u8 *load_file(const char *path, u32 max, u32 *len, size_t extra)
         got += r;
     }
     vfs_close(&f);
+
     if (got != size) {
         free(buf);
         ui_message("ERROR", C_RED, "Reading the file failed part way through.");
@@ -137,7 +143,8 @@ void editor_hex(const char *path)
         return;
     if (size == 0) {
         free(buf);
-        ui_message("EMPTY FILE", C_YELLOW, "The hex editor changes bytes that are already there, and this file has none.");
+        ui_message("EMPTY FILE", C_YELLOW,
+                   "The hex editor changes bytes that are already there, and this file has none.");
         return;
     }
     u8 *orig = malloc(size);
@@ -159,6 +166,7 @@ void editor_hex(const char *path)
     for (;;) {
         if (cur < top) top = cur / per * per;
         if (cur >= top + page) top = cur / per * per - (page - per);
+
         if (redraw) {
             ui_clear();
             ui_bg(C_BLUE);
@@ -167,42 +175,62 @@ void editor_hex(const char *path)
             ui_reset();
             ui_color(C_WHITE, false);
             ui_fill(1, 0, cols - 1, '-');
+
             for (int r = 0; r < L; r++) {
                 u32 base = top + (u32)r * per;
                 if (base >= size) break;
+
                 ui_goto(2 + r, 1);
                 ui_color(C_CYAN, true);
                 ed_printf("%08X ", (unsigned)base);
                 for (int c = 0; c < per; c++) {
                     u32 i = base + c;
-                    if (i >= size) { ed_printf("   "); continue; }
+                    if (i >= size) {
+                        ed_printf("   ");
+                        continue;
+                    }
                     bool on = i == cur;
                     bool dirty = buf[i] != orig[i];
-                    if (on) { ui_bg(editing ? C_YELLOW : C_CYAN); ui_color(C_BLACK, false); }
-                    else    { ui_bg(C_BLACK); ui_color(dirty ? C_GREEN : C_WHITE, dirty); }
+                    if (on) {
+                        ui_bg(editing ? C_YELLOW : C_CYAN);
+                        ui_color(C_BLACK, false);
+                    } else {
+                        ui_bg(C_BLACK);
+                        ui_color(dirty ? C_GREEN : C_WHITE, dirty);
+                    }
                     ed_printf("%02X", buf[i]);
                     ui_bg(C_BLACK);
                     ed_putc(' ');
                 }
+
                 for (int c = 0; c < per && base + c < size; c++) {
                     u32 i = base + c;
                     u8 b = buf[i];
-                    if (i == cur) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-                    else          { ui_bg(C_BLACK); ui_color(buf[i] != orig[i] ? C_GREEN : C_YELLOW, false); }
+                    if (i == cur) {
+                        ui_bg(C_CYAN);
+                        ui_color(C_BLACK, false);
+                    } else {
+                        ui_bg(C_BLACK);
+                        ui_color(buf[i] != orig[i] ? C_GREEN : C_YELLOW, false);
+                    }
                     ed_putc(b >= 32 && b < 127 ? b : '.');
                 }
                 ui_bg(C_BLACK);
             }
             ui_reset();
+
             char tsz[24];
             ui_fmt_size(tsz, sizeof(tsz), size);
             ui_color(C_CYAN, true);
-            ui_field(rows - 3, 1, cols - 2, "Offset %08X / %s   Byte %02X (was %02X)   %u changed", (unsigned)cur, tsz,
-                     buf[cur], orig[cur], (unsigned)changed);
+            ui_field(rows - 3, 1, cols - 2, "Offset %08X / %s   Byte %02X (was %02X)   %u changed",
+                     (unsigned)cur, tsz, buf[cur], orig[cur], (unsigned)changed);
+
             if (editing)
-                ui_field(rows - 2, 1, cols - 2, "U/D +-1  L/R +-16  +/- +-128  A Keep  B Undo byte");
+                ui_field(rows - 2, 1, cols - 2,
+                         "U/D +-1  L/R +-16  +/- +-128  A Keep  B Undo byte");
             else
-                ui_field(rows - 2, 1, cols - 2, "Arrows Move  +/- Page  A Edit byte  1 Save  B Close");
+                ui_field(rows - 2, 1, cols - 2,
+                         "Arrows Move  +/- Page  A Edit byte  1 Save  B Close");
             ui_reset();
             redraw = false;
         }
@@ -224,7 +252,10 @@ void editor_hex(const char *path)
                 changed += (buf[cur] != orig[cur]) - was;
                 redraw = true;
             }
-            if (p & K_A) { editing = false; redraw = true; }
+            if (p & K_A) {
+                editing = false;
+                redraw = true;
+            }
             if (p & (K_B | K_HOME)) {
                 if (buf[cur] != orig[cur]) changed--;
                 buf[cur] = orig[cur];
@@ -241,8 +272,16 @@ void editor_hex(const char *path)
         if (p & K_UP)    c = cur >= (u32)per ? cur - per : cur;
         if (p & K_PLUS)  c = cur + page < size ? cur + page : size - 1;
         if (p & K_MINUS) c = cur >= page ? cur - page : 0;
-        if (c != cur) { cur = c; redraw = true; }
-        if (p & K_A) { editing = true; redraw = true; }
+
+        if (c != cur) {
+            cur = c;
+            redraw = true;
+        }
+        if (p & K_A) {
+            editing = true;
+            redraw = true;
+        }
+
         if (p & K_1) {
             if (!changed) {
                 ui_message("NOTHING TO SAVE", C_CYAN, "No bytes have been changed.");
@@ -255,7 +294,8 @@ void editor_hex(const char *path)
             redraw = true;
         }
         if (p & (K_B | K_HOME)) {
-            if (!changed || ui_confirm("DISCARD CHANGES", C_YELLOW, "Close without saving the changed bytes?"))
+            if (!changed ||
+                ui_confirm("DISCARD CHANGES", C_YELLOW, "Close without saving the changed bytes?"))
                 break;
             redraw = true;
         }
@@ -336,7 +376,8 @@ void editor_text(const char *path)
         if (buf[i] == 0 || (buf[i] < 32 && buf[i] != '\n' && buf[i] != '\r' && buf[i] != '\t'))
             odd++;
     if (probe && odd * 10 > probe &&
-        !ui_confirm("BINARY FILE", C_YELLOW, "This doesn't look like text, and saving it as text could damage it. Edit it anyway?\n\nThe hex editor is the safe way to change it.")) {
+        !ui_confirm("BINARY FILE", C_YELLOW,
+                    "This doesn't look like text, and saving it as text could damage it. Edit it anyway?\n\nThe hex editor is the safe way to change it.")) {
         free(buf);
         return;
     }
@@ -352,7 +393,10 @@ void editor_text(const char *path)
             if (i == size && s == size && size > 0)
                 break;                       /* text ended with a newline */
             u32 e = i;
-            if (e > s && buf[e - 1] == '\r') { e--; crlf = true; }
+            if (e > s && buf[e - 1] == '\r') {
+                e--;
+                crlf = true;
+            }
             ok = doc_insert(&d, d.n, (const char *)buf + s, e - s);
             s = i + 1;
         }
@@ -375,6 +419,7 @@ void editor_text(const char *path)
     for (;;) {
         if (cur < top) top = cur;
         if (cur >= top + L) top = cur - L + 1;
+
         if (redraw) {
             ui_clear();
             ui_bg(C_BLUE);
@@ -383,20 +428,29 @@ void editor_text(const char *path)
             ui_reset();
             ui_color(C_WHITE, false);
             ui_fill(1, 0, cols - 1, '-');
+
             for (int r = 0; r < L; r++) {
                 int li = top + r;
                 if (li >= d.n) break;
                 ui_color(C_CYAN, false);
                 ui_field(2 + r, 0, 6, "%5d ", li + 1);
-                if (li == cur) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-                else           { ui_bg(C_BLACK); ui_color(C_WHITE, true); }
+                if (li == cur) {
+                    ui_bg(C_CYAN);
+                    ui_color(C_BLACK, false);
+                } else {
+                    ui_bg(C_BLACK);
+                    ui_color(C_WHITE, true);
+                }
                 ui_field(2 + r, 6, width + 1, " %s", d.line[li]);
                 ui_bg(C_BLACK);
             }
             ui_reset();
+
             ui_color(C_CYAN, true);
-            ui_field(rows - 3, 1, cols - 2, "Line %d / %d   %s", cur + 1, d.n, crlf ? "CRLF" : "LF");
-            ui_field(rows - 2, 1, cols - 2, "U/D Line  L/R Page  A Edit  2 Insert  1 Delete  + Save  B Close");
+            ui_field(rows - 3, 1, cols - 2, "Line %d / %d   %s", cur + 1, d.n,
+                     crlf ? "CRLF" : "LF");
+            ui_field(rows - 2, 1, cols - 2,
+                     "U/D Line  L/R Page  A Edit  2 Insert  1 Delete  + Save  B Close");
             ui_reset();
             redraw = false;
         }
@@ -404,19 +458,25 @@ void editor_text(const char *path)
         u32 p = input_pressed();
         if (!p)
             continue;
+
         int c = cur;
         if (p & K_DOWN)  c = cur + 1 < d.n ? cur + 1 : cur;
         if (p & K_UP)    c = cur ? cur - 1 : 0;
         if (p & K_RIGHT) c = cur + L - 1 < d.n ? cur + L - 1 : d.n - 1;
         if (p & K_LEFT)  c = cur >= L - 1 ? cur - (L - 1) : 0;
-        if (c != cur) { cur = c; redraw = true; }
+        if (c != cur) {
+            cur = c;
+            redraw = true;
+        }
 
         if (p & K_A) {
             if (strlen(d.line[cur]) > LINE_EDIT_MAX) {
-                ui_message("LINE TOO LONG", C_YELLOW, "This line is longer than 400 characters, too long to edit with the roller.");
+                ui_message("LINE TOO LONG", C_YELLOW,
+                           "This line is longer than 400 characters, too long to edit with the roller.");
             } else {
                 strcpy(edit_buf, d.line[cur]);
-                if (ui_text_edit("EDIT LINE", edit_buf, LINE_EDIT_MAX) && strcmp(edit_buf, d.line[cur])) {
+                if (ui_text_edit("EDIT LINE", edit_buf, LINE_EDIT_MAX) &&
+                    strcmp(edit_buf, d.line[cur])) {
                     char *copy = strdup(edit_buf);
                     if (copy) {
                         free(d.line[cur]);
@@ -427,6 +487,7 @@ void editor_text(const char *path)
             }
             redraw = true;
         }
+
         if (p & K_2) {                       /* new empty line below, then edit it */
             if (doc_insert(&d, cur + 1, "", 0)) {
                 cur++;
@@ -436,6 +497,7 @@ void editor_text(const char *path)
             }
             redraw = true;
         }
+
         if (p & K_1) {
             if (d.n > 1 && ui_confirm("DELETE LINE", C_YELLOW, "Delete this line?")) {
                 free(d.line[cur]);
@@ -449,6 +511,7 @@ void editor_text(const char *path)
             }
             redraw = true;
         }
+
         if (p & K_PLUS) {
             if (!dirty)
                 ui_message("NOTHING TO SAVE", C_CYAN, "The text hasn't been changed.");
@@ -456,8 +519,10 @@ void editor_text(const char *path)
                 dirty = false;
             redraw = true;
         }
+
         if (p & (K_B | K_HOME)) {
-            if (!dirty || ui_confirm("DISCARD CHANGES", C_YELLOW, "Close without saving your changes?"))
+            if (!dirty ||
+                ui_confirm("DISCARD CHANGES", C_YELLOW, "Close without saving your changes?"))
                 break;
             redraw = true;
         }

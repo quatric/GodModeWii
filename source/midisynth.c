@@ -13,7 +13,14 @@
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #ifdef GMW_AUTOTEST
 #include <stdio.h>
-static void mlog(const char *m) { FILE *f = fopen("sd:/gmwtest.log", "a"); if (f) { fprintf(f, "tml: %s\n", m); fclose(f); } }
+static void mlog(const char *m)
+{
+    FILE *f = fopen("sd:/gmwtest.log", "a");
+    if (f) {
+        fprintf(f, "tml: %s\n", m);
+        fclose(f);
+    }
+}
 #define TML_WARN(m) mlog(m)
 #define TML_ERROR(m) mlog(m)
 #define TSF_WARN(m) mlog(m)
@@ -35,7 +42,10 @@ unsigned char *midi_default_soundfont(unsigned int *size)
     if (gmsf2_bin_size < 8 || memcmp(z, "GMSF", 4)) return NULL;
     uLongf n = (uLongf)z[4] << 24 | z[5] << 16 | z[6] << 8 | z[7];
     unsigned char *b = malloc(n);
-    if (b && uncompress(b, &n, z + 8, gmsf2_bin_size - 8) != Z_OK) { free(b); return NULL; }
+    if (b && uncompress(b, &n, z + 8, gmsf2_bin_size - 8) != Z_OK) {
+        free(b);
+        return NULL;
+    }
     *size = (unsigned int)n;
     return b;
 }

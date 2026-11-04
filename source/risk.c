@@ -23,7 +23,8 @@ static const u32 KONAMI[10] = {
     WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT, WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT,
     WPAD_BUTTON_B, WPAD_BUTTON_A,
 };
-static const char *const KONAMI_GLYPH[10] = { "UP", "UP", "DOWN", "DOWN", "LEFT", "RIGHT", "LEFT", "RIGHT", "B", "A" };
+static const char *const KONAMI_GLYPH[10] = { "UP",    "UP",   "DOWN",  "DOWN", "LEFT",
+                                              "RIGHT", "LEFT", "RIGHT", "B",    "A" };
 
 /* Full-screen warning followed by the Konami code. `lines` are the warning
  * text, `title` the red banner. HOME cancels. */
@@ -115,7 +116,8 @@ bool risk_authorize(const char *path, const char *what)
 /* ---------------------------------------------------------------- forced mode */
 
 /* The switch lives in a small file on the SD card (or the first Gecko card). */
-static const char *const FORCE_DIRS[] = { "sd:/apps/GodModeWii", "gca:/apps/GodModeWii", "gcb:/apps/GodModeWii" };
+static const char *const FORCE_DIRS[] = { "sd:/apps/GodModeWii", "gca:/apps/GodModeWii",
+                                          "gcb:/apps/GodModeWii" };
 #define FORCE_FILE "force.cfg"
 
 static bool force_path(int i, char *out, size_t n)

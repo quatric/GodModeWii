@@ -235,7 +235,10 @@ static bool canon(const char *cwd, const char *arg, char *out, size_t outsz)
         if (l == 1 && p[0] == '.') {
         } else if (l == 2 && p[0] == '.' && p[1] == '.') {
             char *slash = strrchr(out, '/');
-            if (slash) { *slash = '\0'; len = slash - out; }
+            if (slash) {
+                *slash = '\0';
+                len = slash - out;
+            }
         } else {
             if (l > 255 || len + l + 2 > outsz)
                 return false;
@@ -249,7 +252,10 @@ static bool canon(const char *cwd, const char *arg, char *out, size_t outsz)
         }
         p += l;
     }
-    if (!len) { out[0] = '/'; out[1] = '\0'; }
+    if (!len) {
+        out[0] = '/';
+        out[1] = '\0';
+    }
     return true;
 }
 
@@ -281,8 +287,14 @@ static bool to_real(const char *v, char *real, size_t sz, int *dev)
 /* Write permission with the same rules as the file browser. */
 static bool can_write(const char *real, int dev, const char **why)
 {
-    if (dev < 0 || vfs_is_virtual(dev) || g_devs[dev].ext) { *why = "Read-only location"; return false; }
-    if (!g_rw)                          { *why = "Server is read-only"; return false; }
+    if (dev < 0 || vfs_is_virtual(dev) || g_devs[dev].ext) {
+        *why = "Read-only location";
+        return false;
+    }
+    if (!g_rw) {
+        *why = "Server is read-only";
+        return false;
+    }
     if (dev == DEV_NAND) {
         /* The code is typed on the console itself; the FTP command waits. */
         ftp_log("NAND change asked: Konami code on the Wii");
@@ -303,24 +315,35 @@ static bool name_ok(int dev, const char *real)
 
 static void data_close(sess_t *s)
 {
-    if (s->ds >= 0) { net_close(s->ds); s->ds = -1; }
+    if (s->ds >= 0) {
+        net_close(s->ds);
+        s->ds = -1;
+    }
 }
 
 static void pasv_close(sess_t *s)
 {
-    if (s->pasv >= 0) { net_close(s->pasv); s->pasv = -1; }
+    if (s->pasv >= 0) {
+        net_close(s->pasv);
+        s->pasv = -1;
+    }
     s->port_set = false;
 }
 
 static void transfer_cleanup(sess_t *s, bool remove_tmp)
 {
     data_close(s);
-    if (s->f_open) { vfs_close(&s->f); s->f_open = false; }
+    if (s->f_open) {
+        vfs_close(&s->f);
+        s->f_open = false;
+    }
     if (remove_tmp && s->op == OP_STOR && s->t_tmp[0])
         vfs_remove(s->t_tmp, false);
     s->t_tmp[0] = '\0';
-    free(s->buf); s->buf = NULL;
-    free(s->ents); s->ents = NULL;
+    free(s->buf);
+    s->buf = NULL;
+    free(s->ents);
+    s->ents = NULL;
     s->ts = T_NONE;
 }
 
@@ -331,7 +354,10 @@ static void transfer_end(sess_t *s, bool ok, const char *err)
     char real[VFS_PATH_MAX];
     snprintf(real, sizeof(real), "%s", s->t_real);
 
-    if (s->f_open) { vfs_close(&s->f); s->f_open = false; }
+    if (s->f_open) {
+        vfs_close(&s->f);
+        s->f_open = false;
+    }
     data_close(s);
 
     if (ok && stor) {
@@ -434,7 +460,8 @@ static int fill_list(sess_t *s)
         else if (s->op == OP_MLSD)
             n = snprintf(dst, 400, "type=%s;size=%llu;modify=20000101000000;perm=%s; %s\r\n",
                          e->is_dir ? "dir" : "file", (unsigned long long)e->size,
-                         e->is_dir ? (s->ro_list ? "el" : "cdeflmp") : (s->ro_list ? "r" : "radfw"), e->name);
+                         e->is_dir ? (s->ro_list ? "el" : "cdeflmp") : (s->ro_list ? "r" : "radfw"),
+                         e->name);
         else
             n = snprintf(dst, 400, "%s 1 wii wii %llu Jan 01  2000 %s\r\n",
                          e->is_dir ? (s->ro_list ? "dr-xr-xr-x" : "drwxr-xr-x")
@@ -503,8 +530,14 @@ static bool pump_transfer(sess_t *s)
         if (s->bpos == s->blen) {
             if (s->ts == T_SEND_FILE) {
                 s32 n = vfs_read(&s->f, s->buf, IO_CHUNK);
-                if (n < 0) { transfer_end(s, false, "451 Read error"); return true; }
-                if (n == 0) { start_linger(s, t); return true; }
+                if (n < 0) {
+                    transfer_end(s, false, "451 Read error");
+                    return true;
+                }
+                if (n == 0) {
+                    start_linger(s, t);
+                    return true;
+                }
                 s->blen = n;
                 s->bpos = 0;
             } else if (fill_list(s) == 0) {
@@ -514,13 +547,17 @@ static bool pump_transfer(sess_t *s)
         }
         struct pollsd sd = { s->ds, POLLOUT, 0 };
         if (net_poll(&sd, 1, 0) <= 0 || !(sd.revents & (POLLOUT | POLLERR | POLLHUP))) {
-            if (t - s->t_last > DATA_IDLE_MS) transfer_end(s, false, "426 Data connection timed out");
+            if (t - s->t_last > DATA_IDLE_MS)
+                transfer_end(s, false, "426 Data connection timed out");
             return false;
         }
         u32 want = s->blen - s->bpos;
         if (want > 8192) want = 8192;
         s32 n = net_send(s->ds, s->buf + s->bpos, want, 0);
-        if (n <= 0) { transfer_end(s, false, "426 Connection closed"); return true; }
+        if (n <= 0) {
+            transfer_end(s, false, "426 Connection closed");
+            return true;
+        }
         s->bpos += n;
         s->t_bytes += n;
         s->t_last = t;
@@ -549,8 +586,14 @@ static bool pump_transfer(sess_t *s)
             s->t_last = t;
             return true;
         }
-        if (n == 0) { transfer_end(s, true, NULL); return true; }
-        if (!would_block(n)) { transfer_end(s, false, "426 Connection error"); return true; }
+        if (n == 0) {
+            transfer_end(s, true, NULL);
+            return true;
+        }
+        if (!would_block(n)) {
+            transfer_end(s, false, "426 Connection error");
+            return true;
+        }
         if (t - s->t_last > DATA_IDLE_MS) transfer_end(s, false, "426 Data connection timed out");
         return false;
     }
@@ -572,14 +615,23 @@ static void do_list(sess_t *s, int op, const char *arg)
         reply(s, "550 No such directory");
         return;
     }
-    if (s->ts != T_NONE) { reply(s, "425 A transfer is already running"); return; }
-    if (s->pasv < 0 && !s->port_set) { reply(s, "425 Use PASV or PORT first"); return; }
+    if (s->ts != T_NONE) {
+        reply(s, "425 A transfer is already running");
+        return;
+    }
+    if (s->pasv < 0 && !s->port_set) {
+        reply(s, "425 Use PASV or PORT first");
+        return;
+    }
 
     vfs_entry *ents = NULL;
     int n = 0;
     if (dev < 0) {
         ents = calloc(DEV_COUNT, sizeof(vfs_entry));
-        if (!ents) { reply(s, "451 Out of memory"); return; }
+        if (!ents) {
+            reply(s, "451 Out of memory");
+            return;
+        }
         for (int i = 0; i < DEV_COUNT; i++)
             if (g_devs[i].mounted && !arcfs_dev_pinned(i)) {
                 snprintf(ents[n].name, sizeof(ents[n].name), "%s", g_devs[i].prefix);
@@ -591,20 +643,36 @@ static void do_list(sess_t *s, int op, const char *arg)
     } else {
         bool is_dir;
         u64 size;
-        if (!vfs_stat(real, &is_dir, &size)) { reply(s, "550 No such file or directory"); return; }
+        if (!vfs_stat(real, &is_dir, &size)) {
+            reply(s, "550 No such file or directory");
+            return;
+        }
         if (is_dir) {
-            if (!vfs_list_visible(real, &ents, &n)) { reply(s, "550 Can't read directory"); return; }
+            if (!vfs_list_visible(real, &ents, &n)) {
+                reply(s, "550 Can't read directory");
+                return;
+            }
         } else {
             ents = calloc(1, sizeof(vfs_entry));
-            if (!ents) { reply(s, "451 Out of memory"); return; }
+            if (!ents) {
+                reply(s, "451 Out of memory");
+                return;
+            }
             snprintf(ents[0].name, sizeof(ents[0].name), "%s", vfs_basename(real));
             ents[0].size = size;
             n = 1;
         }
-        s->ro_list = vfs_is_virtual(dev) || g_devs[dev].ext || !g_rw || (dev == DEV_NAND && !risk_unlocked());
+        s->ro_list = vfs_is_virtual(dev) || g_devs[dev].ext || !g_rw ||
+                     (dev == DEV_NAND && !risk_unlocked());
     }
+
     s->buf = malloc(IO_CHUNK);
-    if (!s->buf) { free(ents); reply(s, "451 Out of memory"); return; }
+    if (!s->buf) {
+        free(ents);
+        reply(s, "451 Out of memory");
+        return;
+    }
+
     s->ents = ents;
     s->nent = n;
     s->eidx = 0;
@@ -617,22 +685,39 @@ static void do_retr(sess_t *s, const char *arg)
 {
     char v[VFS_PATH_MAX], real[VFS_PATH_MAX];
     int dev;
-    if (!*arg || !canon(s->cwd, arg, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev) || dev < 0) {
+    if (!*arg || !canon(s->cwd, arg, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev) ||
+        dev < 0) {
         reply(s, "550 No such file");
         return;
     }
+
     bool is_dir;
     u64 size;
-    if (!vfs_stat(real, &is_dir, &size) || is_dir) { reply(s, "550 Not a file"); return; }
-    if (s->ts != T_NONE) { reply(s, "425 A transfer is already running"); return; }
-    if (s->pasv < 0 && !s->port_set) { reply(s, "425 Use PASV or PORT first"); return; }
+    if (!vfs_stat(real, &is_dir, &size) || is_dir) {
+        reply(s, "550 Not a file");
+        return;
+    }
+    if (s->ts != T_NONE) {
+        reply(s, "425 A transfer is already running");
+        return;
+    }
+    if (s->pasv < 0 && !s->port_set) {
+        reply(s, "425 Use PASV or PORT first");
+        return;
+    }
+
     s->buf = memalign(32, IO_CHUNK);
-    if (!s->buf) { reply(s, "451 Out of memory"); return; }
+    if (!s->buf) {
+        reply(s, "451 Out of memory");
+        return;
+    }
     if (!vfs_open_read(&s->f, real)) {
-        free(s->buf); s->buf = NULL;
+        free(s->buf);
+        s->buf = NULL;
         reply(s, "550 Can't open file");
         return;
     }
+
     s->f_open = true;
     if (s->rest && !vfs_seek(&s->f, s->rest)) {
         transfer_cleanup(s, false);
@@ -640,6 +725,7 @@ static void do_retr(sess_t *s, const char *arg)
         s->rest = 0;
         return;
     }
+
     s->rest = 0;
     s->t_total = size;
     snprintf(s->t_name, sizeof(s->t_name), "%s", vfs_basename(real));
@@ -650,23 +736,47 @@ static void do_stor(sess_t *s, const char *arg)
 {
     char v[VFS_PATH_MAX], real[VFS_PATH_MAX];
     int dev;
-    if (!*arg || !canon(s->cwd, arg, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev) || dev < 0) {
+    if (!*arg || !canon(s->cwd, arg, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev) ||
+        dev < 0) {
         reply(s, "553 Bad file name");
         return;
     }
+
     const char *why;
-    if (s->rest) { reply(s, "501 Resuming uploads is not supported"); s->rest = 0; return; }
-    if (!can_write(real, dev, &why)) { reply(s, "550 %s", why); return; }
-    if (!name_ok(dev, real)) { reply(s, "553 NAND file names are limited to 12 characters"); return; }
+    if (s->rest) {
+        reply(s, "501 Resuming uploads is not supported");
+        s->rest = 0;
+        return;
+    }
+    if (!can_write(real, dev, &why)) {
+        reply(s, "550 %s", why);
+        return;
+    }
+    if (!name_ok(dev, real)) {
+        reply(s, "553 NAND file names are limited to 12 characters");
+        return;
+    }
+
     bool is_dir;
-    if (vfs_stat(real, &is_dir, NULL) && is_dir) { reply(s, "553 A folder with that name exists"); return; }
+    if (vfs_stat(real, &is_dir, NULL) && is_dir) {
+        reply(s, "553 A folder with that name exists");
+        return;
+    }
+
     char dir[VFS_PATH_MAX];
     if (!vfs_parent(real, dir, sizeof(dir)) || !vfs_stat(dir, &is_dir, NULL) || !is_dir) {
         reply(s, "550 Target folder doesn't exist");
         return;
     }
-    if (s->ts != T_NONE) { reply(s, "425 A transfer is already running"); return; }
-    if (s->pasv < 0 && !s->port_set) { reply(s, "425 Use PASV or PORT first"); return; }
+
+    if (s->ts != T_NONE) {
+        reply(s, "425 A transfer is already running");
+        return;
+    }
+    if (s->pasv < 0 && !s->port_set) {
+        reply(s, "425 Use PASV or PORT first");
+        return;
+    }
 
     char name[16], tmp[VFS_PATH_MAX];
     for (int i = 0; i < 20; i++) {
@@ -675,10 +785,14 @@ static void do_stor(sess_t *s, const char *arg)
         if (!vfs_exists(tmp)) break;
     }
     s->buf = memalign(32, IO_CHUNK);
-    if (!s->buf) { reply(s, "451 Out of memory"); return; }
+    if (!s->buf) {
+        reply(s, "451 Out of memory");
+        return;
+    }
     s->op = OP_STOR;
     if (!vfs_open_write(&s->f, tmp)) {
-        free(s->buf); s->buf = NULL;
+        free(s->buf);
+        s->buf = NULL;
         reply(s, "550 Can't create file");
         return;
     }
@@ -690,7 +804,10 @@ static void do_stor(sess_t *s, const char *arg)
 
 static void do_pasv(sess_t *s, bool ext)
 {
-    if (s->ts != T_NONE) { reply(s, "425 A transfer is already running"); return; }
+    if (s->ts != T_NONE) {
+        reply(s, "425 A transfer is already running");
+        return;
+    }
     pasv_close(s);
     for (int i = 0; i < 12; i++) {
         int port = 49152 + (rand() % 16000);
@@ -701,8 +818,8 @@ static void do_pasv(sess_t *s, bool ext)
         if (ext)
             reply(s, "229 Entering Extended Passive Mode (|||%d|)", port);
         else
-            reply(s, "227 Entering Passive Mode (%u,%u,%u,%u,%d,%d)", (ip >> 24) & 255, (ip >> 16) & 255,
-                  (ip >> 8) & 255, ip & 255, port >> 8, port & 255);
+            reply(s, "227 Entering Passive Mode (%u,%u,%u,%u,%d,%d)", (ip >> 24) & 255,
+                  (ip >> 16) & 255, (ip >> 8) & 255, ip & 255, port >> 8, port & 255);
         return;
     }
     reply(s, "425 Can't open passive port");
@@ -716,7 +833,10 @@ static void do_port(sess_t *s, const char *arg)
         return;
     }
     for (int i = 0; i < 6; i++)
-        if (a[i] > 255) { reply(s, "501 Bad PORT arguments"); return; }
+        if (a[i] > 255) {
+            reply(s, "501 Bad PORT arguments");
+            return;
+        }
     u32 ip = htonl((a[0] << 24) | (a[1] << 16) | (a[2] << 8) | a[3]);
     int port = (a[4] << 8) | a[5];
     if (ip != s->peer_ip || port < 1024) {           /* no FTP bounce */
@@ -746,7 +866,10 @@ static void note_login_failure(sess_t *s)
 {
     u64 t = now_ms();
     s->bad++;
-    if (t - g_fail_start > GLOBAL_WINDOW) { g_fail_start = t; g_fail_count = 0; }
+    if (t - g_fail_start > GLOBAL_WINDOW) {
+        g_fail_start = t;
+        g_fail_count = 0;
+    }
     if (++g_fail_count >= GLOBAL_BAD_MAX) {
         g_block_until = t + GLOBAL_LOCK;
         ftp_log("Too many bad logins - refusing clients for 60s");
@@ -758,7 +881,10 @@ static void note_login_failure(sess_t *s)
 static void run_command(sess_t *s, char *line)
 {
     char *arg = line;
-    while (*arg && *arg != ' ') { *arg = toupper((unsigned char)*arg); arg++; }
+    while (*arg && *arg != ' ') {
+        *arg = toupper((unsigned char)*arg);
+        arg++;
+    }
     if (*arg) *arg++ = '\0';
     while (*arg == ' ') arg++;
     const char *cmd = line;
@@ -766,8 +892,17 @@ static void run_command(sess_t *s, char *line)
     if (strcmp(cmd, "PASS") && strcmp(cmd, "NOOP"))
         ftp_log("> %s %.40s", cmd, strcmp(cmd, "USER") ? arg : "");
 
-    if (!strcmp(cmd, "QUIT")) { reply(s, "221 Goodbye"); s->quit = true; return; }
-    if (!strcmp(cmd, "NOOP")) { reply(s, "200 OK"); return; }
+    if (!strcmp(cmd, "QUIT")) {
+        reply(s, "221 Goodbye");
+        s->quit = true;
+        return;
+    }
+
+    if (!strcmp(cmd, "NOOP")) {
+        reply(s, "200 OK");
+        return;
+    }
+
     if (!strcmp(cmd, "FEAT")) {
         reply(s, "211-Features:");
         reply(s, " SIZE");
@@ -777,11 +912,17 @@ static void run_command(sess_t *s, char *line)
         reply(s, "211 End");
         return;
     }
+
     if (!strcmp(cmd, "AUTH") || !strcmp(cmd, "PBSZ") || !strcmp(cmd, "PROT")) {
         reply(s, "502 TLS isn't supported (plain FTP on a trusted network only)");
         return;
     }
-    if (!strcmp(cmd, "SYST")) { reply(s, "215 UNIX Type: L8"); return; }
+
+    if (!strcmp(cmd, "SYST")) {
+        reply(s, "215 UNIX Type: L8");
+        return;
+    }
+
     if (!strcmp(cmd, "OPTS")) {
         if (!strncasecmp(arg, "MLST", 4))
             reply(s, "200 MLST OPTS type;size;modify;perm;");
@@ -794,14 +935,19 @@ static void run_command(sess_t *s, char *line)
         reply(s, "230 Logged in, no login needed. %s", g_rw ? "Read/write." : "Read-only.");
         return;
     }
+
     if (!strcmp(cmd, "USER")) {
         s->authed = false;
         s->user_ok = !strcmp(arg, FTP_USER);
         reply(s, "331 Password required");
         return;
     }
+
     if (!strcmp(cmd, "PASS")) {
-        if (!s->user_ok) { reply(s, "503 Send USER first"); return; }
+        if (!s->user_ok) {
+            reply(s, "503 Send USER first");
+            return;
+        }
         if (pass_ok(arg)) {
             s->authed = true;
             ftp_log("Login ok");
@@ -817,7 +963,11 @@ static void run_command(sess_t *s, char *line)
         }
         return;
     }
-    if (!s->authed && !g_open_login) { reply(s, "530 Please log in with USER and PASS"); return; }
+
+    if (!s->authed && !g_open_login) {
+        reply(s, "530 Please log in with USER and PASS");
+        return;
+    }
 
     char v[VFS_PATH_MAX], real[VFS_PATH_MAX];
     int dev;
@@ -834,7 +984,9 @@ static void run_command(sess_t *s, char *line)
         reply(s, "257 \"%s\" is the current directory", q);
         return;
     }
-    if (!strcmp(cmd, "CWD") || !strcmp(cmd, "XCWD") || !strcmp(cmd, "CDUP") || !strcmp(cmd, "XCUP")) {
+
+    if (!strcmp(cmd, "CWD") || !strcmp(cmd, "XCWD") || !strcmp(cmd, "CDUP") ||
+        !strcmp(cmd, "XCUP")) {
         bool up = !strcmp(cmd, "CDUP") || !strcmp(cmd, "XCUP");
         const char *target = up ? ".." : arg;
         if (!canon(s->cwd, target, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev)) {
@@ -843,33 +995,97 @@ static void run_command(sess_t *s, char *line)
         }
         bool is_dir = true;
         if (dev >= 0 && !vfs_stat(real, &is_dir, NULL)) is_dir = false;
-        if (!is_dir) { reply(s, "550 Not a directory"); return; }
+        if (!is_dir) {
+            reply(s, "550 Not a directory");
+            return;
+        }
         snprintf(s->cwd, sizeof(s->cwd), "%s", v);
         reply(s, "250 Directory changed");
         return;
     }
-    if (!strcmp(cmd, "TYPE")) { reply(s, "200 Type set (files are always binary)"); return; }
-    if (!strcmp(cmd, "MODE")) { reply(s, !strcasecmp(arg, "S") ? "200 Stream mode" : "504 Only stream mode"); return; }
-    if (!strcmp(cmd, "STRU")) { reply(s, !strcasecmp(arg, "F") ? "200 File structure" : "504 Only file structure"); return; }
-    if (!strcmp(cmd, "ALLO")) { reply(s, "202 Not needed"); return; }
-    if (!strcmp(cmd, "PASV")) { do_pasv(s, false); return; }
-    if (!strcmp(cmd, "EPSV")) { do_pasv(s, true); return; }
-    if (!strcmp(cmd, "PORT")) { do_port(s, arg); return; }
-    if (!strcmp(cmd, "EPRT")) { reply(s, "502 Use PASV / EPSV"); return; }
-    if (!strcmp(cmd, "LIST")) { do_list(s, OP_LIST, arg); return; }
-    if (!strcmp(cmd, "NLST")) { do_list(s, OP_NLST, arg); return; }
-    if (!strcmp(cmd, "MLSD")) { do_list(s, OP_MLSD, arg); return; }
-    if (!strcmp(cmd, "RETR")) { do_retr(s, arg); return; }
-    if (!strcmp(cmd, "STOR")) { do_stor(s, arg); return; }
-    if (!strcmp(cmd, "APPE")) { reply(s, "502 APPE isn't supported"); return; }
+
+    if (!strcmp(cmd, "TYPE")) {
+        reply(s, "200 Type set (files are always binary)");
+        return;
+    }
+
+    if (!strcmp(cmd, "MODE")) {
+        reply(s, !strcasecmp(arg, "S") ? "200 Stream mode" : "504 Only stream mode");
+        return;
+    }
+
+    if (!strcmp(cmd, "STRU")) {
+        reply(s, !strcasecmp(arg, "F") ? "200 File structure" : "504 Only file structure");
+        return;
+    }
+
+    if (!strcmp(cmd, "ALLO")) {
+        reply(s, "202 Not needed");
+        return;
+    }
+
+    if (!strcmp(cmd, "PASV")) {
+        do_pasv(s, false);
+        return;
+    }
+
+    if (!strcmp(cmd, "EPSV")) {
+        do_pasv(s, true);
+        return;
+    }
+
+    if (!strcmp(cmd, "PORT")) {
+        do_port(s, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "EPRT")) {
+        reply(s, "502 Use PASV / EPSV");
+        return;
+    }
+
+    if (!strcmp(cmd, "LIST")) {
+        do_list(s, OP_LIST, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "NLST")) {
+        do_list(s, OP_NLST, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "MLSD")) {
+        do_list(s, OP_MLSD, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "RETR")) {
+        do_retr(s, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "STOR")) {
+        do_stor(s, arg);
+        return;
+    }
+
+    if (!strcmp(cmd, "APPE")) {
+        reply(s, "502 APPE isn't supported");
+        return;
+    }
+
     if (!strcmp(cmd, "REST")) {
         char *end;
         unsigned long long r = strtoull(arg, &end, 10);
-        if (end == arg || *end) { reply(s, "501 Bad offset"); return; }
+        if (end == arg || *end) {
+            reply(s, "501 Bad offset");
+            return;
+        }
         s->rest = r;
         reply(s, "350 Restarting at %llu", r);
         return;
     }
+
     if (!strcmp(cmd, "ABOR")) {
         if (s->ts != T_NONE) {
             transfer_end(s, false, "426 Transfer aborted");
@@ -879,12 +1095,21 @@ static void run_command(sess_t *s, char *line)
         }
         return;
     }
-    if (!strcmp(cmd, "STAT")) { reply(s, "211 GodModeWii FTP, %s", g_rw ? "read/write" : "read-only"); return; }
-    if (!strcmp(cmd, "MDTM")) { reply(s, "550 Not available"); return; }
+
+    if (!strcmp(cmd, "STAT")) {
+        reply(s, "211 GodModeWii FTP, %s", g_rw ? "read/write" : "read-only");
+        return;
+    }
+
+    if (!strcmp(cmd, "MDTM")) {
+        reply(s, "550 Not available");
+        return;
+    }
 
     /* everything below takes a path */
-    if (!strcmp(cmd, "SIZE") || !strcmp(cmd, "DELE") || !strcmp(cmd, "MKD") || !strcmp(cmd, "XMKD") ||
-        !strcmp(cmd, "RMD") || !strcmp(cmd, "XRMD") || !strcmp(cmd, "RNFR") || !strcmp(cmd, "RNTO")) {
+    if (!strcmp(cmd, "SIZE") || !strcmp(cmd, "DELE") || !strcmp(cmd, "MKD") ||
+        !strcmp(cmd, "XMKD") || !strcmp(cmd, "RMD") || !strcmp(cmd, "XRMD") ||
+        !strcmp(cmd, "RNFR") || !strcmp(cmd, "RNTO")) {
         if (!*arg || !canon(s->cwd, arg, v, sizeof(v)) || !to_real(v, real, sizeof(real), &dev)) {
             reply(s, "550 Bad or unavailable path");
             return;
@@ -898,53 +1123,121 @@ static void run_command(sess_t *s, char *line)
             else reply(s, "213 %llu", (unsigned long long)size);
             return;
         }
-        if (dev < 0 || vfs_is_root(real)) { reply(s, "550 Not allowed here"); return; }
+
+        if (dev < 0 || vfs_is_root(real)) {
+            reply(s, "550 Not allowed here");
+            return;
+        }
+
         if (!strcmp(cmd, "RNTO")) {
-            if (!s->have_rnfr) { reply(s, "503 Send RNFR first"); return; }
+            if (!s->have_rnfr) {
+                reply(s, "503 Send RNFR first");
+                return;
+            }
             s->have_rnfr = false;
-            if (vfs_dev_of(s->rnfr) != dev) { reply(s, "553 Can't move between drives"); return; }
-            if (!can_write(real, dev, &why)) { reply(s, "550 %s", why); return; }
-            if (!name_ok(dev, real)) { reply(s, "553 NAND file names are limited to 12 characters"); return; }
-            if (exists) { reply(s, "553 Target already exists"); return; }
-            if (vfs_is_within(real, s->rnfr)) { reply(s, "553 Can't move a folder into itself"); return; }
+            if (vfs_dev_of(s->rnfr) != dev) {
+                reply(s, "553 Can't move between drives");
+                return;
+            }
+            if (!can_write(real, dev, &why)) {
+                reply(s, "550 %s", why);
+                return;
+            }
+            if (!name_ok(dev, real)) {
+                reply(s, "553 NAND file names are limited to 12 characters");
+                return;
+            }
+            if (exists) {
+                reply(s, "553 Target already exists");
+                return;
+            }
+            if (vfs_is_within(real, s->rnfr)) {
+                reply(s, "553 Can't move a folder into itself");
+                return;
+            }
+
             reply(s, vfs_rename(s->rnfr, real) ? "250 Renamed" : "550 Rename failed");
             return;
         }
+
         if (!strcmp(cmd, "RNFR")) {
-            if (!exists) { reply(s, "550 No such file"); return; }
+            if (!exists) {
+                reply(s, "550 No such file");
+                return;
+            }
             snprintf(s->rnfr, sizeof(s->rnfr), "%s", real);
             s->have_rnfr = true;
             reply(s, "350 Ready for RNTO");
             return;
         }
+
         s->have_rnfr = false;
         if (!strcmp(cmd, "MKD") || !strcmp(cmd, "XMKD")) {
-            if (!can_write(real, dev, &why)) { reply(s, "550 %s", why); return; }
-            if (!name_ok(dev, real)) { reply(s, "553 NAND names are limited to 12 characters"); return; }
-            if (exists) { reply(s, "550 Already exists"); return; }
+            if (!can_write(real, dev, &why)) {
+                reply(s, "550 %s", why);
+                return;
+            }
+            if (!name_ok(dev, real)) {
+                reply(s, "553 NAND names are limited to 12 characters");
+                return;
+            }
+            if (exists) {
+                reply(s, "550 Already exists");
+                return;
+            }
             reply(s, vfs_mkdir(real) ? "257 Folder created" : "550 Can't create folder");
             return;
         }
-        if (!exists) { reply(s, "550 No such file or directory"); return; }
+
+        if (!exists) {
+            reply(s, "550 No such file or directory");
+            return;
+        }
+
         if (!strcmp(cmd, "DELE")) {
-            if (is_dir) { reply(s, "550 That's a folder (use RMD)"); return; }
-            if (!can_write(real, dev, &why)) { reply(s, "550 %s", why); return; }
+            if (is_dir) {
+                reply(s, "550 That's a folder (use RMD)");
+                return;
+            }
+            if (!can_write(real, dev, &why)) {
+                reply(s, "550 %s", why);
+                return;
+            }
             reply(s, vfs_remove(real, false) ? "250 Deleted" : "550 Can't delete");
             for (int i = 0; i < DEV_COUNT; i++) vfs_update_space(i);
             return;
         }
+
         /* RMD: empty folders only; never recursive over the network */
-        if (!is_dir) { reply(s, "550 Not a folder"); return; }
-        if (!can_write(real, dev, &why)) { reply(s, "550 %s", why); return; }
+        if (!is_dir) {
+            reply(s, "550 Not a folder");
+            return;
+        }
+        if (!can_write(real, dev, &why)) {
+            reply(s, "550 %s", why);
+            return;
+        }
+
         vfs_entry *l;
         int n;
-        if (!vfs_list(real, &l, &n)) { reply(s, "550 Can't read folder"); return; }
+        if (!vfs_list(real, &l, &n)) {
+            reply(s, "550 Can't read folder");
+            return;
+        }
         free(l);
-        if (n > 0) { reply(s, "550 Folder isn't empty"); return; }
+        if (n > 0) {
+            reply(s, "550 Folder isn't empty");
+            return;
+        }
+
         reply(s, vfs_remove(real, true) ? "250 Removed" : "550 Can't remove folder");
         return;
     }
-    if (!strcmp(cmd, "SITE") || !strcmp(cmd, "CHMOD")) { reply(s, "502 Not supported"); return; }
+
+    if (!strcmp(cmd, "SITE") || !strcmp(cmd, "CHMOD")) {
+        reply(s, "502 Not supported");
+        return;
+    }
     reply(s, "500 Unknown command");
 }
 
@@ -973,7 +1266,8 @@ static void sess_open(sess_t *s, s32 c, u32 ip)
     if (g_open_login)
         reply(s, "220 GodModeWii FTP ready. No user name or password needed.");
     else
-        reply(s, "220 GodModeWii FTP ready. Log in with USER %s and the password shown on the Wii.", FTP_USER);
+        reply(s, "220 GodModeWii FTP ready. Log in with USER %s and the password shown on the Wii.",
+              FTP_USER);
 }
 
 static void accept_new(void)
@@ -992,7 +1286,10 @@ static void accept_new(void)
         else if (now_ms() < g_block_until) deny = "421 Temporarily locked after failed logins\r\n";
         sess_t *slot = NULL;
         for (int i = 0; i < MAX_SESS && !deny; i++)
-            if (!S[i].used) { slot = &S[i]; break; }
+            if (!S[i].used) {
+                slot = &S[i];
+                break;
+            }
         if (!deny && !slot) deny = "421 Too many connections\r\n";
 
         if (deny) {
@@ -1001,8 +1298,9 @@ static void accept_new(void)
             continue;
         }
         sess_open(slot, c, a.sin_addr.s_addr);
-        ftp_log("Client connected: %u.%u.%u.%u", a.sin_addr.s_addr >> 24, (a.sin_addr.s_addr >> 16) & 255,
-                (a.sin_addr.s_addr >> 8) & 255, a.sin_addr.s_addr & 255);
+        ftp_log("Client connected: %u.%u.%u.%u", a.sin_addr.s_addr >> 24,
+                (a.sin_addr.s_addr >> 16) & 255, (a.sin_addr.s_addr >> 8) & 255,
+                a.sin_addr.s_addr & 255);
     }
 }
 
@@ -1103,7 +1401,8 @@ static void run_install(void)
     inst_last_draw = 0;
     int n = dev < 0 ? -1 : install_archive(path, dev, install_progress, err, sizeof(err));
     if (dev < 0)
-        snprintf(err, sizeof(err), "No %s to install onto", g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
+        snprintf(err, sizeof(err), "No %s to install onto",
+                 g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
     if (n >= 0) {
         vfs_remove(path, false);
         ftp_log("Installed %d file%s to %s", n, n == 1 ? "" : "s", g_devs[dev].tag);
@@ -1135,8 +1434,8 @@ static void draw(u32 ip, bool full)
     ui_color(C_GREEN, true);
     ui_field(2, 1, cols - 2, "Server running");
     ui_color(C_WHITE, true);
-    ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u:%d", (ip >> 24) & 255, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255,
-             g_port);
+    ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u:%d", (ip >> 24) & 255, (ip >> 16) & 255,
+             (ip >> 8) & 255, ip & 255, g_port);
     if (g_open_login) {
         ui_color(C_YELLOW, true);
         ui_field(5, 1, cols - 2, "Login   :  OFF - no user name or password needed");
@@ -1146,10 +1445,12 @@ static void draw(u32 ip, bool full)
         ui_field(6, 1, cols - 2, "Password:  %s", g_pass);
     }
     ui_color(g_rw ? C_YELLOW : C_CYAN, true);
-    ui_field(7, 1, cols - 2, "Mode    :  %s", g_rw ? "READ / WRITE (NAND still needs the Konami unlock)" : "READ-ONLY");
+    ui_field(7, 1, cols - 2, "Mode    :  %s",
+             g_rw ? "READ / WRITE (NAND still needs the Konami unlock)" : "READ-ONLY");
     ui_color(C_WHITE, false);
     if (g_install)
-        ui_field(8, 1, cols - 2, "Archives (.zip .7z .rar) you upload are unpacked onto the %s", g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
+        ui_field(8, 1, cols - 2, "Archives (.zip .7z .rar) you upload are unpacked onto the %s",
+                 g_install == FTP_INSTALL_USB ? "USB drive" : "SD card");
     else
         ui_field(8, 1, cols - 2, "Plain FTP: use it on a trusted network only.");
 
@@ -1224,9 +1525,11 @@ static bool net_bring_up(void)
         } else if (st == 0 && net_gethostip()) {
             return true;
         } else if (started) {
-            ui_message("NETWORK", C_RED, "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
+            ui_message("NETWORK", C_RED,
+                       "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
             return false;
-        } else if (now_ms() - quiet_since >= 500) {     /* the update check retries with 50 ms gaps */
+        } else if (now_ms() - quiet_since >= 500) {
+            /* the update check retries with 50 ms gaps */
             net_init_async(NULL, NULL);
             started = true;
         }
@@ -1271,7 +1574,10 @@ bool ftp_run(bool read_write, int install_mode)
     g_fail_count = 0;
     g_block_until = 0;
     log_n = 0;
-    for (int i = 0; i < MAX_SESS; i++) { memset(&S[i], 0, sizeof(S[i])); S[i].ctl = S[i].pasv = S[i].ds = -1; }
+    for (int i = 0; i < MAX_SESS; i++) {
+        memset(&S[i], 0, sizeof(S[i]));
+        S[i].ctl = S[i].pasv = S[i].ds = -1;
+    }
     ftp_log("Listening on port %d", g_port);
 
     bool stop = false;
@@ -1299,14 +1605,16 @@ bool ftp_run(bool read_write, int install_mode)
         u32 btn = progress ? input_poll_nowait() : DetectInput(IN_DOWN);
         if (btn & WPAD_BUTTON_1) {
             g_open_login = !g_open_login;
-            ftp_log(g_open_login ? "Login off: anyone on the network can connect" : "Login required again");
+            ftp_log(g_open_login ? "Login off: anyone on the network can connect"
+                                 : "Login required again");
             last_draw = 0;
         }
         if (btn & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) {
             bool busy = false;
             for (int i = 0; i < MAX_SESS; i++)
                 if (S[i].used && S[i].ts != T_NONE) busy = true;
-            if (!busy || ui_confirm("STOP SERVER", C_YELLOW, "A transfer is running. Stop the server anyway?"))
+            if (!busy || ui_confirm("STOP SERVER", C_YELLOW,
+                                    "A transfer is running. Stop the server anyway?"))
                 stop = true;
             else
                 last_draw = 0;

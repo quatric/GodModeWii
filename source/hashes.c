@@ -30,10 +30,14 @@ uint32_t xxh32(const void *data, size_t len, uint32_t seed)
         const uint8_t *limit = end - 16;
         uint32_t v1 = seed + P1 + P2, v2 = seed + P2, v3 = seed, v4 = seed - P1;
         do {
-            v1 = xxh_round(v1, read_le32(p)); p += 4;
-            v2 = xxh_round(v2, read_le32(p)); p += 4;
-            v3 = xxh_round(v3, read_le32(p)); p += 4;
-            v4 = xxh_round(v4, read_le32(p)); p += 4;
+            v1 = xxh_round(v1, read_le32(p));
+            p += 4;
+            v2 = xxh_round(v2, read_le32(p));
+            p += 4;
+            v3 = xxh_round(v3, read_le32(p));
+            p += 4;
+            v4 = xxh_round(v4, read_le32(p));
+            p += 4;
         } while (p <= limit);
         h = rotl32(v1, 1) + rotl32(v2, 7) + rotl32(v3, 12) + rotl32(v4, 18);
     } else {
@@ -72,14 +76,31 @@ static void sha1_block(uint32_t st[5], const uint8_t *b)
     uint32_t a = st[0], bb = st[1], c = st[2], d = st[3], e = st[4];
     for (int i = 0; i < 80; i++) {
         uint32_t f, k;
-        if (i < 20)      { f = (bb & c) | (~bb & d);            k = 0x5A827999; }
-        else if (i < 40) { f = bb ^ c ^ d;                      k = 0x6ED9EBA1; }
-        else if (i < 60) { f = (bb & c) | (bb & d) | (c & d);   k = 0x8F1BBCDC; }
-        else             { f = bb ^ c ^ d;                      k = 0xCA62C1D6; }
+        if (i < 20) {
+            f = (bb & c) | (~bb & d);
+            k = 0x5A827999;
+        } else if (i < 40) {
+            f = bb ^ c ^ d;
+            k = 0x6ED9EBA1;
+        } else if (i < 60) {
+            f = (bb & c) | (bb & d) | (c & d);
+            k = 0x8F1BBCDC;
+        } else {
+            f = bb ^ c ^ d;
+            k = 0xCA62C1D6;
+        }
         uint32_t t = rotl32(a, 5) + f + e + k + w[i];
-        e = d; d = c; c = rotl32(bb, 30); bb = a; a = t;
+        e = d;
+        d = c;
+        c = rotl32(bb, 30);
+        bb = a;
+        a = t;
     }
-    st[0] += a; st[1] += bb; st[2] += c; st[3] += d; st[4] += e;
+    st[0] += a;
+    st[1] += bb;
+    st[2] += c;
+    st[3] += d;
+    st[4] += e;
 }
 
 void sha1_digest(const void *data, size_t len, uint8_t out[20])

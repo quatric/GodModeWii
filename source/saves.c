@@ -51,7 +51,8 @@ static int pick_target(void)
         devs[n++] = d;
     }
     if (!n) {
-        ui_message("EXPORT SAVES", C_RED, "There is no writable SD card or USB drive to export to.");
+        ui_message("EXPORT SAVES", C_RED,
+                   "There is no writable SD card or USB drive to export to.");
         return -1;
     }
     if (n == 1)
@@ -73,6 +74,7 @@ void saves_export_all(void)
     char **ids = malloc(cap * sizeof(char *));
     u32 total_files = 0;
     u64 total_bytes = 0;
+
     for (int k = 0; k < 3 && srcs && ids; k++) {
         char dir[64];
         snprintf(dir, sizeof(dir), "nand:/title/%s", KINDS[k]);
@@ -89,21 +91,30 @@ void saves_export_all(void)
             bool is_dir;
             if (!vfs_stat(data, &is_dir, NULL) || !is_dir || !ops_tree_info(data, &b, &f, &d) || !f)
                 continue;
+
             if (n == cap) {
                 cap *= 2;
-                char **ns = realloc(srcs, cap * sizeof(char *)), **ni = ns ? realloc(ids, cap * sizeof(char *)) : NULL;
+                char **ns = realloc(srcs, cap * sizeof(char *)),
+                     **ni = ns ? realloc(ids, cap * sizeof(char *)) : NULL;
                 if (ns) srcs = ns;
                 if (ni) ids = ni;
                 if (!ns || !ni) break;
             }
+
             char gid[5], label[64];
             if (game_id(list[i].name, gid))
                 snprintf(label, sizeof(label), "%s-%s %s", KINDS[k], list[i].name, gid);
             else
                 snprintf(label, sizeof(label), "%s-%s", KINDS[k], list[i].name);
+
             srcs[n] = strdup(data);
             ids[n] = strdup(label);
-            if (!srcs[n] || !ids[n]) { free(srcs[n]); free(ids[n]); break; }
+            if (!srcs[n] || !ids[n]) {
+                free(srcs[n]);
+                free(ids[n]);
+                break;
+            }
+
             n++;
             total_files += f;
             total_bytes += b;
@@ -112,16 +123,21 @@ void saves_export_all(void)
     }
 
     if (!n) {
-        ui_message("EXPORT SAVES", C_YELLOW, g_nand_full ? "No save data was found on the NAND."
-                   : "No save data could be read. The NAND permission patch isn't active: launch GodModeWii from the Homebrew Channel.");
+        ui_message(
+            "EXPORT SAVES", C_YELLOW,
+            g_nand_full
+                ? "No save data was found on the NAND."
+                : "No save data could be read. The NAND permission patch isn't active: launch GodModeWii from the Homebrew Channel.");
         goto out;
     }
 
     char sz[24], q[300];
     ui_fmt_size(sz, sizeof(sz), total_bytes);
-    snprintf(q, sizeof(q), "Export the saves of %d title(s) (%u files, %s)?\n\nEach title's data folder is copied to "
-             "GodModeWii/save-export/<date>/ on the drive you choose next. The NAND is only read.",
-             n, (unsigned)total_files, sz);
+    snprintf(
+        q, sizeof(q),
+        "Export the saves of %d title(s) (%u files, %s)?\n\nEach title's data folder is copied to "
+        "GodModeWii/save-export/<date>/ on the drive you choose next. The NAND is only read.",
+        n, (unsigned)total_files, sz);
     if (!ui_confirm("EXPORT ALL SAVES", C_CYAN, q))
         goto out;
     int dev = pick_target();
@@ -131,18 +147,23 @@ void saves_export_all(void)
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
     char base[VFS_PATH_MAX];
-    snprintf(base, sizeof(base), "%sGodModeWii/save-export/%04d%02d%02d-%02d%02d%02d", g_devs[dev].root,
-             tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+    snprintf(base, sizeof(base), "%sGodModeWii/save-export/%04d%02d%02d-%02d%02d%02d",
+             g_devs[dev].root, tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour,
+             tm->tm_min, tm->tm_sec);
     char **dsts = calloc(n, sizeof(char *));
     bool ok = dsts != NULL;
     for (int i = 0; ok && i < n; i++) {
         dsts[i] = malloc(VFS_PATH_MAX);
-        if (!dsts[i]) { ok = false; break; }
+        if (!dsts[i]) {
+            ok = false;
+            break;
+        }
         snprintf(dsts[i], VFS_PATH_MAX, "%s/%s", base, ids[i]);
         ok = mkdirs(dsts[i]);
     }
     if (!ok) {
-        ui_message("EXPORT SAVES", C_RED, "Could not create the export folder. Is the drive writable?");
+        ui_message("EXPORT SAVES", C_RED,
+                   "Could not create the export folder. Is the drive writable?");
     } else if (ops_copy_each(srcs, dsts, n, "EXPORTING SAVES")) {
         char done[VFS_PATH_MAX + 64];
         snprintf(done, sizeof(done), "Exported the saves of %d title(s) to\n%s", n, base);
@@ -153,7 +174,10 @@ void saves_export_all(void)
     free(dsts);
 
 out:
-    for (int i = 0; i < n; i++) { free(srcs[i]); free(ids[i]); }
+    for (int i = 0; i < n; i++) {
+        free(srcs[i]);
+        free(ids[i]);
+    }
     free(srcs);
     free(ids);
 }

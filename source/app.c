@@ -120,7 +120,8 @@ static bool load_dir(const char *path, const char *select_name)
             snprintf(msg, sizeof(msg), "%s.", arcfs_error());
             ui_message("CAN'T OPEN", C_RED, msg);
         } else
-            ui_message("ERROR", C_RED, "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
+            ui_message("ERROR", C_RED,
+                       "Cannot open this location.\nThe drive may have been removed - try \"Remount drives\" in the HOME menu.");
         return false;
     }
     free_dir();
@@ -242,11 +243,15 @@ static void draw_browser(void)
             continue;
         }
         bool sel = idx == cursor;
-        if (sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
+        if (sel) {
+            ui_bg(C_CYAN);
+            ui_color(C_BLACK, false);
+        }
 
         if (off && idx == 0) {
             if (!sel) ui_color(C_GREEN, true);
-            ui_field(row, 0, cols - 1, "> Paste %d item(s) here  [%s]", clip_n, clip_cut ? "MOVE" : "COPY");
+            ui_field(row, 0, cols - 1, "> Paste %d item(s) here  [%s]", clip_n,
+                     clip_cut ? "MOVE" : "COPY");
             ui_reset();
             continue;
         }
@@ -286,8 +291,9 @@ static void draw_browser(void)
         bool wfs = arcfs_dev_pinned(dev);
         ui_field(rows - 4, 1, 6, "%s", wfs ? "WFS" : "ARC");
         ui_color(C_WHITE, false);
-        ui_field(rows - 4, 8, cols - 10, wfs ? "Wii U WFS volume (read-only) - copy files out to SD/USB"
-                                             : "inside an archive (read-only) - copy files out to SD/USB");
+        ui_field(rows - 4, 8, cols - 10,
+                 wfs ? "Wii U WFS volume (read-only) - copy files out to SD/USB"
+                     : "inside an archive (read-only) - copy files out to SD/USB");
         ui_reset();
     } else if (dev >= 0 && vfs_is_virtual(dev)) {
         ui_reset();
@@ -323,7 +329,8 @@ static void draw_browser(void)
 
     ui_color(C_CYAN, true);
     if (off && cursor == 0)
-        ui_field(rows - 2, 1, cols - 2, "A Paste  B Back  1 Clear clipboard  2 Menu  + Copy  - Cut");
+        ui_field(rows - 2, 1, cols - 2,
+                 "A Paste  B Back  1 Clear clipboard  2 Menu  + Copy  - Cut");
     else
         ui_field(rows - 2, 1, cols - 2, "A Open  B Back  1 Mark  2 Menu  + Copy  - Cut");
     ui_color(C_WHITE, false);
@@ -367,11 +374,15 @@ static void draw_home(void)
         vfs_dev *d = &g_devs[devs[idx]];
         int row = 3 + i;
         bool sel = idx == home_cursor;
-        if (sel) { ui_bg(C_CYAN); ui_color(C_BLACK, false); }
-        else ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
+        if (sel) {
+            ui_bg(C_CYAN);
+            ui_color(C_BLACK, false);
+        } else
+            ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
         char note[56] = "";
         if (devs[idx] == DEV_NAND)
-            snprintf(note, sizeof(note), "%s", risk_unlocked() ? "UNLOCKED - BRICK RISK" : "protected (Konami code to edit)");
+            snprintf(note, sizeof(note), "%s",
+                     risk_unlocked() ? "UNLOCKED - BRICK RISK" : "protected (Konami code to edit)");
         else if (!d->mounted && d->note[0])
             snprintf(note, sizeof(note), "%s", d->note);
         else if (!d->mounted)
@@ -421,13 +432,16 @@ static void hexview(const char *path)
             vfs_seek(&f, off);
             got = vfs_read(&f, buf, L * per);
             if (got < 0) got = 0;
+
             ui_clear();
             ui_bg(C_BLUE);
             ui_color(C_WHITE, true);
             ui_field(0, 0, cols - 1, " HEX  %s", vfs_basename(path));
+
             ui_reset();
             ui_color(C_WHITE, false);
             ui_fill(1, 0, cols - 1, '-');
+
             for (int r = 0; r < L; r++) {
                 int base = r * per;
                 if (base >= got) break;
@@ -454,10 +468,12 @@ static void hexview(const char *path)
             ui_reset();
             redraw = false;
         }
+
         u32 p = input_pressed();
         u64 page = (u64)L * per;
         u64 last = f.size > page ? ((f.size - 1) / per * per) - (page - per) : 0;
         if (f.size <= page) last = 0;
+
         u64 o = off;
         if (p & WPAD_BUTTON_DOWN) o += per;
         if (p & WPAD_BUTTON_UP)   o = o >= per ? o - per : 0;
@@ -465,8 +481,13 @@ static void hexview(const char *path)
         if (p & WPAD_BUTTON_LEFT)  o = o >= page ? o - page : 0;
         if (p & WPAD_BUTTON_PLUS)  o += page * 16;
         if (p & WPAD_BUTTON_MINUS) o = o >= page * 16 ? o - page * 16 : 0;
+
         if (o > last) o = last;
-        if (o != off) { off = o; redraw = true; }
+        if (o != off) {
+            off = o;
+            redraw = true;
+        }
+
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME | WPAD_BUTTON_A))
             break;
     }
@@ -511,7 +532,8 @@ static void textview(const char *path)
         if (buf[i] == 0 || (buf[i] < 32 && buf[i] != '\n' && buf[i] != '\r' && buf[i] != '\t'))
             odd++;
     if (probe && odd * 10 > probe &&
-        !ui_confirm("BINARY FILE", C_YELLOW, "This doesn't look like text. Open it as text anyway?\n\nThe hex viewer suits it better.")) {
+        !ui_confirm("BINARY FILE", C_YELLOW,
+                    "This doesn't look like text. Open it as text anyway?\n\nThe hex viewer suits it better.")) {
         free(buf);
         return;
     }
@@ -528,9 +550,14 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
 
     u32 cap = 1024, nl = 0;
     u32 *lines = malloc(cap * sizeof(u32));
-    if (!lines) { free(buf); return; }
+    if (!lines) {
+        free(buf);
+        return;
+    }
     lines[nl++] = 0;
+
     int col = 0;
+
     for (u32 i = 0; i < got && nl < TEXT_MAX_LINES; i++) {
         u8 c = buf[i];
         if (nl + 2 >= cap) {
@@ -559,6 +586,7 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
     char row_text[256];
     for (;;) {
         if (redraw) {
+
             ui_clear();
             ui_bg(C_BLUE);
             ui_color(C_WHITE, true);
@@ -567,6 +595,7 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
             ui_color(C_WHITE, false);
             ui_fill(1, 0, cols - 1, '-');
             ui_color(C_WHITE, true);
+
             for (int r = 0; r < L; r++) {
                 u32 li = top + r;
                 if (li >= nl) break;
@@ -577,7 +606,10 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
                     if (c == '\n' || c == '\r') continue;
                     if (c == '\t') {
                         int w = 4 - (cc % 4);
-                        while (w-- && k < (int)sizeof(row_text) - 5) { row_text[k++] = ' '; cc++; }
+                        while (w-- && k < (int)sizeof(row_text) - 5) {
+                            row_text[k++] = ' ';
+                            cc++;
+                        }
                     } else {
                         row_text[k++] = (c >= 32 && c != 127) ? (char)c : '.';
                         if ((c & 0xC0) != 0x80)
@@ -588,16 +620,18 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
                 ui_field(2 + r, 1, width, "%s", row_text);
             }
             ui_reset();
+
             int pct = nl > 1 ? (int)((u64)(top + 1) * 100 / nl) : 100;
             char tsz[24];
             ui_fmt_size(tsz, sizeof(tsz), total);
             ui_color(C_CYAN, true);
-            ui_field(rows - 3, 1, cols - 2, "Line %u / %u  (%d%%)   %s%s", (unsigned)(top + 1), (unsigned)nl, pct, tsz,
-                     truncated ? "  - first 1 MiB shown" : "");
+            ui_field(rows - 3, 1, cols - 2, "Line %u / %u  (%d%%)   %s%s", (unsigned)(top + 1),
+                     (unsigned)nl, pct, tsz, truncated ? "  - first 1 MiB shown" : "");
             ui_field(rows - 2, 1, cols - 2, "U/D Line  L/R Page  +/- x10 pages  B Close");
             ui_reset();
             redraw = false;
         }
+
         u32 p = input_pressed();
         u32 t = top, last = nl > (u32)L ? nl - L : 0;
         if (p & WPAD_BUTTON_DOWN)  t += 1;
@@ -606,11 +640,16 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
         if (p & WPAD_BUTTON_LEFT)  t = t > (u32)(L - 1) ? t - (L - 1) : 0;
         if (p & WPAD_BUTTON_PLUS)  t += (L - 1) * 10;
         if (p & WPAD_BUTTON_MINUS) t = t > (u32)((L - 1) * 10) ? t - (L - 1) * 10 : 0;
+
         if (t > last) t = last;
-        if (t != top) { top = t; redraw = true; }
+        if (t != top) {
+            top = t;
+            redraw = true;
+        }
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME | WPAD_BUTTON_A))
             break;
     }
+
     free(lines);
     free(buf);
 }
@@ -627,8 +666,9 @@ static void show_info(char **paths, int n)
         snprintf(msg, sizeof(msg), "%s\n\n%u file(s), %u folder(s)\nTotal: %s (%llu bytes)",
                  paths[0], (unsigned)files, (unsigned)dirs, sz, (unsigned long long)bytes);
     else
-        snprintf(msg, sizeof(msg), "%d items selected\n\n%u file(s), %u folder(s)\nTotal: %s (%llu bytes)",
-                 n, (unsigned)files, (unsigned)dirs, sz, (unsigned long long)bytes);
+        snprintf(msg, sizeof(msg),
+                 "%d items selected\n\n%u file(s), %u folder(s)\nTotal: %s (%llu bytes)", n,
+                 (unsigned)files, (unsigned)dirs, sz, (unsigned long long)bytes);
     ui_message("INFO", C_CYAN, msg);
 }
 
@@ -679,7 +719,8 @@ static void do_copy_cut(bool cut)
     for (int i = 0; i < nents; i++) marks[i] = false;
     nmarks = 0;
     if (cursor == 0) cursor = 0;
-    status(cut ? C_RED : C_GREEN, "%d item(s) in clipboard - open the target and press A on the Paste row", n);
+    status(cut ? C_RED : C_GREEN,
+           "%d item(s) in clipboard - open the target and press A on the Paste row", n);
 }
 
 static void do_clip_clear(void)
@@ -783,7 +824,26 @@ static void invert_marks(void)
     }
 }
 
-enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum {
+    A_OPEN,
+    A_PASTE,
+    A_CLIP_CLEAR,
+    A_COPY,
+    A_CUT,
+    A_DELETE,
+    A_RENAME,
+    A_MKDIR,
+    A_INFO,
+    A_HEX,
+    A_TEXT,
+    A_EDIT_HEX,
+    A_EDIT_TEXT,
+    A_ALL,
+    A_NONE,
+    A_INVERT,
+    A_REFRESH,
+    A_COUNT
+};
 
 static void actions_menu(void);
 
@@ -812,7 +872,8 @@ static void do_launch(const vfs_entry *en)
     char path[VFS_PATH_MAX], q[VFS_PATH_MAX + 128];
     if (!vfs_join(path, sizeof(path), cwd, en->name))
         return;
-    snprintf(q, sizeof(q), "Launch \"%s\"?\n\nGodModeWii closes and starts this program.", en->name);
+    snprintf(q, sizeof(q), "Launch \"%s\"?\n\nGodModeWii closes and starts this program.",
+             en->name);
     if (!ui_confirm("LAUNCH PROGRAM", C_CYAN, q))
         return;
     if (launch_prepare(path)) {
@@ -828,16 +889,23 @@ static void wad_menu(const vfs_entry *en)
     for (int i = 0; i < nents; i++)
         if (marks[i] && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             marked_wads++;
+
     char install[48] = "Install to NAND";
     if (marked_wads > 1)
         snprintf(install, sizeof(install), "Install %d marked WADs to NAND", marked_wads);
+
     const char *items[] = { install, "Browse decrypted contents", "More actions..." };
     int r = ui_menu(en->name, items, NULL, 3, 0);
+
     char path[VFS_PATH_MAX];
     if (r == 0 && marked_wads > 1) {
         int t;
         char **tp = targets(&t);
-        if (t) { wad_install_paths(tp, t); free_paths(tp, t); reload_keep(); }
+        if (t) {
+            wad_install_paths(tp, t);
+            free_paths(tp, t);
+            reload_keep();
+        }
     } else if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
         char *one = path;
         wad_install_paths(&one, 1);
@@ -865,36 +933,90 @@ static void actions_menu(void)
     char paste_label[48];
     const char *del_label = "Delete", *ren_label = "Rename";
 
-    items[n] = "Open as archive"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_OPEN;
+    items[n] = "Open as archive";
+    en[n] = on_entry && !nmarks && !ents[e].is_dir;
+    code[n++] = A_OPEN;
+
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
-        items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
-        items[n] = "Clear clipboard"; en[n] = true; code[n++] = A_CLIP_CLEAR;
+        items[n] = paste_label;
+        en[n] = !ro;
+        code[n++] = A_PASTE;
+
+        items[n] = "Clear clipboard";
+        en[n] = true;
+        code[n++] = A_CLIP_CLEAR;
     }
-    items[n] = "Copy";   en[n] = on_entry || nmarks; code[n++] = A_COPY;
-    items[n] = "Cut";    en[n] = (on_entry || nmarks) && !ro; code[n++] = A_CUT;
-    items[n] = del_label; en[n] = (on_entry || nmarks) && !ro; code[n++] = A_DELETE;
-    items[n] = ren_label; en[n] = on_entry && !nmarks && !ro && !card; code[n++] = A_RENAME;
-    items[n] = "New folder"; en[n] = !ro && !card; code[n++] = A_MKDIR;
-    items[n] = "Info / folder size"; en[n] = on_entry || nmarks; code[n++] = A_INFO;
-    items[n] = "Text viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_TEXT;
-    items[n] = "Hex viewer"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_HEX;
-    items[n] = "Edit as text"; en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir; code[n++] = A_EDIT_TEXT;
-    items[n] = "Edit as hex"; en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir; code[n++] = A_EDIT_HEX;
-    items[n] = "Select all"; en[n] = nents > 0; code[n++] = A_ALL;
-    items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
-    items[n] = "Invert selection"; en[n] = nents > 0; code[n++] = A_INVERT;
-    items[n] = "Refresh"; en[n] = true; code[n++] = A_REFRESH;
+
+    items[n] = "Copy";
+    en[n] = on_entry || nmarks;
+    code[n++] = A_COPY;
+
+    items[n] = "Cut";
+    en[n] = (on_entry || nmarks) && !ro;
+    code[n++] = A_CUT;
+
+    items[n] = del_label;
+    en[n] = (on_entry || nmarks) && !ro;
+    code[n++] = A_DELETE;
+
+    items[n] = ren_label;
+    en[n] = on_entry && !nmarks && !ro && !card;
+    code[n++] = A_RENAME;
+
+    items[n] = "New folder";
+    en[n] = !ro && !card;
+    code[n++] = A_MKDIR;
+
+    items[n] = "Info / folder size";
+    en[n] = on_entry || nmarks;
+    code[n++] = A_INFO;
+
+    items[n] = "Text viewer";
+    en[n] = on_entry && !nmarks && !ents[e].is_dir;
+    code[n++] = A_TEXT;
+
+    items[n] = "Hex viewer";
+    en[n] = on_entry && !nmarks && !ents[e].is_dir;
+    code[n++] = A_HEX;
+
+    items[n] = "Edit as text";
+    en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir;
+    code[n++] = A_EDIT_TEXT;
+
+    items[n] = "Edit as hex";
+    en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir;
+    code[n++] = A_EDIT_HEX;
+
+    items[n] = "Select all";
+    en[n] = nents > 0;
+    code[n++] = A_ALL;
+
+    items[n] = "Deselect all";
+    en[n] = nmarks > 0;
+    code[n++] = A_NONE;
+
+    items[n] = "Invert selection";
+    en[n] = nents > 0;
+    code[n++] = A_INVERT;
+
+    items[n] = "Refresh";
+    en[n] = true;
+    code[n++] = A_REFRESH;
 
     int r = ui_menu("ACTIONS", items, en, n, 0);
     if (r < 0)
         return;
     if (!en[r]) {
         if (ro)
-            ui_message("READ-ONLY", C_YELLOW, "This is read-only. Copy its files to the SD card or a USB drive instead.");
+            ui_message("READ-ONLY", C_YELLOW,
+                       "This is read-only. Copy its files to the SD card or a USB drive instead.");
         return;
     }
-    int t; char **tp;
+
+    int t;
+    char **tp;
+
     switch (code[r]) {
     case A_OPEN:    open_archive(&ents[e]); break;
     case A_PASTE:   do_paste(); break;
@@ -906,23 +1028,40 @@ static void actions_menu(void)
     case A_MKDIR:   do_mkdir(); break;
     case A_INFO:
         tp = targets(&t);
-        if (t) { show_info(tp, t); free_paths(tp, t); }
+        if (t) {
+            show_info(tp, t);
+            free_paths(tp, t);
+        }
         break;
     case A_HEX:
         tp = targets(&t);
-        if (t) { hexview(tp[0]); free_paths(tp, t); }
+        if (t) {
+            hexview(tp[0]);
+            free_paths(tp, t);
+        }
         break;
     case A_TEXT:
         tp = targets(&t);
-        if (t) { textview(tp[0]); free_paths(tp, t); }
+        if (t) {
+            textview(tp[0]);
+            free_paths(tp, t);
+        }
         break;
     case A_EDIT_TEXT:
         tp = targets(&t);
-        if (t) { editor_text(tp[0]); free_paths(tp, t); reload_keep(); }
+        if (t) {
+            editor_text(tp[0]);
+            free_paths(tp, t);
+            reload_keep();
+        }
         break;
     case A_EDIT_HEX:
         tp = targets(&t);
-        if (t) { editor_hex(tp[0]); free_paths(tp, t); reload_keep(); }
+        if (t) {
+            editor_hex(tp[0]);
+            free_paths(tp, t);
+            reload_keep();
+        }
         break;
     case A_ALL:     select_all(true); break;
     case A_NONE:    select_all(false); break;
@@ -943,14 +1082,38 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_WIILOAD, M_MIIS, M_SAVES, M_ABOUT,
-           M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
+    enum {
+        M_LOCK,
+        M_REMOUNT,
+        M_FTP_RO,
+        M_FTP_RW,
+        M_FTP_SD,
+        M_FTP_USB,
+        M_WIILOAD,
+        M_MIIS,
+        M_SAVES,
+        M_ABOUT,
+        M_LOADER,
+        M_WIIMENU,
+        M_RESTART,
+        M_POWER
+    };
+
     for (;;) {
-        if (cwd[0]) draw_browser(); else draw_home();
+        if (cwd[0])
+            draw_browser();
+        else
+            draw_home();
+
         const char *items[14];
         int code[14];
         int n = 0;
-        if (risk_unlocked() && !risk_forced()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
+
+        if (risk_unlocked() && !risk_forced()) {
+            items[n] = "Lock risky options again";
+            code[n++] = M_LOCK;
+        }
+
         items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
         items[n] = "FTP server (read-only)";            code[n++] = M_FTP_RO;
         items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
@@ -965,7 +1128,8 @@ static bool system_menu(void)
         items[n] = g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii"; code[n++] = M_RESTART;
         items[n] = "Power off";                         code[n++] = M_POWER;
 
-        /* HOME closes the menu like the Wii's own HOME Menu; leaving is always an explicit choice. */
+        /* HOME closes the menu like the Wii's own HOME Menu; leaving is always an explicit
+         * choice. */
         int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B / HOME Back");
         if (r < 0)
             return false;
@@ -986,7 +1150,9 @@ static bool system_menu(void)
         case M_FTP_RW:
         case M_FTP_SD:
         case M_FTP_USB:
-            ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD ? FTP_INSTALL_SD : code[r] == M_FTP_USB ? FTP_INSTALL_USB : FTP_INSTALL_OFF);
+            ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD    ? FTP_INSTALL_SD
+                                         : code[r] == M_FTP_USB ? FTP_INSTALL_USB
+                                                                : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
         case M_WIILOAD: {
@@ -1025,16 +1191,20 @@ static void open_drive(int dev)
         ui_splash("Reading disc...");
         virt_refresh(DEV_DISC);
     }
+
     if (dev == DEV_MCA || dev == DEV_MCB) {  /* cards get swapped: re-check on every visit */
         ui_splash("Reading memory card...");
         virt_refresh(dev);
     }
+
     if (dev == DEV_KEYS) {
         ui_splash("Reading console keys...");
         virt_refresh(DEV_KEYS);
         if (d->mounted)
-            ui_message("PRIVATE KEYS", C_YELLOW, "These keys are unique to your console. Copy them out for your own backups and keep them private - never share them.");
+            ui_message("PRIVATE KEYS", C_YELLOW,
+                       "These keys are unique to your console. Copy them out for your own backups and keep them private - never share them.");
     }
+
     if (!d->mounted && d->maybe_wiiu) {
         ui_message("NOT AVAILABLE", C_YELLOW,
                    "This drive isn't FAT32 or exFAT.\n\n"
@@ -1043,23 +1213,31 @@ static void open_drive(int dev)
                    "to sd:/wfs/. Then use \"Remount drives\" in the HOME menu.");
         return;
     }
+
     if (!d->mounted) {
         char why[160];
-        snprintf(why, sizeof(why), "%s%s%s", d->name, d->note[0] ? ": " : " is not available.", d->note);
+        snprintf(why, sizeof(why), "%s%s%s", d->name, d->note[0] ? ": " : " is not available.",
+                 d->note);
         if (!d->note[0])
-            snprintf(why, sizeof(why), "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
+            snprintf(why, sizeof(why),
+                     "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
         ui_message("NOT AVAILABLE", C_YELLOW, why);
         return;
     }
+
     if (0) {
-        ui_message("NOT AVAILABLE", C_YELLOW, "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
+        ui_message("NOT AVAILABLE", C_YELLOW,
+                   "Nothing detected here. Insert a card or drive and use \"Remount drives\" in the HOME menu.");
         return;
     }
+
     if (dev == DEV_NAND && !nand_warned) {
         nand_warned = true;
         if (!g_nand_full)
-            ui_message("NOTE", C_YELLOW, "NAND permissions are not patched (HW_AHBPROT is on), so some protected files may be unreadable. Launch from the Homebrew Channel (IOS58) for full access.");
+            ui_message("NOTE", C_YELLOW,
+                       "NAND permissions are not patched (HW_AHBPROT is on), so some protected files may be unreadable. Launch from the Homebrew Channel (IOS58) for full access.");
     }
+
     vfs_update_space(dev);
     load_dir(d->root, NULL);
 }
@@ -1070,7 +1248,10 @@ int app_run(void)
 
     while (!g_quit_request && !launch_requested) {
         if (dirty) {
-            if (cwd[0]) draw_browser(); else draw_home();
+            if (cwd[0])
+                draw_browser();
+            else
+                draw_home();
             dirty = false;
         }
         u32 p = input_pressed();
@@ -1078,7 +1259,8 @@ int app_run(void)
             continue;
         status_msg[0] = '\0';
         dirty = true;
-        cursor_only = !(p & ~(WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT));
+        cursor_only =
+            !(p & ~(WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT));
 
         if (p & WPAD_BUTTON_HOME) {
             if (system_menu())
@@ -1101,15 +1283,22 @@ int app_run(void)
 
         if (p & WPAD_BUTTON_UP)    { if (total) cursor = (cursor + total - 1) % total; }
         if (p & WPAD_BUTTON_DOWN)  { if (total) cursor = (cursor + 1) % total; }
-        if (p & WPAD_BUTTON_LEFT)  { cursor -= L - 1; if (cursor < 0) cursor = 0; }
-        if (p & WPAD_BUTTON_RIGHT) { cursor += L - 1; if (cursor >= total) cursor = total ? total - 1 : 0; }
+        if (p & WPAD_BUTTON_LEFT) {
+            cursor -= L - 1;
+            if (cursor < 0) cursor = 0;
+        }
+        if (p & WPAD_BUTTON_RIGHT) {
+            cursor += L - 1;
+            if (cursor >= total) cursor = total ? total - 1 : 0;
+        }
 
         if (p & WPAD_BUTTON_B) {
             char parent[VFS_PATH_MAX];
             char from[VFS_NAME_MAX];
             snprintf(from, sizeof(from), "%s", vfs_basename(cwd));
             char container[VFS_PATH_MAX];
-            if (vfs_is_archive(cwd) && arcfs_container(cwd, container, sizeof(container)) && cwd[strlen(container) + 2] == '\0')
+            if (vfs_is_archive(cwd) && arcfs_container(cwd, container, sizeof(container)) &&
+                cwd[strlen(container) + 2] == '\0')
                 snprintf(from, sizeof(from), "%s", vfs_basename(container));
             if (vfs_parent(cwd, parent, sizeof(parent))) {
                 load_dir(parent, from);
@@ -1131,7 +1320,8 @@ int app_run(void)
                 } else {
                     char path[VFS_PATH_MAX];
                     bool joined = vfs_join(path, sizeof(path), cwd, en->name);
-                    ftype_t ft = joined ? ftype_detect(path) : FT_NONE;     /* by its magic, not its name */
+                    /* by its magic, not its name */
+                    ftype_t ft = joined ? ftype_detect(path) : FT_NONE;
                     if (ft == FT_WAD && !vfs_is_archive(cwd) && arcfs_can_open(path))
                         wad_menu(en);
                     else if (ft == FT_PROGRAM)
@@ -1162,7 +1352,8 @@ int app_run(void)
         if (p & WPAD_BUTTON_PLUS)  do_copy_cut(false);
         if (p & WPAD_BUTTON_MINUS) {
             if (vfs_is_readonly(cwd))
-                ui_message("READ-ONLY", C_YELLOW, "Nothing can be cut from a read-only location. Use + to copy instead.");
+                ui_message("READ-ONLY", C_YELLOW,
+                           "Nothing can be cut from a read-only location. Use + to copy instead.");
             else
                 do_copy_cut(true);
         }

@@ -40,13 +40,19 @@ static int fst_shift;       /* Wii stores offsets divided by 4 */
 static u32 part_raw_off;    /* Wii data partition, to reopen it after a drive reset */
 
 /* Parts of the disc that are not in the file table, shown as sys/ and disc.iso */
-typedef struct { const char *name; u64 off; u64 size; } sysfile;
+typedef struct {
+    const char *name;
+    u64 off;
+    u64 size;
+} sysfile;
 static sysfile sysf[5];
 static int sys_n;
 static bool iso_ok;
 
 /* Read errors seen while a file is being copied (see virt_disc_tolerate) */
-typedef struct { u64 disc_off, len; } errrange;
+typedef struct {
+    u64 disc_off, len;
+} errrange;
 static bool tol_on;
 static bool (*tol_cancel)(void);
 static errrange *errs;
@@ -72,10 +78,22 @@ static void refresh_seeprom(void)
     vfs_dev *d = &g_devs[DEV_SEEPROM];
     d->mounted = false;
     seeprom_ok = false;
-    if (g_is_vwii)      { set_note(DEV_SEEPROM, "not available in vWii"); return; }
-    if (g_is_dolphin)   { set_note(DEV_SEEPROM, "not available in Dolphin"); return; }
-    if (!AHBPROT_DISABLED) { set_note(DEV_SEEPROM, "needs Homebrew Channel (AHBPROT)"); return; }
-    if (!seeprom_read(seeprom_data)) { set_note(DEV_SEEPROM, "read failed"); return; }
+    if (g_is_vwii) {
+        set_note(DEV_SEEPROM, "not available in vWii");
+        return;
+    }
+    if (g_is_dolphin) {
+        set_note(DEV_SEEPROM, "not available in Dolphin");
+        return;
+    }
+    if (!AHBPROT_DISABLED) {
+        set_note(DEV_SEEPROM, "needs Homebrew Channel (AHBPROT)");
+        return;
+    }
+    if (!seeprom_read(seeprom_data)) {
+        set_note(DEV_SEEPROM, "read failed");
+        return;
+    }
     seeprom_ok = true;
     d->mounted = true;
     set_note(DEV_SEEPROM, "read-only");
@@ -129,7 +147,10 @@ static void err_add(u64 disc_off, u64 len)
         u32 nc = err_cap ? err_cap * 2 : 256;
         errrange *ne = realloc(errs, nc * sizeof(errrange));
         if (!ne) {
-            if (err_n) { errs[err_n - 1].len = disc_off + len - errs[err_n - 1].disc_off; err_overflow = true; }
+            if (err_n) {
+                errs[err_n - 1].len = disc_off + len - errs[err_n - 1].disc_off;
+                err_overflow = true;
+            }
             return;
         }
         errs = ne;
@@ -175,6 +196,7 @@ static s32 disc_read_tolerant(u64 pos, u8 *out, u32 len)
     while (done < len) {
         if (tol_cancel && tol_cancel())
             return done ? (s32)done : -1;
+
         u64 at = pos + done;
         u64 start = at & ~(u64)(SECTOR - 1);
         u32 skew = (u32)(at - start);
@@ -184,17 +206,20 @@ static s32 disc_read_tolerant(u64 pos, u8 *out, u32 len)
         u32 rd = (chunk + SECTOR - 1) & ~(SECTOR - 1);
         u32 n = chunk - skew;
         if (n > want) n = want;
+
         if (raw_read(start, di_buf, rd, part)) {
             memcpy(out + done, di_buf + skew, n);
             consec_fail = 0;
             done += n;
             continue;
         }
+
         /* something in this block is bad: find out which sectors */
         for (u32 sec = 0; sec < rd; sec += SECTOR) {
             u64 sa = start + sec;
             u64 lo = sa > at ? sa : at, hi = sa + SECTOR < at + n ? sa + SECTOR : at + n;
             if (hi <= lo) continue;
+
             bool ok = false;
             int tries = consec_fail > 8 ? 1 : 2;
             for (int t = 0; t < tries && !ok; t++) {
@@ -213,6 +238,7 @@ static s32 disc_read_tolerant(u64 pos, u8 *out, u32 len)
         }
         done += n;
     }
+
     return (s32)done;
 }
 
@@ -324,8 +350,14 @@ static void refresh_disc(void)
     d->mounted = false;
     disc_forget();
 
-    if (g_is_vwii)         { set_note(DEV_DISC, "not available in vWii"); return; }
-    if (!AHBPROT_DISABLED) { set_note(DEV_DISC, "needs Homebrew Channel (AHBPROT)"); return; }
+    if (g_is_vwii) {
+        set_note(DEV_DISC, "not available in vWii");
+        return;
+    }
+    if (!AHBPROT_DISABLED) {
+        set_note(DEV_DISC, "needs Homebrew Channel (AHBPROT)");
+        return;
+    }
 
     if (!di_started) {
         if (!g_is_dolphin)
@@ -334,14 +366,20 @@ static void refresh_disc(void)
         DI_Init();
         di_started = true;
     }
-    if (di_fd < 0) { set_note(DEV_DISC, "drive unavailable"); return; }
+    if (di_fd < 0) {
+        set_note(DEV_DISC, "drive unavailable");
+        return;
+    }
 
     u32 cover = 0;
     if (DI_GetCoverRegister(&cover) != 0 || !(cover & DVD_COVER_DISC_INSERTED)) {
         set_note(DEV_DISC, "no disc");
         return;
     }
-    if (!__io_wiidvd.startup()) { set_note(DEV_DISC, "disc not readable"); return; }
+    if (!__io_wiidvd.startup()) {
+        set_note(DEV_DISC, "disc not readable");
+        return;
+    }
 
     if (!di_buf)
         di_buf = memalign(32, DI_BLOCK);
@@ -366,11 +404,22 @@ static void refresh_disc(void)
         kind = "Wii";
         /* Partition table -> first data partition (type 0). */
         u8 *pt = di_buf;
-        if (!read_retry(0x40000, pt, 0x20, false)) { set_note(DEV_DISC, "disc not readable"); return; }
+        if (!read_retry(0x40000, pt, 0x20, false)) {
+            set_note(DEV_DISC, "disc not readable");
+            return;
+        }
+
         u32 nparts = be32(pt);
         u64 tbl = (u64)be32(pt + 4) << 2;
-        if (nparts == 0 || nparts > 4) { set_note(DEV_DISC, "no data partition"); return; }
-        if (!read_retry(tbl, pt, 0x20, false)) { set_note(DEV_DISC, "disc not readable"); return; }
+        if (nparts == 0 || nparts > 4) {
+            set_note(DEV_DISC, "no data partition");
+            return;
+        }
+        if (!read_retry(tbl, pt, 0x20, false)) {
+            set_note(DEV_DISC, "disc not readable");
+            return;
+        }
+
         u32 raw_off = 0;
         bool found = false;
         for (u32 i = 0; i < nparts; i++)
@@ -379,11 +428,20 @@ static void refresh_disc(void)
                 found = true;
                 break;
             }
-        if (!found) { set_note(DEV_DISC, "no data partition"); return; }
+
+        if (!found) {
+            set_note(DEV_DISC, "no data partition");
+            return;
+        }
+
         if (DI_OpenPartition(raw_off) != 0) {
             DI_Reset();
-            if (DI_OpenPartition(raw_off) != 0) { set_note(DEV_DISC, "partition open failed"); return; }
+            if (DI_OpenPartition(raw_off) != 0) {
+                set_note(DEV_DISC, "partition open failed");
+                return;
+            }
         }
+
         part_raw_off = raw_off;
         partition_open = true;
         disc_kind = DISC_WII;
@@ -478,6 +536,7 @@ static bool fst_find(const char *rel, u32 *index)
         if (!hit)
             return false;
     }
+
     *index = cur;
     return true;
 }
@@ -558,6 +617,7 @@ bool virt_list(int dev, const char *rel, vfs_entry **out, int *count)
         *count = sys_n;
         return true;
     }
+
     u32 dir = 0;
     bool root = !*norm;
     if (!root && (!fst || !fst_find(rel, &dir) || !fst_is_dir(dir)))
@@ -578,24 +638,30 @@ bool virt_list(int dev, const char *rel, vfs_entry **out, int *count)
         l[k].size = l[k].is_dir ? 0 : (u64)fst_len(i);
         k++;
     }
+
     if (root && want_sys_dir()) {
         snprintf(l[k].name, sizeof(l[k].name), "sys");
         l[k++].is_dir = true;
     }
+
     if (root && want_iso()) {
         snprintf(l[k].name, sizeof(l[k].name), "disc.iso");
         l[k++].size = iso_size();
     }
+
     /* directories first, then by name, like every other drive */
     for (u32 a = 1; a < k; a++) {
         vfs_entry t = l[a];
         u32 b = a;
-        while (b > 0 && (l[b - 1].is_dir != t.is_dir ? !l[b - 1].is_dir : strcasecmp(l[b - 1].name, t.name) > 0)) {
+        while (b > 0 &&
+               (l[b - 1].is_dir != t.is_dir ? !l[b - 1].is_dir :
+                                              strcasecmp(l[b - 1].name, t.name) > 0)) {
             l[b] = l[b - 1];
             b--;
         }
         l[b] = t;
     }
+
     *out = l;
     *count = k;
     return true;
@@ -609,25 +675,46 @@ bool virt_stat(int dev, const char *rel, bool *is_dir, u64 *size)
         return mcard_stat(dev, rel, is_dir, size);
     if (dev == DEV_SEEPROM) {
         if (!seeprom_ok) return false;
-        if (!*rel) { if (is_dir) *is_dir = true; if (size) *size = 0; return true; }
+        if (!*rel) {
+            if (is_dir) *is_dir = true;
+            if (size) *size = 0;
+            return true;
+        }
         if (strcasecmp(rel, "seeprom.bin")) return false;
         if (is_dir) *is_dir = false;
         if (size) *size = SEEPROM_SIZE;
         return true;
     }
+
     if (!g_devs[DEV_DISC].mounted)
         return false;
     char norm[VFS_PATH_MAX];
     norm_rel(rel, norm, sizeof(norm));
-    if (!*norm) { if (is_dir) *is_dir = true; if (size) *size = 0; return true; }
+    if (!*norm) {
+        if (is_dir) *is_dir = true;
+        if (size) *size = 0;
+        return true;
+    }
+
     u32 i;
     if (fst && fst_find(rel, &i)) {
         if (is_dir) *is_dir = fst_is_dir(i);
         if (size) *size = fst_is_dir(i) ? 0 : (u64)fst_len(i);
         return true;
     }
-    if (!strcasecmp(norm, "sys") && want_sys_dir()) { if (is_dir) *is_dir = true; if (size) *size = 0; return true; }
-    if (!strcasecmp(norm, "disc.iso") && want_iso()) { if (is_dir) *is_dir = false; if (size) *size = iso_size(); return true; }
+
+    if (!strcasecmp(norm, "sys") && want_sys_dir()) {
+        if (is_dir) *is_dir = true;
+        if (size) *size = 0;
+        return true;
+    }
+
+    if (!strcasecmp(norm, "disc.iso") && want_iso()) {
+        if (is_dir) *is_dir = false;
+        if (size) *size = iso_size();
+        return true;
+    }
+
     const sysfile *sf = sys_lookup(norm);
     if (!sf) return false;
     if (is_dir) *is_dir = false;
@@ -648,10 +735,12 @@ bool virt_open(vfs_file *f, int dev, const char *rel)
         f->vkind = V_MCARD;
         return mcard_open(f, dev, rel);
     }
+
     if (dev == DEV_KEYS) {
         f->vkind = V_KEYS;
         return keys_open(f, rel);
     }
+
     if (dev == DEV_SEEPROM) {
         f->vkind = V_SEEPROM;
     } else {
@@ -669,6 +758,7 @@ bool virt_open(vfs_file *f, int dev, const char *rel)
             f->base = sf->off;
         }
     }
+
     return true;
 }
 
