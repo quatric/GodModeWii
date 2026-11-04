@@ -100,7 +100,7 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
     ui_color(C_YELLOW, true);
     ui_field(6, 1, cols - 2, "Install :  %s", dev < 0 ? "no drive to install onto!" : dev == DEV_SD ? "SD card" : g_devs[dev].tag);
     ui_color(C_WHITE, false);
-    ui_field(7, 1, cols - 2, "Archives (.zip .7z .rar) are unpacked into apps; a .dol / .elf can be started.");
+    ui_field(7, 1, cols - 2, "Archives (.zip .7z .rar) install into apps; a .dol / .elf can run.");
     if (busy) {
         char a[24], b[24];
         ui_fmt_size(a, sizeof(a), done);
