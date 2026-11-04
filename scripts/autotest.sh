@@ -12,6 +12,7 @@
 # mtools (mformat, mcopy) and Dolphin. DOLPHIN=/path/to/Dolphin overrides where Dolphin is.
 # The 3D model viewer draws with the GPU: run it with GFX=Vulkan (or OGL / Metal) so Dolphin renders,
 # and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
+# AUDIO=True also saves what was played as OUTDIR/dspdump.wav.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out=$1; shift
@@ -49,6 +50,8 @@ ConfirmStop = False
 UsePanicHandlers = False
 [DSP]
 Backend = No Audio Output
+DumpAudio = ${AUDIO:-False}
+DumpAudioSilent = ${AUDIO:-False}
 [Analytics]
 Enabled = False
 PermissionAsked = True
@@ -80,3 +83,6 @@ while mcopy -o -i "$sd" "::/shot_$i.yuv" "$work/shot_$i.yuv" 2>/dev/null; do
     python3 -I "$here/scripts/yuv2png.py" "$work/$n.yuv" "$out/$n.png"
     echo "$out/$n.png"
 done
+mcopy -o -i "$sd" ::/gmwtest.log "$out/gmwtest.log" 2>/dev/null && echo "$out/gmwtest.log"
+for f in "$work"/user/Dump/Audio/*.wav; do [ -f "$f" ] && cp "$f" "$out/" && echo "$out/$(basename "$f")"; done
+exit 0

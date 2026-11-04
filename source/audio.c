@@ -11,6 +11,8 @@
  *   BTSND                     Wii U boot sound, 48 kHz stereo PCM16
  * Everything is decoded block by block while playing (libogc's ASND), so
  * long streams never need to fit in memory.
+ * WAV / AIFF, MP3, FLAC and Ogg Vorbis come from audio_gen.c and play through
+ * the same buffering (play_gen).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,12 +20,15 @@
 #include <malloc.h>
 #include <gccore.h>
 #include <asndlib.h>
+#include <ogc/lwp_watchdog.h>
+#include <ogc/machine/processor.h>
 
 #include "media.h"
 #include "vfs.h"
 #include "ui.h"
 #include "input.h"
 #include "archive.h"
+#include "audio_gen.h"
 
 #define MAXCH      16
 #define OUT_FRAMES 4096                     /* frames per ASND buffer */
@@ -602,6 +607,95 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
     ui_reset();
 }
 
+/* ---------------------------------------------------------------- output to ASND
+ *
+ * OQ_BUFS buffers of OUT_FRAMES stereo frames in a ring. The first starts the voice; after that
+ * ASND calls oq_cb from its interrupt whenever the voice has no second buffer queued, and oq_cb
+ * hands it the next filled one. With a callback set the voice never stops on its own, so running
+ * dry for a moment only leaves a gap. A buffer is refilled only once ASND has moved past it: the
+ * voice is playing buffer queued - 1 or queued - 2. */
+#define OQ_BUFS 6
+
+static struct {
+    s16 *buf[OQ_BUFS];
+    s32 voice;
+    volatile u32 filled, queued;    /* buffers filled by the player / handed to ASND */
+    volatile u32 idle;              /* callbacks since the last hand-off that had nothing to hand over */
+    bool started, padded;
+} oq;
+
+static void oq_cb(s32 voice)
+{
+    if (oq.queued < oq.filled && ASND_AddVoice(voice, oq.buf[oq.queued % OQ_BUFS], OUT_FRAMES * 4) == SND_OK) {
+        oq.queued++;
+        oq.idle = 0;
+    } else
+        oq.idle++;
+}
+
+static bool oq_open(void)
+{
+    memset(&oq, 0, sizeof(oq));
+    for (int i = 0; i < OQ_BUFS; i++)
+        if (!(oq.buf[i] = memalign(32, OUT_FRAMES * 4))) return false;
+    ASND_Init();
+    ASND_Pause(0);
+    oq.voice = ASND_GetFirstUnusedVoice();
+    return true;
+}
+
+static void oq_close(void)
+{
+    if (oq.started) ASND_StopVoice(oq.voice);
+    ASND_End();
+    for (int i = 0; i < OQ_BUFS; i++) free(oq.buf[i]);
+    memset(&oq, 0, sizeof(oq));
+}
+
+static bool oq_space(void) { return oq.filled < oq.queued + OQ_BUFS - 2; }
+
+/* Queues `n` (at most OUT_FRAMES) frames, padded with silence; src NULL queues silence. */
+static void oq_push(const s16 *src, u32 n, u32 rate)
+{
+    s16 *b = oq.buf[oq.filled % OQ_BUFS];
+    if (src) memcpy(b, src, n * 4);
+    else n = 0;
+    if (n < OUT_FRAMES) memset((u8 *)b + n * 4, 0, (OUT_FRAMES - n) * 4);
+    DCFlushRange(b, OUT_FRAMES * 4);
+    u32 level;
+    _CPU_ISR_Disable(level);
+    oq.filled++;
+    if (!oq.started) {
+        ASND_SetVoice(oq.voice, VOICE_STEREO_16BIT, rate, 0, b, OUT_FRAMES * 4, 255, 255, oq_cb);
+        oq.queued = oq.filled;
+        oq.started = true;
+    }
+    _CPU_ISR_Restore(level);
+}
+
+/* After the last frames: true once they have played. Queues one buffer of silence behind them;
+ * when ASND moves on to it, the real ones are done. */
+static bool oq_drained(u32 rate)
+{
+    if (!oq.started) return true;
+    if (!oq.padded) {
+        if (!oq_space()) return false;
+        oq_push(NULL, 0, rate);
+        oq.padded = true;
+        return false;
+    }
+    return oq.queued == oq.filled && oq.idle > 0;
+}
+
+static void oq_pause(bool on) { if (oq.started) ASND_PauseVoice(oq.voice, on); }
+
+/* Frames already heard, roughly: everything before the buffer now playing. */
+static u64 oq_played(u64 submitted)
+{
+    u64 q = oq.queued > 1 ? (u64)(oq.queued - 1) * OUT_FRAMES : 0;
+    return q < submitted ? q : submitted;
+}
+
 static bool play(const char *path)
 {
     snd_t s;
@@ -618,27 +712,23 @@ static bool play(const char *path)
     if (s.layout == L_INTERLEAVED && s.last_samples > maxn) maxn = s.last_samples;
     s16 *pl[3] = { malloc(maxn * 2 + 64), malloc(maxn * 2 + 64), malloc(maxn * 2 + 64) };
     s16 *fifo = malloc(FIFO_FRAMES * 4);
-    s16 *out[2] = { memalign(32, OUT_FRAMES * 4), memalign(32, OUT_FRAMES * 4) };
-    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || !out[0] || !out[1] || maxn > FIFO_FRAMES - OUT_FRAMES) {
-        free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo); free(out[0]); free(out[1]);
+    if (!raw || !pl[0] || !pl[1] || !pl[2] || !fifo || maxn > FIFO_FRAMES - OUT_FRAMES || !oq_open()) {
+        oq_close();
+        free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo);
         snd_close(&s);
         ui_message("AUDIO", C_RED, "Not enough memory to play this file.");
         return true;
     }
 
-    ASND_Init();
-    ASND_Pause(0);
-    s32 voice = ASND_GetFirstUnusedVoice();
-
     u32 block = 0, fifo_n = 0, skip = 0, decoded_to = 0, submitted = 0;
-    bool loop = s.loop, paused = false, started = false, ended = false;
+    bool loop = s.loop, paused = false, ended = false;
     int pair = 0, chans[2] = { 0, s.nch > 1 ? 1 : 0 };
     u32 loop_block = 0;
     s32 loop_h1[MAXCH], loop_h2[MAXCH];
     bool have_loop_state = false;
     if (s.loop)
         for (loop_block = 0; loop_block + 1 < s.nblocks && block_first(&s, loop_block + 1) <= s.loop_start; loop_block++) ;
-    int cur = 0, frame = 0;
+    int frame = 0;
     const char *name = vfs_basename(path);
 
     for (;;) {
@@ -674,27 +764,15 @@ static bool play(const char *path)
         }
 
         /* hand full buffers to ASND */
-        if (!paused && (fifo_n >= OUT_FRAMES || (ended && fifo_n))) {
-            bool ready = !started || ASND_TestVoiceBufferReady(voice);
-            if (ready) {
-                u32 take = fifo_n < OUT_FRAMES ? fifo_n : OUT_FRAMES;
-                memcpy(out[cur], fifo, take * 4);
-                if (take < OUT_FRAMES) memset((u8 *)out[cur] + take * 4, 0, (OUT_FRAMES - take) * 4);
-                memmove(fifo, fifo + take * 2, (fifo_n - take) * 4);
-                fifo_n -= take;
-                DCFlushRange(out[cur], OUT_FRAMES * 4);
-                if (!started) {
-                    ASND_SetVoice(voice, VOICE_STEREO_16BIT, s.rate, 0, out[cur], OUT_FRAMES * 4, 255, 255, NULL);
-                    started = true;
-                } else {
-                    ASND_AddVoice(voice, out[cur], OUT_FRAMES * 4);
-                }
-                submitted += take;
-                cur ^= 1;
-                continue;               /* fill the second buffer straight away */
-            }
+        if (!paused && (fifo_n >= OUT_FRAMES || (ended && fifo_n)) && oq_space()) {
+            u32 take = fifo_n < OUT_FRAMES ? fifo_n : OUT_FRAMES;
+            oq_push(fifo, take, s.rate);
+            memmove(fifo, fifo + take * 2, (fifo_n - take) * 4);
+            fifo_n -= take;
+            submitted += take;
+            continue;               /* fill the next buffer straight away */
         }
-        if (ended && !fifo_n && started && ASND_StatusVoice(voice) == SND_UNUSED)
+        if (ended && !fifo_n && oq_drained(s.rate))
             break;
 
         u32 p = DetectInput(IN_DOWN);
@@ -702,7 +780,7 @@ static bool play(const char *path)
             break;
         if (p & WPAD_BUTTON_A) {
             paused = !paused;
-            if (started) ASND_PauseVoice(voice, paused);
+            oq_pause(paused);
         }
         if ((p & WPAD_BUTTON_1) && s.loop)
             loop = !loop;
@@ -713,22 +791,147 @@ static bool play(const char *path)
             chans[1] = pair * 2 + 1 < s.nch ? pair * 2 + 1 : pair * 2;
         }
         if (p || ++frame % 15 == 0) {
-            u32 played = submitted > OUT_FRAMES * 2 ? submitted - OUT_FRAMES * 2 : 0;
+            u32 played = (u32)oq_played(submitted);
             if (s.loop && loop && played > s.total)
                 played = s.loop_start + (played - s.total) % (s.total - s.loop_start ? s.total - s.loop_start : 1);
             draw(&s, name, played > s.total ? s.total : played, paused, loop, pair);
         }
     }
 
-    ASND_StopVoice(voice);
-    ASND_End();
-    free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo); free(out[0]); free(out[1]);
+    oq_close();
+    free(raw); free(pl[0]); free(pl[1]); free(pl[2]); free(fifo);
     snd_close(&s);
+    return true;
+}
+
+/* ---------------------------------------------------------------- common formats */
+
+static void draw_gen(const gen_info *in, const char *name, u64 played, bool paused, bool repeat, int pair)
+{
+    int cols = ui_cols(), rows = ui_rows();
+    ui_clear();
+    ui_bg(C_BLUE);
+    ui_color(C_WHITE, true);
+    ui_field(0, 0, cols - 1, " AUDIO  %s", name);
+    ui_reset();
+    ui_color(C_WHITE, false);
+    ui_fill(1, 0, cols - 1, '-');
+    ui_color(C_WHITE, true);
+    ui_field(3, 2, cols - 4, "Format:    %s (%s%s%s)", in->format, in->codec, in->detail[0] ? ", " : "", in->detail);
+    ui_field(4, 2, cols - 4, "Channels:  %d   Sample rate: %d Hz", in->channels, in->rate);
+    if (in->channels > 2)
+        ui_field(5, 2, cols - 4, "Playing:   channels %d + %d", pair * 2 + 1,
+                 pair * 2 + 2 <= in->channels ? pair * 2 + 2 : pair * 2 + 1);
+    char t1[16], t2[16];
+    fmt_time(t1, sizeof(t1), (u32)played, in->rate);
+    if (in->total) fmt_time(t2, sizeof(t2), (u32)in->total, in->rate);
+    else snprintf(t2, sizeof(t2), "--:--");
+    ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2, repeat ? "(repeat)" : "");
+    if (in->total) {
+        int pct = (int)(played * 100 / in->total);
+        ui_bar(10, 2, cols - 6, pct > 100 ? 100 : pct, C_GREEN);
+    }
+    ui_color(C_CYAN, true);
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat on/off%s", in->channels > 2 ? "  +/- Channels" : "");
+    ui_reset();
+}
+
+static bool play_gen(const char *path)
+{
+    gen_t *g = gen_open(path);
+    if (!g) return false;
+    const gen_info *in = gen_get_info(g);
+    int nch = in->channels;
+    s16 *dec = malloc(OUT_FRAMES * nch * 2);
+    s16 *fifo = malloc(FIFO_FRAMES * 4);
+    if (!dec || !fifo || !oq_open()) {
+        oq_close();
+        free(dec); free(fifo);
+        gen_close(g);
+        ui_message("AUDIO", C_RED, "Not enough memory to play this file.");
+        return true;
+    }
+    u32 fifo_n = 0;
+    u64 submitted = 0, decoded = 0, since_rewind = 0;
+    bool repeat = false, paused = false, ended = false;
+    int pair = 0, chans[2] = { 0, nch > 1 ? 1 : 0 }, frame = 0;
+    const char *name = vfs_basename(path);
+    draw_gen(in, name, 0, false, repeat, pair);
+#ifdef GMW_AUTOTEST
+    u64 t_start = gettime();
+#endif
+
+    for (;;) {
+        while (!ended && fifo_n < OUT_FRAMES * 2) {
+            u32 n = gen_read(g, dec, OUT_FRAMES);
+            if (!n) {
+                /* the end: start over when repeating (and the file played something at all) */
+                if (repeat && since_rewind && gen_rewind(g)) { since_rewind = 0; continue; }
+                ended = true;
+                break;
+            }
+            for (u32 i = 0; i < n; i++) {
+                fifo[fifo_n * 2] = dec[i * nch + chans[0]];
+                fifo[fifo_n * 2 + 1] = dec[i * nch + chans[1]];
+                fifo_n++;
+            }
+            decoded += n;
+            since_rewind += n;
+        }
+        /* hand full buffers to ASND */
+        if (!paused && (fifo_n >= OUT_FRAMES || (ended && fifo_n)) && oq_space()) {
+            u32 take = fifo_n < OUT_FRAMES ? fifo_n : OUT_FRAMES;
+            oq_push(fifo, take, in->rate);
+            memmove(fifo, fifo + take * 2, (fifo_n - take) * 4);
+            fifo_n -= take;
+            submitted += take;
+            continue;               /* fill the next buffer straight away */
+        }
+        if (ended && !fifo_n && oq_drained(in->rate))
+            break;
+
+        u32 p = DetectInput(IN_DOWN);
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME))
+            break;
+        if (p & WPAD_BUTTON_A) {
+            paused = !paused;
+            oq_pause(paused);
+        }
+        if (p & WPAD_BUTTON_1)
+            repeat = !repeat;
+        if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && nch > 2) {
+            int pairs = (nch + 1) / 2;
+            pair = (pair + (p & WPAD_BUTTON_PLUS ? 1 : pairs - 1)) % pairs;
+            chans[0] = pair * 2;
+            chans[1] = pair * 2 + 1 < nch ? pair * 2 + 1 : pair * 2;
+        }
+        if (p || ++frame % 15 == 0) {
+            u64 played = oq_played(submitted);
+            if (in->total) played %= in->total + 1;
+            draw_gen(in, name, played, paused, repeat, pair);
+        }
+    }
+    (void)decoded;
+#ifdef GMW_AUTOTEST
+    {
+        FILE *lf = fopen("sd:/gmwtest.log", "a");
+        if (lf) {
+            fprintf(lf, "audio %s: decoded %llu submitted %llu rate %u ms %llu\n", name,
+                    (unsigned long long)decoded, (unsigned long long)submitted, (unsigned)in->rate,
+                    (unsigned long long)diff_msec(t_start, gettime()));
+            fclose(lf);
+        }
+    }
+#endif
+    oq_close();
+    free(dec); free(fifo);
+    gen_close(g);
     return true;
 }
 
 bool audio_is_name(const char *name)
 {
+    if (gen_is_name(name)) return true;
     static const char *const ext[] = { ".brstm", ".bcstm", ".bfstm", ".brwav", ".rwav", ".bcwav", ".cwav", ".bfwav",
                                        ".fwav", ".bns", ".dsp", ".ast", ".btsnd", NULL };
     for (int i = 0; ext[i]; i++)
@@ -739,7 +942,5 @@ bool audio_is_name(const char *name)
 
 bool audio_play(const char *path)
 {
-    if (play(path))
-        return true;
-    return false;
+    return play(path) || play_gen(path);
 }
