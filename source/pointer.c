@@ -100,7 +100,8 @@ int ptr_drag_update(ptr_drag *d, u32 held, int *dx, int *dy)
         return was ? PD_TAP : PD_NONE;
     }
     if (!d->ptr_press || !on) return PD_NONE;   /* pointed off the screen mid-drag: wait for it */
-    if (!d->dragged && abs(x - d->x0) + abs(y - d->y0) < 6) return PD_NONE;   /* IR jitter */
+    /* Pressing A wobbles the remote by more than IR jitter; under this it is still a tap. */
+    if (!d->dragged && abs(x - d->x0) + abs(y - d->y0) < 16) return PD_NONE;
     if (!d->dragged) { d->lx = d->x0; d->ly = d->y0; }
     d->dragged = true;
     *dx = x - d->lx;
