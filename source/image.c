@@ -25,6 +25,7 @@
 #include "media.h"
 #include "vfs.h"
 #include "ui.h"
+#include "pointer.h"
 #include "input.h"
 #include <input_wii.h>
 #include "archive.h"
@@ -556,11 +557,14 @@ static u8 *load_file(const char *path, u32 *len)
     if (f.size > FILE_MAX || f.size < 8) { vfs_close(&f); return NULL; }
     u32 n = (u32)f.size, got = 0;
     u8 *b = memalign(32, (n + 31) & ~31u);
+    ui_busy_begin(vfs_basename(path));
     while (b && got < n) {
+        ui_busy_progress(got, n);
         s32 r = vfs_read(&f, b + got, n - got > 0x40000 ? 0x40000 : n - got);
         if (r <= 0) break;
         got += r;
     }
+    ui_busy_end();
     vfs_close(&f);
     if (b && got != n) { free(b); return NULL; }
     if (b && n > 10 && !memcmp(b, "DKZF", 4)) {             /* Donkey Konga .tpl.dkz: zlib inside */
@@ -778,6 +782,9 @@ static bool view(const char *start_path)
     ui_framebuffer(&fw_all, &fh_all);
     int lr_held = 0, lr_dir = 0;                /* Left / Right: frames held, which one */
     bool lr_panned = false;
+    ptr_drag drag = { 0 };
+    int swipe = 0, scale_now = 256;             /* sideways drag on a whole picture; current scale */
+    ptr_begin();
     for (;;) {
         img_t *im = &s->img[cur];
         if (shown != cur) {
@@ -809,8 +816,10 @@ static bool view(const char *start_path)
             int pct = (scale * 100 + 128) / 256;
             /* Only the first time: clearing the screen before every redraw made it flash. The picture
              * area is redrawn whole and the text lines are overwritten in place. */
+            ptr_hide();
             if (full) ui_clear();
             full = false;
+            scale_now = scale;
             if (rgba) blit(rgba, im->w, im->h, scale, panx, pany, bg);
             else blit_clear();
             ui_color(C_WHITE, true);
@@ -822,16 +831,38 @@ static bool view(const char *start_path)
                 ui_field(1, 0, ui_cols() - 1, "%s", "");
             if (err) { ui_color(C_RED, true); ui_field(3, 2, ui_cols() - 4, "%s", err); }
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next (hold: pan)  +/- Zoom  1 Fit/1:1  A Bg  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next  +/- Zoom  1 Fit/1:1  A Bg  Point+A: Pan  2 Info  B Close");
             ui_reset();
             redraw = false;
             UI_TEST_SHOT();
         }
+        ptr_show();
         u32 p = input_pressed();
         u32 held = INPUT_ButtonsHeld();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         int step = im->w / 8 > 8 ? im->w / 8 : 8;
         bool whole = fit || !rgba || ((im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80);
+
+        /* The pointer: drag with A held to move a big picture; on one that fits, a sideways swipe
+         * flips like Left / Right. A without dragging changes the background, as the button does. */
+        int pdx, pdy, pev = ptr_drag_update(&drag, held, &pdx, &pdy);
+        int pflip = 0;
+        if (pev == PD_MOVE && !whole) {
+            panx -= pdx * 256 / scale_now;
+            pany -= pdy * 256 / scale_now;
+            redraw = true;
+        } else if (pev == PD_MOVE) {
+            swipe += pdx;
+        }
+        if (!drag.down) {
+            if (swipe <= -80) pflip = 1;            /* dragged the picture left: the next one */
+            else if (swipe >= 80) pflip = -1;
+            swipe = 0;
+        }
+        if (pev == PD_TAP) { bg = (bg + 1) % BG_COUNT; redraw = true; }
+        int wheel = ptr_wheel();
+        if (wheel < 0) p |= WPAD_BUTTON_PLUS;       /* mouse wheel: zoom */
+        if (wheel > 0) p |= WPAD_BUTTON_MINUS;
         if (!whole && (p & WPAD_BUTTON_UP))    { pany -= step; redraw = true; }
         if (!whole && (p & WPAD_BUTTON_DOWN))  { pany += step; redraw = true; }
 
@@ -853,6 +884,8 @@ static bool view(const char *start_path)
         }
         if (whole && lr_held == 1) { flip = lr_dir; lr_held = -1000; }   /* whole picture: flip at once, no hold */
         if (lr_held < 0 && !(held & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT))) lr_held = 0;
+        if (pflip) flip = pflip;
+        if (flip) ptr_hide();                       /* the loading box may draw where it is */
 
         if (flip) {
             int next = cur + flip;
@@ -890,10 +923,11 @@ static bool view(const char *start_path)
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && rgba &&
             (im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80)
             panx = pany = 0;                        /* back to all of it on screen: centre it again */
-        if (p & WPAD_BUTTON_A) { bg = (bg + 1) % BG_COUNT; redraw = true; }
+        if ((p & WPAD_BUTTON_A) && !ptr_drag_owns_a(&drag)) { bg = (bg + 1) % BG_COUNT; redraw = true; }
         if (p & WPAD_BUTTON_2) { info = !info; redraw = true; }
         if (p & WPAD_BUTTON_1) { fit = !fit; if (!fit) { zoom = ZOOM_NATIVE; panx = pany = 0; } redraw = true; }
     }
+    ptr_hide();
     if (owned) free(rgba);
     free_set(s);
     free(s);

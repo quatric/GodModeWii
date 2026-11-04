@@ -41,6 +41,15 @@ bool ui_text_edit(const char *title, char *buf, int maxlen);
 
 void ui_splash(const char *status);
 
+/* A loading box with an old-style text progress bar, for loads that take a while. Between begin and
+ * end, ticks (from file reads) draw it once the load has run for a moment and animate it; progress
+ * shows a percentage instead of the moving block. Nested begins keep the outer label. The screen
+ * under the box is left for the caller to redraw. */
+void ui_busy_begin(const char *what);
+void ui_busy_end(void);
+void ui_busy_tick(void);
+void ui_busy_progress(u64 done, u64 total);
+
 /* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
 void *ui_framebuffer(int *w, int *h);
 

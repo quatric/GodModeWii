@@ -24,6 +24,7 @@
 #include "media.h"
 #include "vfs.h"
 #include "ui.h"
+#include "pointer.h"
 #include "input.h"
 #include <input_wii.h>
 #include "archive.h"
@@ -1019,11 +1020,14 @@ static u8 *load_file(const char *path, u32 *len)
     if (f.size > FILE_MAX || f.size < 0x20) { vfs_close(&f); return NULL; }
     u32 n = (u32)f.size, got = 0;
     u8 *b = memalign(32, (n + 31) & ~31u);
+    ui_busy_begin(vfs_basename(path));
     while (b && got < n) {
+        ui_busy_progress(got, n);
         s32 r = vfs_read(&f, b + got, n - got > 0x40000 ? 0x40000 : n - got);
         if (r <= 0) break;
         got += r;
     }
+    ui_busy_end();
     vfs_close(&f);
     if (b && got != n) { free(b); return NULL; }
     if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
@@ -1111,8 +1115,11 @@ bool model_view(const char *path)
     bool first = true;
     int shade = SH_LIT;
     bool info = true, redraw = true;
+    ptr_drag drag = { 0 };
+    ptr_begin();
     for (;;) {
         if (redraw) {
+            ptr_hide();
             if (first) render(&m, yaw, pitch, dist, shade);  /* the first copy after GX starts up doesn't reach the screen */
             first = false;
             render(&m, yaw, pitch, dist, shade);
@@ -1123,13 +1130,29 @@ bool model_view(const char *path)
                          (unsigned)(m.n / 3), m.meshes, m.textured, m.ntex, m.bones,
                          shade == SH_LIT ? "lit" : shade == SH_FLAT ? "unlit" : "wireframe");
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " D-Pad Rotate  +/- Zoom  A Shading  1 Next model  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " D-Pad/Point+A drag Rotate  +/- Zoom  A Shading  1 Next  2 Info  B Close");
             ui_reset();
             redraw = false;
             UI_TEST_SHOT();
         }
+        ptr_show();
         u32 p = DetectInput(IN_DOWN), h = INPUT_ButtonsHeld();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
+        /* The pointer: drag with A held to turn the model; A without dragging changes the shading. */
+        int pdx, pdy, pev = ptr_drag_update(&drag, h, &pdx, &pdy);
+        if (pev == PD_MOVE) {
+            yaw += pdx * 0.5f;
+            pitch += pdy * 0.5f;
+            redraw = true;
+        }
+        if (pev == PD_TAP) { shade = (shade + 1) % SH_COUNT; redraw = true; }
+        int wheel = ptr_wheel();
+        if (wheel) {
+            dist *= wheel < 0 ? 0.9f : 1.1f;
+            if (dist < 0.3f) dist = 0.3f;
+            if (dist > 40) dist = 40;
+            redraw = true;
+        }
         u32 dir = h & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT | WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS);
         if (dir) {
             if (h & WPAD_BUTTON_LEFT) yaw -= 4;
@@ -1142,11 +1165,12 @@ bool model_view(const char *path)
             if (dist > 40) dist = 40;
             redraw = true;
         }
-        if (p & WPAD_BUTTON_A) { shade = (shade + 1) % SH_COUNT; redraw = true; }
+        if ((p & WPAD_BUTTON_A) && !ptr_drag_owns_a(&drag)) { shade = (shade + 1) % SH_COUNT; redraw = true; }
         if (p & WPAD_BUTTON_2) { info = !info; redraw = true; }
         if ((p & WPAD_BUTTON_1) && count > 1) {
             for (int tries = 0; tries < count; tries++) {
                 cur = (cur + 1) % count;
+                ptr_hide();
                 ui_splash("Loading model...");
                 if (load_model(&m, b, len, offs[cur], names[cur])) break;
             }
@@ -1155,6 +1179,7 @@ bool model_view(const char *path)
         }
     }
     if (gx_fifo) GX_DrawDone();
+    ptr_hide();
     free_model(&m);
     free(b);
     ui_wipe();

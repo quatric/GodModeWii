@@ -12,6 +12,7 @@
 #include "arcfs.h"
 #include "archive.h"
 #include "otp.h"
+#include "ui.h"
 
 #define KEY_MAX 512
 #define CACHE_N 4
@@ -339,7 +340,10 @@ static entry *get_archive(const char *spec, size_t n)
         return NULL;
     }
     opening = key;
+    busy_hook = ui_busy_tick;
+    ui_busy_begin(name);
     archive_t *a = archive_open(&src, name);
+    ui_busy_end();
     opening = NULL;
     if (!a) {
         if (src.close) src.close(src.ctx);

@@ -21,6 +21,8 @@ typedef struct src {
     uint64_t size;
 } src_t;
 
+/* Called between the pieces of src_read_full, for the loading box (set by arcfs). */
+extern void (*busy_hook)(void);
 bool src_read_full(const src_t *s, uint64_t off, void *buf, uint32_t len);
 src_t src_from_memory(uint8_t *data, uint64_t size);        /* owns data, free()d on close */
 

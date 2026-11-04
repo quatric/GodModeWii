@@ -33,4 +33,11 @@ int seq_voices(const seq_t *s);                     /* notes sounding */
 uint64_t seq_frames(const seq_t *s);                /* frames rendered so far */
 int seq_tempo(const seq_t *s);                      /* beats per minute */
 
+#define SEQ_MAX_TRACKS 16
+/* Tracks with bit i set are silent (they keep playing, so they come back in time). */
+void seq_set_muted(seq_t *s, uint32_t mask);
+/* Track i: 0 not started, 1 running, 2 finished (or only its last notes still sounding). Its
+ * program, notes sounding and loudest note since the previous call (0..about 1). */
+int seq_track(seq_t *s, int i, int *prg, int *notes, float *level);
+
 #endif

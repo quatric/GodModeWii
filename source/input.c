@@ -9,8 +9,7 @@
 
 void input_init(void)
 {
-    /* Buttons only: no IR pointer and no mouse needed for the file manager. */
-    INPUT_InitEx(INPUT_INIT_NO_POINTER | INPUT_INIT_NO_MOUSE);
+    INPUT_InitEx(0);                                /* the pointer and mouse drive the viewers' cursor */
 
     INPUT_KeyboardMapSet(0x4C, 0);                  /* Delete: unused here */
     INPUT_KeyboardMapSet(0x06, WPAD_BUTTON_PLUS);   /* C: copy */

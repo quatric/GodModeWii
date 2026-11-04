@@ -5,6 +5,8 @@
 #include <malloc.h>
 #include <unistd.h>
 
+#include <ogc/lwp_watchdog.h>
+
 #include "ui.h"
 #include "input.h"
 
@@ -539,4 +541,82 @@ void ui_splash(const char *status)
     }
     ui_reset();
     ui_field(r + 7, 0, g_cols - 1, "%*s%s", (g_cols - (int)strlen(status)) / 2, "", status);
+}
+
+/* ---------------------------------------------------------------- loading box */
+
+static int busy_depth;
+static u64 busy_start, busy_last;
+static char busy_what[48];
+static int busy_pct = -1, busy_frame;
+static bool busy_shown;
+
+void ui_busy_begin(const char *what)
+{
+    if (busy_depth++) return;
+    ui_ascii(busy_what, sizeof(busy_what), what ? what : "");
+    busy_start = gettime();
+    busy_last = 0;
+    busy_pct = -1;
+    busy_frame = 0;
+    busy_shown = false;
+}
+
+void ui_busy_end(void)
+{
+    if (busy_depth > 0) busy_depth--;
+}
+
+static void busy_draw(void)
+{
+    int w = g_cols - 16 < 50 ? g_cols - 16 : 50, c = (g_cols - w) / 2, r = g_rows / 2 + 3, in = w - 4;   /* under the splash text */
+    char bar[96], line[128];
+    int cells = in - 7;                                  /* "[" cells "] 100%" */
+    if (cells > (int)sizeof(bar) - 1) cells = sizeof(bar) - 1;
+    if (busy_pct >= 0) {
+        int fill = busy_pct * cells / 100;
+        for (int i = 0; i < cells; i++) bar[i] = i < fill ? '#' : '.';
+    } else {                                             /* a block bouncing back and forth */
+        int blk = cells / 5 < 3 ? 3 : cells / 5, span = cells - blk, pos = busy_frame % (2 * span);
+        if (pos > span) pos = 2 * span - pos;
+        for (int i = 0; i < cells; i++) bar[i] = i >= pos && i < pos + blk ? '#' : '.';
+    }
+    bar[cells] = 0;
+    static const char spin[] = "|/-\\";
+    ui_bg(C_BLUE);
+    ui_color(C_WHITE, true);
+    ui_fill(r, c, w, ' ');
+    ui_field(r, c + 1, w - 2, "+%.*s+", w - 4, "------------------------------------------------------------------------------");
+    snprintf(line, sizeof(line), "Loading %s %c", busy_what, spin[busy_frame & 3]);
+    ui_fill(r + 1, c, w, ' ');
+    ui_field(r + 1, c + 2, in, "%s", line);
+    if (busy_pct >= 0) snprintf(line, sizeof(line), "[%s] %3d%%", bar, busy_pct);
+    else snprintf(line, sizeof(line), "[%s] %3us", bar, (unsigned)(ticks_to_millisecs(gettime() - busy_start) / 1000));
+    ui_fill(r + 2, c, w, ' ');
+    ui_color(C_YELLOW, true);
+    ui_field(r + 2, c + 2, in, "%s", line);
+    ui_color(C_WHITE, true);
+    ui_fill(r + 3, c, w, ' ');
+    ui_field(r + 3, c + 1, w - 2, "+%.*s+", w - 4, "------------------------------------------------------------------------------");
+    ui_reset();
+    fflush(stdout);
+}
+
+void ui_busy_tick(void)
+{
+    if (!busy_depth) return;
+    u64 now = gettime();
+    if (ticks_to_millisecs(now - busy_start) < 400) return;         /* quick loads show nothing */
+    if (busy_shown && ticks_to_millisecs(now - busy_last) < 100) return;
+    busy_last = now;
+    busy_shown = true;
+    busy_frame++;
+    busy_draw();
+}
+
+void ui_busy_progress(u64 done, u64 total)
+{
+    if (!busy_depth || !total) return;
+    busy_pct = done >= total ? 100 : (int)(done * 100 / total);
+    ui_busy_tick();
 }

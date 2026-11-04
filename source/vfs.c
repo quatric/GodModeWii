@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <fat.h>
+#include "ui.h"
 #include <sdcard/wiisd_io.h>
 #include <sdcard/gcsd.h>
 #include <ogc/usb.h>
@@ -1260,6 +1261,7 @@ void vfs_unbuffered(vfs_file *f)
 
 s32 vfs_read(vfs_file *f, void *buf, u32 len)
 {
+    ui_busy_tick();
     if (f->arc)
         return arcfs_read(f, buf, len);
     if (vfs_is_virtual(f->dev))

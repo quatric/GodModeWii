@@ -134,6 +134,8 @@ struct seq {
     /* playback */
     track_t t[MAX_TRACKS];
     voice_t v[MAX_VOICES];
+    uint32_t muted, seen;               /* tracks the listener turned off; tracks that have run */
+    float level[MAX_TRACKS];            /* loudest note per track, for the player's meters */
     int16_t lvar[16];
     int tempo, timebase, main_vol;
     float sound_vol;
@@ -844,12 +846,15 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
         float mix[MS_FRAMES * 2];
         memset(mix, 0, n * 2 * sizeof(float));
         float master = s->sound_vol * (s->main_vol / 127.0f) * (s->main_vol / 127.0f) * 0.5f;
+        for (int i = 0; i < MAX_TRACKS; i++) if (s->t[i].on) s->seen |= 1u << i;
         for (int i = 0; i < MAX_VOICES; i++) {
             voice_t *v = &s->v[i];
             if (!v->on) continue;
             const track_t *t = &s->t[v->track];
             float tv = t->vol / 127.0f, ev = t->vol2 / 127.0f;
             float g = master * v->gain * tv * tv * ev * ev * db_to_gain(v->env);
+            if (g > s->level[v->track]) s->level[v->track] = g;
+            if (s->muted >> v->track & 1) g = 0;    /* turned off: keeps its place, so it comes back in time */
             int p = t->pan + v->rpan;
             if (p < 0) p = 0;
             if (p > 127) p = 127;
@@ -904,4 +909,17 @@ int seq_voices(const seq_t *s)
     int n = 0;
     for (int i = 0; i < MAX_VOICES; i++) n += s->v[i].on;
     return n;
+}
+
+void seq_set_muted(seq_t *s, uint32_t mask) { s->muted = mask; }
+
+int seq_track(seq_t *s, int i, int *prg, int *notes, float *level)
+{
+    if (i < 0 || i >= MAX_TRACKS) return 0;
+    int n = 0;
+    for (int k = 0; k < MAX_VOICES; k++) n += s->v[k].on && s->v[k].track == i;
+    if (prg) *prg = s->t[i].prg;
+    if (notes) *notes = n;
+    if (level) { *level = s->level[i]; s->level[i] *= 0.5f; }
+    return s->t[i].on ? 1 : (s->seen >> i & 1) || n ? 2 : 0;
 }

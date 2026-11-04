@@ -70,11 +70,14 @@ bool arc_prng_key(uint8_t key[16])
 
 /* ---------------------------------------------------------------- sources */
 
+void (*busy_hook)(void);
+
 bool src_read_full(const src_t *s, uint64_t off, void *buf, uint32_t len)
 {
     uint8_t *p = buf;
     while (len) {
-        int32_t n = s->read(s->ctx, off, p, len);
+        if (busy_hook) busy_hook();
+        int32_t n = s->read(s->ctx, off, p, len > 0x40000 ? 0x40000 : len);
         if (n <= 0) return false;
         off += n; p += n; len -= n;
     }
