@@ -98,6 +98,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
             M("\x89PNG"))
             return FT_IMAGE;
         if (h[0] == 0xFF && h[1] == 0xD8 && h[2] == 0xFF) return FT_IMAGE;            /* JPEG */
+        if (n >= 6 && (!memcmp(h, "GIF87a", 6) || !memcmp(h, "GIF89a", 6))) return FT_IMAGE;
         if (n >= 12 && M("RIFF") && !memcmp(h + 8, "WEBP", 4)) return FT_IMAGE;
         /* GameCube / Wii save banners */
         if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;

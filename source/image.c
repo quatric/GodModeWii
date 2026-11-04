@@ -7,7 +7,7 @@
  *   BRFNT font sheets, BREFT effect textures, J3D BMD / BDL (TEX1), a PLT0 on its own (as swatches),
  *   Camelot texture banks (as the TPL archive.c turns them into), Monster Games .tex / .art / .img /
  *   .tm0 (excite.c), and ActImagine AJPG (the Wii Message Board's photos; ajpg/odh_core.c)
- * plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
+ * GIF (first frame; gif.c), plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
  * libwebp). View only: nothing is converted or written.
  *
  * Everything is read with explicit big-endian accessors and pixels stay byte
@@ -35,6 +35,7 @@
 #include "ftype.h"
 #include "excite.h"
 #include "ajpg.h"
+#include "gif.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_IMAGES 512
@@ -626,6 +627,13 @@ struct jerr {
 };
 static void jpeg_fail(j_common_ptr c) { longjmp(((struct jerr *)c->err)->jb, 1); }
 
+static void load_gif(set_t *s)
+{
+    int w = 0, h = 0;
+    u8 *rgba = gif_decode(s->buf, s->len, &w, &h);
+    if (rgba) add_rgba(s, w, h, rgba, "GIF");
+}
+
 static void load_jpeg(set_t *s)
 {
     struct jpeg_decompress_struct cinfo;
@@ -846,6 +854,7 @@ static bool load_set(set_t *s, const char *path)
     else if (!memcmp(b, "REFT", 4)) parse_breft(s);
     else if (!memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4)) parse_j3d(s);
     else if (!memcmp(b, "\x89PNG", 4)) load_png(s);
+    else if (!memcmp(b, "GIF87a", 6) || !memcmp(b, "GIF89a", 6)) load_gif(s);
     else if (b[0] == 0xFF && b[1] == 0xD8) load_jpeg(s);
     else if (!memcmp(b, "RIFF", 4) && s->len > 12 && !memcmp(b + 8, "WEBP", 4)) load_webp(s);
     else if ((!memcmp(b, "BNR1", 4) || !memcmp(b, "BNR2", 4)) && s->len >= 0x20 + 96 * 32 * 2) {

@@ -184,6 +184,8 @@ bool arc_rst_probe(const src_t *file, const char *name);       /* Monster Games 
 archive_t *arc_rst_open(const src_t *file, const char *name);
 bool arc_pdf_probe(const src_t *file, const char *name);       /* PDF: page text and embedded images */
 archive_t *arc_pdf_open(const src_t *file, const char *name);
+bool arc_epub_probe(const src_t *file, const char *name);      /* EPUB: chapter text and pictures */
+archive_t *arc_epub_open(const src_t *file, const char *name);
 bool arc_nand_probe(const src_t *file, const char *name);      /* BootMii nand.bin */
 archive_t *arc_nand_open(const src_t *file, const char *name);
 void archive_set_nand_key_provider(archive_key_fn fn);        /* the console's own NAND key, when running on it */
