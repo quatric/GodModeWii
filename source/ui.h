@@ -11,6 +11,8 @@ int  ui_cols(void);
 int  ui_rows(void);
 
 void ui_clear(void);
+/* Clears the whole screen, the border around the text area too: after a viewer drew over it. */
+void ui_wipe(void);
 void ui_goto(int row, int col);
 void ui_color(int fg, bool bold);
 void ui_bg(int bg);

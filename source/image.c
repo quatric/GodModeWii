@@ -679,7 +679,7 @@ static bool view(const char *path)
     if (owned) free(rgba);
     free_set(s);
     free(s);
-    ui_clear();
+    ui_wipe();
     return true;
 }
 

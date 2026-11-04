@@ -74,6 +74,12 @@ void ui_clear(void)
     printf("\x1b[0m\x1b[2J");
 }
 
+void ui_wipe(void)
+{
+    VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
+    ui_clear();
+}
+
 void ui_bg(int bg)
 {
     cur_bg = bg;
@@ -412,6 +418,9 @@ int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n
         u32 p = input_pressed();
         if (p & WPAD_BUTTON_UP)   sel = (sel + n - 1) % n;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % n;
+        /* page up / down, like the file browser */
+        if (p & WPAD_BUTTON_LEFT)  sel = sel - view < 0 ? 0 : sel - view;
+        if (p & WPAD_BUTTON_RIGHT) sel = sel + view >= n ? n - 1 : sel + view;
         if (p & WPAD_BUTTON_A)    return sel;
         if (p & WPAD_BUTTON_B)    return -1;
         if (p & WPAD_BUTTON_HOME) return UI_MENU_HOME;

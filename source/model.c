@@ -1157,6 +1157,6 @@ bool model_view(const char *path)
     if (gx_fifo) GX_DrawDone();
     free_model(&m);
     free(b);
-    ui_clear();
+    ui_wipe();
     return true;
 }
