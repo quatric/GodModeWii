@@ -378,11 +378,11 @@ static bool patched;
 
 static void progress(const char *name, const char *what, u64 done, u64 total)
 {
-    char line[160];
-    snprintf(line, sizeof(line), "%s\n%s", name, what);
-    ui_splash(line);
+    ui_splash(name);
+    int r = ui_rows() / 2 + 2, cols = ui_cols();
+    ui_field(r, 0, cols - 1, "%*s%s", (cols - (int)strlen(what)) / 2, "", what);
     int pct = total ? (int)(done * 100 / total) : 0;
-    ui_bar(ui_rows() / 2 + 3, (ui_cols() - 50) / 2, 50, pct, C_GREEN);
+    ui_bar(r + 1, (cols - 50) / 2, 50, pct, C_GREEN);
 }
 
 /* One WAD. Returns 0 on success or an ES / YAWM style error code; `msg` gets
