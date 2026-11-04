@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <ogc/lwp_watchdog.h>
+#include <sys/iosupport.h>
 
 #include "ui.h"
 #include "input.h"
@@ -37,6 +38,13 @@ bool ui_test_dump(void)
 }
 #endif
 
+static ssize_t discard_write(struct _reent *r, void *fd, const char *ptr, size_t len)
+{
+    return len;
+}
+
+static const devoptab_t discard_tab = { .name = "stderr", .write_r = discard_write };
+
 void ui_init(void)
 {
     VIDEO_Init();
@@ -45,6 +53,8 @@ void ui_init(void)
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
     console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+    /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw over the screen. */
+    devoptab_list[STD_ERR] = &discard_tab;
     VIDEO_Configure(rmode);
     VIDEO_SetNextFramebuffer(xfb);
     VIDEO_SetBlack(false);
