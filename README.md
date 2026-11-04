@@ -199,7 +199,7 @@ The NAND is only read by the exports.
 | **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, viewers, editors, selection tools …) |
 | **A** | Open a folder, archive or file / paste on the green `Paste` row |
 | **B** | Up one folder (back to the drive list at the top) |
-| D-Pad Left / Right | Page up / down |
+| D-Pad Left / Right | Page up / down (on the drive list too, when the drives fill more than one page) |
 | D-Pad Up / Down | Move (hold to scroll) |
 | **HOME** | HOME menu (HOME or B closes it) |
 

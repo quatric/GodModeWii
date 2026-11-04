@@ -339,6 +339,13 @@ static void draw_browser(void)
     ui_reset();
 }
 
+/* Drive rows that fit on the home screen. */
+static int home_rows(void)
+{
+    int vis = ui_rows() - 7;
+    return vis < 1 ? 1 : vis;
+}
+
 /* Drives shown on the home screen. */
 static int home_list(int *out)
 {
@@ -354,8 +361,7 @@ static void draw_home(void)
     int cols = ui_cols(), rows = ui_rows();
     int devs[DEV_COUNT];
     int n = home_list(devs);
-    int vis = rows - 7;
-    if (vis < 1) vis = 1;
+    int vis = home_rows();
     if (home_cursor >= n) home_cursor = n - 1;
     if (home_cursor < home_scroll) home_scroll = home_cursor;
     if (home_cursor >= home_scroll + vis) home_scroll = home_cursor - vis + 1;
@@ -405,7 +411,8 @@ static void draw_home(void)
         ui_field(rows - 4, 1, cols - 2, "%d/%d", home_cursor + 1, n);
     }
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Open drive  HOME System menu");
+    ui_field(rows - 2, 1, cols - 2, n > vis ? "A Open drive  D-Pad L/R Page  HOME System menu"
+                                            : "A Open drive  HOME System menu");
     ui_color(status_color, true);
     ui_field(rows - 3, 1, cols - 2, "%s", status_msg);
     ui_reset();
@@ -1274,6 +1281,13 @@ int app_run(void)
             int n = home_list(devs);
             if (p & WPAD_BUTTON_UP)   home_cursor = (home_cursor + n - 1) % n;
             if (p & WPAD_BUTTON_DOWN) home_cursor = (home_cursor + 1) % n;
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) {     /* a page of drives at a time */
+                int vis = home_rows(), page = home_cursor / vis, pages = (n + vis - 1) / vis;
+                page = (page + (p & WPAD_BUTTON_RIGHT ? 1 : pages - 1)) % pages;
+                home_cursor = page * vis + home_cursor % vis;
+                if (home_cursor >= n) home_cursor = n - 1;
+                home_scroll = page * vis;
+            }
             if (p & WPAD_BUTTON_A)    open_drive(devs[home_cursor]);
             continue;
         }
