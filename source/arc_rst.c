@@ -113,8 +113,18 @@ static void clean(char *out, size_t n, const char *src, size_t max)
     out[k] = 0;
 }
 
-/* Every file of r, named from toc (NULL when there is none). Returns how many were found. */
-static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, rst_add_fn add, void *ctx)
+/* A name field: printable up to its NUL, and not empty. */
+static bool good_name(const uint8_t *s, size_t max)
+{
+    size_t k = 0;
+    for (; k < max && s[k]; k++)
+        if (s[k] < 0x20 || s[k] > 0x7E) return false;
+    return k > 0;
+}
+
+/* Every file of r, named from toc (NULL when there is none). Excite Truck keeps its 0x44-byte records
+ * right after the header only in tocres.res (`inline_ok`). Returns how many were found. */
+static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, bool inline_ok, rst_add_fn add, void *ctx)
 {
     uint32_t found = 0, region;
     uint64_t at;
@@ -122,7 +132,7 @@ static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, rst_add_fn 
 
     /* Excite Truck: 0x44-byte records with inline names and absolute offsets */
     bool old_toc = toc && tsz == 0x28 + (uint64_t)r->count * 0x44;
-    bool old_inline = !toc && !r->pay && r->f.size >= 0x80 + (uint64_t)r->count * 0x44;
+    bool old_inline = inline_ok && !toc && !r->pay && r->f.size >= 0x80 + (uint64_t)r->count * 0x44;
     if (old_toc || old_inline) {
         uint32_t tl = r->count * 0x44;
         const uint8_t *rec = old_toc ? toc + 0x28 : NULL;
@@ -137,7 +147,7 @@ static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, rst_add_fn 
         for (uint32_t i = 0; i < r->count; i++) {
             const uint8_t *e = rec + i * 0x44;
             uint32_t sz = le32(e + 0x28), off = le32(e + 0x2C);
-            if (!sz || !e[0] || (uint64_t)off + sz > r->f.size) continue;
+            if (!sz || !good_name(e, 32) || (uint64_t)off + sz > r->f.size) continue;
             clean(nm, sizeof(nm), (const char *)e, 32);
             add(ctx, nm, sz, 1, off);
             found++;
@@ -166,8 +176,8 @@ static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, rst_add_fn 
         return found;
     }
 
-    /* WiiWare tocres.res: a compact directory at the start of the payload */
-    if (!toc) {
+    /* WiiWare tocres.res: a compact directory at the start of its (compressed) payload */
+    if (!toc && (r->pay || inline_ok)) {
         const uint8_t *p = r->pay;
         uint32_t pl = r->plen;
         uint8_t *buf = NULL;
@@ -187,7 +197,7 @@ static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, rst_add_fn 
                 uint32_t nrel = r32(r->be, e), sz = r32(r->be, e + 0x0C), off = r32(r->be, e + 0x10);
                 if (!sz || off > pl || sz > pl - off || nrel >= pl - names) continue;
                 const char *s = (const char *)p + names + nrel;
-                if (!memchr(s, 0, pl - names - nrel)) continue;
+                if (!memchr(s, 0, pl - names - nrel) || !good_name((const uint8_t *)s, pl - names - nrel)) continue;
                 clean(nm, sizeof(nm), s, pl - names - nrel);
                 /* these offsets are within the payload itself */
                 if (r->pay) add(ctx, nm, sz, 0, off);
@@ -229,7 +239,7 @@ static uint8_t *toc_from_tocres(const char *tocname, uint32_t *size)
     if (!archive_open_sibling("tocres.res", &s)) return NULL;
     rst_t r;
     toc_find_t t = { tocname, &r, NULL, 0 };
-    if (rst_load(&r, &s)) rst_list(&r, NULL, 0, toc_find_add, &t);
+    if (rst_load(&r, &s)) rst_list(&r, NULL, 0, true, toc_find_add, &t);
     rst_free(&r);
     if (s.close) s.close(s.ctx);
     *size = t.size;
@@ -323,7 +333,7 @@ archive_t *arc_rst_open(const src_t *f, const char *name)
     a->destroy = rst_destroy;
     a->base = *f;
     p->r.f = *f;
-    uint32_t n = rst_list(&p->r, toc, tsz, arc_add, a);
+    uint32_t n = rst_list(&p->r, toc, tsz, !strcasecmp(base, "tocres.res"), arc_add, a);
     free(toc);
     if (!n) {
         g_archive_err = "No files found (is its .toc next to it?)";
