@@ -379,16 +379,195 @@ static bool read_whole(const src_t *file, uint8_t **out, uint32_t *len)
     return true;
 }
 
-/* In-memory LZ decode of buf (starting at skip bytes in); NULL on error. */
+/* ---------------------------------------------------------------- Huffman / RL / LZH8 */
+
+/* The other Nintendo SDK ("CX") codecs share the LZ header: type byte, 24-bit
+ * little endian size. Huffman 0x24 / 0x28 (4 / 8 bit symbols, as in the HOME
+ * Menu files), run length 0x30 and LZH8 0x40 (Virtual Console, WiiWare).
+ * Each decoder stops after `osz` bytes, so a probe can peek at the start. */
+
+static bool huff_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out, uint32_t osz, bool four)
+{
+    if (pos >= n) return false;
+    uint32_t tsz = 2u * (src[pos] + 1u);
+    if (tsz > n - pos) return false;
+    const uint8_t *tree = src + pos, *bits = tree + tsz;
+    uint32_t blen = n - pos - tsz, bp = 0, left = 0, op = 0, word = 0;
+    int half = -1;
+    while (op < osz) {
+        uint32_t node = 1;
+        uint8_t sym;
+        for (;;) {
+            if (node >= tsz) return false;
+            if (!left) {
+                if (blen - bp < 4) return false;
+                word = le32(bits + bp);
+                bp += 4;
+                left = 32;
+            }
+            bool bit = (word >> (left - 1)) & 1;
+            left--;
+            uint8_t e = tree[node];
+            uint32_t child = (node & ~1u) + 2 + 2 * (e & 0x3F) + (bit ? 1 : 0);
+            if (child >= tsz) return false;
+            if (e & (bit ? 0x40 : 0x80)) { sym = tree[child]; break; }
+            node = child;
+        }
+        if (!four) out[op++] = sym;
+        else if (half < 0) half = sym & 15;
+        else { out[op++] = (uint8_t)(half | (sym & 15) << 4); half = -1; }
+    }
+    return true;
+}
+
+static bool rl_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out, uint32_t osz)
+{
+    uint32_t op = 0;
+    while (op < osz) {
+        if (pos >= n) return false;
+        uint8_t h = src[pos++];
+        if (h & 0x80) {
+            uint32_t len = (h & 0x7F) + 3u;
+            if (pos >= n) return false;
+            uint8_t b = src[pos++];
+            for (uint32_t k = 0; k < len && op < osz; k++) out[op++] = b;
+        } else {
+            uint32_t len = (h & 0x7F) + 1u;
+            if (pos + len > n) return false;
+            for (uint32_t k = 0; k < len && op < osz; k++) out[op++] = src[pos + k];
+            pos += len;
+        }
+    }
+    return true;
+}
+
+typedef struct { const uint8_t *s; uint32_t n, pos; uint8_t pool; int left; } bitrd;
+
+static bool br_bits(bitrd *r, uint32_t cnt, uint32_t *v)
+{
+    uint32_t x = 0;
+    while (cnt--) {
+        if (!r->left) {
+            if (r->pos >= r->n) return false;
+            r->pool = r->s[r->pos++];
+            r->left = 8;
+        }
+        x = x << 1 | ((r->pool >> --r->left) & 1);
+    }
+    *v = x;
+    return true;
+}
+
+/* LZH8: two Huffman tables (9-bit lengths / literals, 5-bit displacement
+ * lengths), after hcs's public decoder as used by nintoolbox. */
+static bool lzh8_decode(const uint8_t *src, uint32_t n, uint32_t pos, uint8_t *out, uint32_t osz)
+{
+    uint16_t lt[1024];
+    uint8_t dt[64];
+    memset(lt, 0, sizeof(lt));
+    memset(dt, 0, sizeof(dt));
+    bitrd r = { src, n, pos, 0, 0 };
+    if (pos + 2 > n) return false;
+    uint32_t lbytes = (uint32_t)(src[pos] | src[pos + 1] << 8) * 4 + 4, lstart = pos;
+    r.pos = pos + 2;
+    for (uint32_t i = 1; r.pos - lstart < lbytes && i < 1024; i++) {
+        uint32_t v;
+        if (!br_bits(&r, 9, &v)) return false;
+        lt[i] = (uint16_t)v;
+    }
+    r.pos = lstart + lbytes;
+    r.left = 0;
+    if (r.pos + 1 > n) return false;
+    uint32_t dbytes = (src[r.pos] + 1u) * 4, dstart = r.pos;
+    r.pos++;
+    for (uint32_t i = 1; r.pos - dstart < dbytes && i < 64; i++) {
+        uint32_t v;
+        if (!br_bits(&r, 5, &v)) return false;
+        dt[i] = (uint8_t)v;
+    }
+    r.pos = dstart + dbytes;
+    r.left = 0;
+    if (r.pos > n) return false;
+    uint32_t op = 0;
+    while (op < osz) {
+        uint32_t lo = 1;
+        for (;;) {
+            uint32_t bit;
+            if (!br_bits(&r, 1, &bit)) return false;
+            uint32_t nx = (lo / 2 * 2) + ((lt[lo] & 0x7F) + 1) * 2 + bit;
+            if (nx >= 1024) return false;
+            if (lt[lo] & (0x100u >> bit)) {
+                uint32_t len = lt[nx];
+                if (len < 0x100) { out[op++] = (uint8_t)len; break; }
+                len = (len & 0xFF) + 3;
+                uint32_t dlo = 1;
+                for (;;) {
+                    uint32_t db;
+                    if (!br_bits(&r, 1, &db)) return false;
+                    uint32_t dn = (dlo / 2 * 2) + ((dt[dlo] & 7) + 1) * 2 + db;
+                    if (dn >= 64) return false;
+                    if (dt[dlo] & (0x10u >> db)) {
+                        uint32_t dl = dt[dn], disp = 0;
+                        if (dl) {
+                            disp = 1;
+                            for (uint32_t k = dl - 1; k; k--) {
+                                uint32_t b2;
+                                if (!br_bits(&r, 1, &b2)) return false;
+                                disp = disp * 2 | b2;
+                            }
+                        }
+                        if (disp + 1 > op) return false;
+                        for (uint32_t k = 0; k < len && op < osz; k++, op++) out[op] = out[op - disp - 1];
+                        break;
+                    }
+                    dlo = dn;
+                }
+                break;
+            }
+            lo = nx;
+        }
+    }
+    return true;
+}
+
+/* type byte, 24-bit size (0 = a 32-bit size follows); every CX codec */
+static bool cx_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t *size, uint32_t *hdr_len)
+{
+    if (avail < 4) return false;
+    uint8_t t = h[0];
+    if (t != 0x10 && t != 0x11 && t != 0x24 && t != 0x28 && t != 0x30 && t != 0x40) return false;
+    *type = t;
+    *size = h[1] | (h[2] << 8) | ((uint32_t)h[3] << 16);
+    *hdr_len = 4;
+    if (*size == 0) {
+        if (avail < 8) return false;
+        *size = le32(h + 4);
+        *hdr_len = 8;
+    }
+    return *size != 0;
+}
+
+static bool cx_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t pos, uint8_t *out, uint32_t osz)
+{
+    switch (type) {
+    case 0x10: case 0x11: return lz_decode(in, in_len, type, osz, pos, out);
+    case 0x24: case 0x28: return huff_decode(in, in_len, pos, out, osz, type == 0x24);
+    case 0x30: return rl_decode(in, in_len, pos, out, osz);
+    case 0x40: return lzh8_decode(in, in_len, pos, out, osz);
+    }
+    return false;
+}
+
+/* In-memory decode of buf (starting at skip bytes in); NULL on error. */
 static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint32_t *out_size)
 {
     uint8_t type;
     uint32_t size, hl;
-    if (skip > len || !lz_header(buf + skip, len - skip, &type, &size, &hl)) return NULL;
+    if (skip > len || !cx_header(buf + skip, len - skip, &type, &size, &hl)) return NULL;
     if (size > ARC_MAX_DECOMPRESSED) { g_archive_err = "Decompressed size is too big for memory"; return NULL; }
     uint8_t *out = malloc(size);
     if (!out) { g_archive_err = "Out of memory"; return NULL; }
-    if (!lz_decode(buf, len, type, size, skip + hl, out)) {
+    if (!cx_decode(buf, len, type, skip + hl, out, size)) {
         free(out);
         g_archive_err = "Corrupt compressed data";
         return NULL;
@@ -399,22 +578,39 @@ static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint3
 
 static bool lz_ext(const char *name)
 {
-    return arc_name_has_ext(name, ".lz") || arc_name_has_ext(name, ".lz10") || arc_name_has_ext(name, ".lz11") ||
-           arc_name_has_ext(name, ".lz77");
+    static const char *const ext[] = { ".lz", ".lz10", ".lz11", ".lz77", ".huff", ".huf", ".rl", ".rle", ".lzh8",
+                                       ".lh", ".cx", NULL };
+    for (int i = 0; ext[i]; i++)
+        if (arc_name_has_ext(name, ext[i])) return true;
+    return false;
 }
 
-/* A raw LZ stream only counts when the name says so; "LZ77" prefixed data is recognised by itself. */
+/* Nintendo files a compressed stream may hold, by their first four bytes. */
+static bool known_magic(const uint8_t *m)
+{
+    static const char *const tags[] = { "RSAR", "RSTM", "RWSD", "RBNK", "RSEQ", "RWAR", "RWAV", "bres", "RLYT", "RLAN",
+                                        "RFNT", "RFNA", "RFNU", "REFF", "REFT", "RARC", "Yaz0", "Yay0", "MESG", "J3D2",
+                                        "THP\0", "IMD5", "BNR1", "BNR2", "WIBN", "RKGD", "RKMD", "MsgS", "GFAC", "ASH0",
+                                        "CRAR", "SARC", "TPL\0", NULL };
+    for (int i = 0; tags[i]; i++)
+        if (!memcmp(m, tags[i], 4)) return true;
+    return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
+}
+
+/* By name (.lz, .huff, ...) or "LZ77" prefix; otherwise only when the first
+ * decompressed bytes are a known Nintendo file (a compressed .brsar, ...). */
 static bool probe_lz(const src_t *file, const char *name)
 {
-    uint8_t h[16];
+    uint8_t h[4096];
     uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
     if (n < 8 || !src_read_full(file, 0, h, n)) return false;
-    if (!memcmp(h, "LZ77", 4)) {
-        uint8_t t; uint32_t s, hl;
-        return lz_header(h + 4, n - 4, &t, &s, &hl);
-    }
+    uint32_t skip = !memcmp(h, "LZ77", 4) ? 4 : 0;
     uint8_t t; uint32_t s, hl;
-    return lz_ext(name) && lz_header(h, n, &t, &s, &hl);
+    if (!cx_header(h + skip, n - skip, &t, &s, &hl)) return false;
+    if (skip || lz_ext(name)) return true;
+    if (s < 16 || s > ARC_MAX_DECOMPRESSED || (uint64_t)s * 64 < file->size) return false;
+    uint8_t peek[16];
+    return cx_decode(h, n, t, hl, peek, sizeof(peek)) && known_magic(peek);
 }
 
 static void strip_name(const char *name, char *out, size_t outsz)
@@ -442,8 +638,7 @@ static archive_t *open_lz(const src_t *file, const char *name)
     char inner[256];
     strip_name(name, inner, sizeof(inner));
     /* a compressed archive shows its contents directly; anything else is one file */
-    archive_t *a = archive_open_memory(out, osz, inner);
-    return a;
+    return archive_open_memory(out, osz, inner);
 }
 
 /* ---------------------------------------------------------------- one-file archive */
@@ -639,6 +834,9 @@ static const fmt_t formats[] = {
     { "ASH0",        arc_ash0_probe,       arc_ash0_open },
     { "GFA",         arc_gfa_probe,        arc_gfa_open },
     { "BRSAR",       arc_brsar_probe,      arc_brsar_open },
+    { "CCF",         arc_ccf_probe,        arc_ccf_open },
+    { "PAC",         arc_pac_probe,        arc_pac_open },
+    { "disc image",  arc_disc_probe,       arc_disc_open },
     { "WFS",         arc_wfs_probe,        arc_wfs_open },
 };
 

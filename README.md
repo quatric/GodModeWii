@@ -70,10 +70,18 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   browses a `.brres`.
 * **Video player** (press **A**): Mobiclip `.mo`, THP, and Flipnote `.kwz` / `.ppm`, with sound, played straight from any drive,
   the NAND, a disc or inside an archive. **A** / **+** pause, **B** stop.
-* **BMG** message files and **BREFF** effect sets (their emitter list) open as text; **Yaz0 / SZS**, **Yay0**, **ASH0**, **RARC**,
-  **BRRES** and Good-Feel **GFA** archives open like folders. A **BRSAR** sound archive opens as its groups, with each sequence,
-  bank and sound file, and every wave in its wave archives, which the audio player plays. GameCube `.bnr` banners and Wii save
-  `banner.bin` files (banner and icon frames) open in the image viewer.
+* **Disc images**: GameCube and Wii `.iso` / `.gcm`, single-file `.wbfs` and `.ciso` open like folders. A Wii disc shows each
+  partition (DATA, UPDATE, CHANNEL) with its `ticket.bin`, `tmd.bin`, `sys/` (boot.bin, bi2.bin, apploader.img, main.dol,
+  fst.bin) and `files/`, decrypted on the fly; a GameCube disc shows `sys/` and `files/`. Files inside open in the viewers like any
+  other (a course `.szs`, a `.thp`, a `.brstm` ...). Split WBFS parts (`.wbf1` ...) are not joined.
+* **Text views**: BMG and MSBT messages, BREFF effect sets (their emitter list), BRLYT layouts (canvas, textures, fonts,
+  materials and the pane tree with each text box's text), BRLAN animations (length and what they animate) and Mario Kart Wii
+  KMP course data (sections, counts, laps).
+* **Folders**: **Yaz0 / SZS**, **Yay0**, **ASH0**, the Nintendo SDK codecs (**LZ10**, **LZ11**, **Huffman**, **run length**,
+  **LZH8** — recognised by extension or by what they decompress to, like the HOME Menu's compressed files), **RARC**, **BRRES**,
+  Virtual Console **CCF**, Super Smash Bros. Brawl **PAC** and Good-Feel **GFA** archives. A **BRSAR** sound archive opens as its groups, with each sequence,
+  bank and sound file, and every wave in its wave archives, which the audio player plays. GameCube `.bnr` banners, Wii save
+  `banner.bin` files (banner and icon frames) and Retro Studios `.txtr` textures open in the image viewer.
 * Everything here is for looking and listening: nothing is converted, exported or repacked (that is nintoolbox's job).
 * **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
 * **exFAT** SD cards and USB drives (release builds), partitioned MBR or GPT (as macOS formats them) or not at all: they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
@@ -272,7 +280,9 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
   `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
 * **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
   every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
-  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, BREFF, BRSAR / RWAR, BNR, WIBN, Yaz0 / Yay0, ASH0, GFA and RARC.
+  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
+  Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
+  (ISO, WBFS, CISO).
 * **[wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player)** (quatric; MIT) — the Mobiclip, THP and Flipnote
   players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
   (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)

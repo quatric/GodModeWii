@@ -19,6 +19,9 @@ bool model_view(const char *path);          /* BRRES (MDL0) / BMD / BDL in 3D */
 
 bool bmg_view(const char *path);            /* BMG message files as text */
 bool breff_view(const char *path);          /* BREFF effect sets: the emitter list */
+bool msbt_view(const char *path);           /* MSBT message files as text */
+bool layout_view(const char *path);         /* BRLYT / BRLAN: textures, fonts, pane tree, text; animated panes */
+bool kmp_view(const char *path);            /* Mario Kart Wii KMP: sections and counts */
 
 /* A file the viewers recognise by name. */
 bool media_is_name(const char *name);

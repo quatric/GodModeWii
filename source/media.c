@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <malloc.h>
+#include <stdarg.h>
 
 #include "media.h"
 #include "vfs.h"
@@ -15,7 +16,8 @@
 bool media_is_name(const char *name)
 {
     return audio_is_name(name) || video_is_name(name) || image_is_name(name) || model_is_name(name) || arc_name_has_ext(name, ".bmg") ||
-           arc_name_has_ext(name, ".breff");
+           arc_name_has_ext(name, ".breff") || arc_name_has_ext(name, ".msbt") || arc_name_has_ext(name, ".brlyt") ||
+           arc_name_has_ext(name, ".brlan") || arc_name_has_ext(name, ".kmp");
 }
 
 bool media_open(const char *path)
@@ -35,6 +37,9 @@ bool media_open(const char *path)
     if (image_is_name(name) && image_view(path)) return true;
     if (arc_name_has_ext(name, ".bmg") && bmg_view(path)) return true;
     if (arc_name_has_ext(name, ".breff") && breff_view(path)) return true;
+    if (arc_name_has_ext(name, ".msbt") && msbt_view(path)) return true;
+    if ((arc_name_has_ext(name, ".brlyt") || arc_name_has_ext(name, ".brlan")) && layout_view(path)) return true;
+    if (arc_name_has_ext(name, ".kmp") && kmp_view(path)) return true;
     return false;
 }
 
@@ -182,4 +187,241 @@ bool breff_view(const char *path)
     free(s.p);
     text_show(vfs_basename(path), buf, s.n, s.n, false);
     return true;
+}
+
+/* ---------------------------------------------------------------- shared */
+
+static void putf(sbuf *s, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void putf(sbuf *s, const char *fmt, ...)
+{
+    char line[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    if (n > 0) put(s, line, n < (int)sizeof(line) ? (u32)n : sizeof(line) - 1);
+}
+
+static float bef(const u8 *p)
+{
+    u32 v = be32(p);
+    float f;
+    memcpy(&f, &v, 4);
+    return f;
+}
+
+/* UTF-16BE up to a NUL (or `max` units); control codes 0x0E (MSBT) shown as {..} */
+static void put_u16s(sbuf *s, const u8 *p, const u8 *end, u32 max)
+{
+    for (u32 i = 0; i < max && p + 2 <= end; i++) {
+        u32 c = be16(p);
+        p += 2;
+        if (!c) break;
+        if (c == 0x0E && p + 6 <= end) {            /* tag: group, type, parameter size, parameters */
+            u32 ps = be16(p + 4);
+            putf(s, "{%u.%u}", (unsigned)be16(p), (unsigned)be16(p + 2));
+            p += 6 + ps;
+            continue;
+        }
+        if (c == '\n') { put(s, "\n    ", 5); continue; }
+        if (c >= 0xD800 && c < 0xDC00 && p + 2 <= end) { c = 0x10000 + ((c - 0xD800) << 10) + (be16(p) - 0xDC00); p += 2; }
+        if (c >= 0x10000) { put(s, "?", 1); continue; }
+        put_cp(s, c);
+    }
+}
+
+static bool show_sbuf(const char *path, sbuf *s)
+{
+    if (!s->p) return false;
+    u8 *buf = memalign(32, s->n + 32);
+    if (!buf) { free(s->p); return false; }
+    memcpy(buf, s->p, s->n);
+    free(s->p);
+    text_show(vfs_basename(path), buf, s->n, s->n, false);
+    return true;
+}
+
+/* ---------------------------------------------------------------- MSBT */
+
+/* "MsgStdBn": LBL1 (hashed label groups), ATR1, TXT2 (string offsets, UTF-16).
+ * Big endian on Wii; 16-byte aligned sections. Labels are matched to strings
+ * by the index stored with each label. */
+bool msbt_view(const char *path)
+{
+    u32 len;
+    u8 *b = load(path, &len);
+    if (!b) return false;
+    if (memcmp(b, "MsgStdBn", 8) || be16(b + 8) != 0xFEFF) { free(b); return false; }
+    u32 nsec = be16(b + 0x0E), pos = 0x20, lbl = 0, lsz = 0, txt = 0, tsz = 0;
+    for (u32 i = 0; i < nsec && pos + 16 <= len; i++) {
+        u32 sz = be32(b + pos + 4);
+        if (!memcmp(b + pos, "LBL1", 4)) { lbl = pos + 16; lsz = sz; }
+        if (!memcmp(b + pos, "TXT2", 4)) { txt = pos + 16; tsz = sz; }
+        pos = (pos + 16 + sz + 15) & ~15u;
+    }
+    if (!txt || txt + tsz > len || tsz < 4) { free(b); return false; }
+    u32 count = be32(b + txt);
+    if (count > tsz / 4) { free(b); return false; }
+    char **labels = calloc(count + 1, sizeof(char *));
+    if (labels && lbl && lbl + lsz <= len && lsz >= 4) {
+        u32 groups = be32(b + lbl);
+        for (u32 g = 0; g < groups && lbl + 4 + g * 8 + 8 <= lbl + lsz; g++) {
+            u32 n = be32(b + lbl + 4 + g * 8), o = lbl + be32(b + lbl + 8 + g * 8);
+            for (u32 k = 0; k < n && o < lbl + lsz; k++) {
+                u32 l = b[o];
+                if (o + 1 + l + 4 > lbl + lsz) break;
+                u32 idx = be32(b + o + 1 + l);
+                if (idx < count && !labels[idx] && (labels[idx] = malloc(l + 1))) {
+                    memcpy(labels[idx], b + o + 1, l);
+                    labels[idx][l] = 0;
+                }
+                o += 1 + l + 4;
+            }
+        }
+    }
+    sbuf s = { 0 };
+    putf(&s, "%u messages\n\n", (unsigned)count);
+    for (u32 i = 0; i < count; i++) {
+        u32 o = txt + be32(b + txt + 4 + i * 4);
+        putf(&s, "%s: ", labels && labels[i] ? labels[i] : "");
+        if (o < txt + tsz) put_u16s(&s, b + o, b + txt + tsz, 1u << 16);
+        put(&s, "\n", 1);
+    }
+    if (labels) for (u32 i = 0; i < count; i++) free(labels[i]);
+    free(labels);
+    free(b);
+    return show_sbuf(path, &s);
+}
+
+/* ---------------------------------------------------------------- BRLYT / BRLAN */
+
+static void str16(char *out, const u8 *p, u32 n)
+{
+    u32 i = 0;
+    for (; i < n && p[i]; i++) out[i] = (p[i] >= 0x20 && p[i] < 0x7F) ? (char)p[i] : '?';
+    out[i] = 0;
+}
+
+/* Offset table (count u16 + pad, then count x {u32 offset, u32 pad}) of names. */
+static void name_list(sbuf *s, const u8 *b, u32 len, u32 sec, const char *what)
+{
+    u32 n = be16(b + sec + 8), tab = sec + 12;
+    putf(s, "%s (%u):\n", what, (unsigned)n);
+    for (u32 i = 0; i < n && tab + i * 8 + 4 <= len; i++) {
+        u32 o = tab + be32(b + tab + i * 8);
+        if (o < len && memchr(b + o, 0, len - o)) putf(s, "  %s\n", (const char *)b + o);
+    }
+}
+
+/* NW4R layout (RLYT): canvas, textures, fonts, materials and the pane tree
+ * (pan1 / pic1 / txt1 / wnd1 / bnd1 nested with pas1 / pae1), with each
+ * pane's size and position and the text of text boxes. Animations (RLAN):
+ * length, loop, and which panes / materials are animated and how. */
+bool layout_view(const char *path)
+{
+    u32 len;
+    u8 *b = load(path, &len);
+    if (!b) return false;
+    bool lyt = !memcmp(b, "RLYT", 4), lan = !memcmp(b, "RLAN", 4);
+    if ((!lyt && !lan) || be16(b + 4) != 0xFEFF) { free(b); return false; }
+    sbuf s = { 0 };
+    u32 nsec = be16(b + 0x0E), pos = be16(b + 0x0C), depth = 0;
+    for (u32 i = 0; i < nsec && pos + 8 <= len; i++) {
+        u32 sz = be32(b + pos + 4);
+        if (sz < 8 || pos + sz > len) break;
+        const u8 *m = b + pos;
+        char ind[40];
+        memset(ind, ' ', sizeof(ind));
+        ind[depth * 2 < sizeof(ind) - 1 ? depth * 2 : sizeof(ind) - 1] = 0;
+        if (!memcmp(m, "lyt1", 4) && sz >= 0x14)
+            putf(&s, "Layout %.0f x %.0f%s\n\n", bef(m + 0x0C), bef(m + 0x10), m[8] ? ", centred" : "");
+        else if (!memcmp(m, "txl1", 4)) { name_list(&s, b, len, pos, "Textures"); put(&s, "\n", 1); }
+        else if (!memcmp(m, "fnl1", 4)) { name_list(&s, b, len, pos, "Fonts"); put(&s, "\n", 1); }
+        else if (!memcmp(m, "mat1", 4)) {
+            u32 n = be16(m + 8);
+            putf(&s, "Materials (%u):", (unsigned)n);
+            for (u32 k = 0; k < n && pos + 12 + k * 4 + 4 <= len; k++) {
+                u32 o = pos + be32(m + 12 + k * 4);
+                char nm[24];
+                if (o + 20 <= len) { str16(nm, b + o, 20); putf(&s, "%s %s", k ? "," : "", nm); }
+            }
+            put(&s, "\n\nPanes:\n", 9);
+        } else if (!memcmp(m, "pas1", 4) || !memcmp(m, "grs1", 4)) depth++;
+        else if (!memcmp(m, "pae1", 4) || !memcmp(m, "gre1", 4)) { if (depth) depth--; }
+        else if ((!memcmp(m, "pan1", 4) || !memcmp(m, "pic1", 4) || !memcmp(m, "txt1", 4) || !memcmp(m, "wnd1", 4) ||
+                  !memcmp(m, "bnd1", 4)) && sz >= 0x4C) {
+            char nm[20];
+            str16(nm, m + 0x0C, 16);
+            putf(&s, "%s%.3s %-16s %4.0f x %-4.0f at %.0f, %.0f%s\n", ind, (const char *)m, nm, bef(m + 0x44), bef(m + 0x48),
+                 bef(m + 0x24) + 0.0f, bef(m + 0x28) + 0.0f, (m[8] & 1) ? "" : "  (hidden)");
+            if (!memcmp(m, "txt1", 4) && sz >= 0x5C) {
+                u32 so = be32(m + 0x54), sl = be16(m + 0x4E);
+                if (so < sz && sl) {
+                    putf(&s, "%s    \"", ind);
+                    put_u16s(&s, m + so, m + sz, sl / 2);
+                    put(&s, "\"\n", 2);
+                }
+            }
+        } else if (!memcmp(m, "grp1", 4) && sz >= 0x1C) {
+            char nm[20];
+            str16(nm, m + 8, 16);
+            putf(&s, "%sgroup %s (%u panes)\n", ind, nm, (unsigned)be16(m + 0x18));
+        } else if (!memcmp(m, "pat1", 4) && sz >= 0x1C) {
+            putf(&s, "Animation tag, order %u\n", (unsigned)be16(m + 8));
+        } else if (!memcmp(m, "pai1", 4) && sz >= 0x14) {
+            u32 nent = be16(m + 0x0E), eo = be32(m + 0x10);
+            putf(&s, "%u frames%s, %u textures, %u animated panes / materials\n\n", (unsigned)be16(m + 8),
+                 m[0x0A] ? ", looping" : "", (unsigned)be16(m + 0x0C), (unsigned)nent);
+            for (u32 k = 0; k < nent && eo + k * 4 + 4 <= sz; k++) {
+                u32 e = be32(m + eo + k * 4);
+                if (e + 0x18 > sz) continue;
+                char nm[24];
+                str16(nm, m + e, 20);
+                u32 nt = m[e + 0x14];
+                putf(&s, "  %-20s", nm);
+                for (u32 t = 0; t < nt && e + 0x18 + t * 4 + 4 <= sz; t++) {
+                    u32 to = e + be32(m + e + 0x18 + t * 4);
+                    if (to + 4 <= sz) putf(&s, " %.4s", (const char *)m + to);
+                }
+                put(&s, "\n", 1);
+            }
+        }
+        pos += sz;
+    }
+    free(b);
+    return show_sbuf(path, &s);
+}
+
+/* ---------------------------------------------------------------- KMP */
+
+/* Mario Kart Wii course data (RKMD): one line per section with its entry count. */
+bool kmp_view(const char *path)
+{
+    u32 len;
+    u8 *b = load(path, &len);
+    if (!b) return false;
+    if (memcmp(b, "RKMD", 4) || len < 0x10) { free(b); return false; }
+    static const char *const what[][2] = {
+        { "KTPT", "start positions" }, { "ENPT", "enemy route points" }, { "ENPH", "enemy route groups" },
+        { "ITPT", "item route points" }, { "ITPH", "item route groups" }, { "CKPT", "checkpoints" },
+        { "CKPH", "checkpoint groups" }, { "GOBJ", "objects" }, { "POTI", "routes" }, { "AREA", "areas" },
+        { "CAME", "cameras" }, { "JGPT", "respawn points" }, { "CNPT", "cannon points" },
+        { "MSPT", "battle end positions" }, { "STGI", "stage info" },
+    };
+    u32 n = be16(b + 8), hl = be16(b + 10);
+    sbuf s = { 0 };
+    putf(&s, "Mario Kart Wii course data, version %u, %u sections\n\n", (unsigned)be32(b + 12), (unsigned)n);
+    for (u32 i = 0; i < n && 0x10 + i * 4 + 4 <= len; i++) {
+        u32 o = hl + be32(b + 0x10 + i * 4);
+        if (o + 8 > len) continue;
+        const char *d = "";
+        for (size_t k = 0; k < sizeof(what) / sizeof(what[0]); k++)
+            if (!memcmp(b + o, what[k][0], 4)) d = what[k][1];
+        putf(&s, "%.4s  %5u  %s\n", (const char *)b + o, (unsigned)be16(b + o + 4), d);
+        if (!memcmp(b + o, "STGI", 4) && o + 8 + 0x0C <= len && be16(b + o + 4))
+            putf(&s, "      %u laps, pole position on the %s, %s start, lens flare %s\n", (unsigned)b[o + 8],
+                 b[o + 9] ? "right" : "left", b[o + 0x0A] ? "narrow" : "normal", b[o + 0x0B] ? "on" : "off");
+    }
+    free(b);
+    return show_sbuf(path, &s);
 }

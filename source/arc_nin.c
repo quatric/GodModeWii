@@ -6,12 +6,16 @@
  *   ASH0 (.ash)                       Wii Menu / Animal Crossing compression; opens as the file inside
  *   BRSAR (.brsar)                    NW4R sound archive: groups, their sequence / bank / sound files,
  *                                     and each wave archive's RWAV waves (playable)
+ *   CCF (.ccf)                        Virtual Console container: 20 char names, zlib or stored members
+ *   PAC (.pac)                        Super Smash Bros. Brawl "ARC" archive: typed, indexed members
  *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10 payload, little endian
  * Layouts follow quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <zlib.h>
 
 #include "archive.h"
 
@@ -691,5 +695,109 @@ out:
     free(done);
     free(sb);
     free(ib);
+    return a;
+}
+
+/* ---------------------------------------------------------------- CCF */
+
+bool arc_ccf_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[32];
+    return read_head(f, h, 32) && !memcmp(h, "CCF\0", 4) && be32(h + 16) && be32(h + 20) &&
+           be32(h + 20) < 0x10000 && 32 + be32(h + 20) * 32ull <= f->size;
+}
+
+/* Header: "CCF\0", 12 unknown bytes, offset unit, count; then 32 byte entries:
+ * name[20], offset / unit, stored size, original size (equal when not zlib). */
+archive_t *arc_ccf_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint32_t len;
+    uint8_t *d = read_all(f, &len);
+    if (!d) return NULL;
+    uint32_t unit = be32(d + 16), n = be32(d + 20);
+    archive_t *a = NULL;
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < n; i++) total += be32(d + 32 + i * 32 + 28);
+    uint8_t *blob = total <= MAX_OUT ? malloc(total ? total : 1) : NULL;
+    if (!blob) goto out;
+    a = archive_alloc("CCF");
+    if (!a) goto out;
+    a->read = raw_read;
+    uint64_t pos = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        const uint8_t *e = d + 32 + i * 32;
+        uint64_t off = (uint64_t)be32(e + 20) * unit;
+        uint32_t csz = be32(e + 24), dsz = be32(e + 28);
+        if (off + csz > len) continue;
+        bool ok;
+        if (csz == dsz) { memcpy(blob + pos, d + off, dsz); ok = true; }
+        else {
+            uLongf got = dsz;
+            ok = uncompress(blob + pos, &got, d + off, csz) == Z_OK && got == dsz;
+        }
+        if (!ok) continue;
+        char nm[24];
+        memcpy(nm, e, 20);
+        nm[20] = 0;
+        tree_clean_name(nm);
+        if (!nm[0]) snprintf(nm, sizeof(nm), "file%u", (unsigned)i);
+        tree_add(&a->tree, 0, nm, false, dsz, pos, 0, 0);
+        pos += dsz;
+    }
+    a->base = *f;
+    a->src = src_from_memory(blob, total);
+    if (!a->src.ctx) { memset(&a->base, 0, sizeof(a->base)); archive_close(a); a = NULL; goto out; }
+    blob = NULL;
+out:
+    free(blob);
+    free(d);
+    return a;
+}
+
+/* ---------------------------------------------------------------- Brawl PAC */
+
+bool arc_pac_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x60];
+    return read_head(f, h, 0x60) && !memcmp(h, "ARC\0", 4) && be16(h + 6) && be16(h + 6) < 4096;
+}
+
+/* "ARC\0", version, member count, then a 0x40 byte header; each member is a
+ * 0x20 byte header (type, index, size, group, redirect) and its data, padded
+ * to 0x20. Members are named after their type and given the extension their
+ * contents call for (most are BRRES, MSBin or nested ARCs). */
+archive_t *arc_pac_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x40];
+    if (!read_head(f, h, 0x40)) return NULL;
+    uint32_t n = be16(h + 6);
+    archive_t *a = raw_new("PAC", f);
+    if (!a) return NULL;
+    static const char *const types[] = { "None", "MiscData", "ModelData", "TextureData", "AnimationData",
+                                         "SceneData", "Type6", "GroupData", "EffectData" };
+    uint64_t pos = 0x40;
+    for (uint32_t i = 0; i < n && pos + 0x20 <= f->size; i++) {
+        uint8_t e[0x24];
+        if (!src_read_full(f, pos, e, 0x20)) break;
+        uint32_t type = be16(e), idx = be16(e + 2), sz = be32(e + 4);
+        uint64_t at = pos + 0x20;
+        if (at + sz > f->size) break;
+        uint8_t m[4] = { 0 };
+        if (sz >= 4) src_read_full(f, at, m, 4);
+        const char *ext = !memcmp(m, "bres", 4) ? ".brres" : !memcmp(m, "ARC\0", 4) ? ".pac" :
+                          !memcmp(m, "REFF", 4) ? ".breff" : !memcmp(m, "REFT", 4) ? ".breft" :
+                          !memcmp(m, "RSAR", 4) ? ".brsar" : m[0] == 0x10 || m[0] == 0x11 ? ".lz" : ".bin";
+        char nm[64];
+        snprintf(nm, sizeof(nm), "%s[%u]%s", type < 9 ? types[type] : "Type", (unsigned)idx, ext);
+        if (tree_find_child(&a->tree, 0, nm) >= 0)
+            snprintf(nm, sizeof(nm), "%s[%u]-%u%s", type < 9 ? types[type] : "Type", (unsigned)idx, (unsigned)i, ext);
+        if (sz) tree_add(&a->tree, 0, nm, false, sz, at, 0, 0);
+        pos = (at + sz + 0x1F) & ~0x1Full;
+    }
+    if (a->tree.count <= 1) return raw_fail(a);
     return a;
 }

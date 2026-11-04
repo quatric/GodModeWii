@@ -452,6 +452,30 @@ static u8 *sibling_palette(const char *path)
     return b;
 }
 
+/* Retro Studios TXTR (Metroid Prime 1-3, Donkey Kong Country Returns): no
+ * magic, big endian format / width / height / mip count, then for C4 / C8 a
+ * palette (format, width x height entries), then GX tiled mips. */
+static void parse_txtr(set_t *s)
+{
+    static const int gx[] = { TF_I4, TF_I8, TF_IA4, TF_IA8, TF_C4, TF_C8, TF_C14X2, TF_RGB565, TF_RGB5A3, TF_RGBA8, TF_CMPR };
+    if (s->len < 12) return;
+    u32 f = be32(s->buf), mips = be32(s->buf + 8);
+    u32 w = be16(s->buf + 4), h = be16(s->buf + 6), off = 12;
+    if (f > 10 || f == 6 || !w || !h || w > 4096 || h > 4096 || !mips || mips > 11) return;
+    s->kind = "Retro TXTR";
+    u32 pf = 0, pc = 0, po = 0;
+    if (f == 4 || f == 5) {
+        if (off + 8 > s->len) return;
+        pf = be32(s->buf + off);
+        pc = (u32)be16(s->buf + off + 4) * be16(s->buf + off + 6);
+        po = off + 8;
+        if (pf > 2 || !pc || pc > (f == 4 ? 16u : 256u)) return;
+        off = po + pc * 2;
+    }
+    img_t *im = add(s, gx[f], w, h, off, "texture");
+    if (im && pc) set_pal(s, im, pf, pc, po);
+}
+
 static bool load_set(set_t *s, const char *path)
 {
     memset(s, 0, sizeof(*s));
@@ -479,6 +503,7 @@ static bool load_set(set_t *s, const char *path)
             add(s, TF_RGB5A3, 48, 48, off, lab);
         }
     }
+    else if (arc_name_has_ext(path, ".txtr")) parse_txtr(s);
     else if (arc_name_has_ext(path, ".bti")) { s->kind = "BTI"; parse_bti_at(s, 0, vfs_basename(path)); }
     return s->n > 0;
 }
@@ -623,7 +648,7 @@ static bool view(const char *path)
 bool image_is_name(const char *name)
 {
     static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".breft", ".bmd", ".bdl",
-                                       ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", NULL };
+                                       ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", ".txtr", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
             return true;
