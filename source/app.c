@@ -641,8 +641,13 @@ static void show_credits(void)
         "Mobiclip, THP and Flipnote playback: quatric's wii-mobiclip-player (MIT), whose Mobiclip decoder is "
         "ported from FFmpeg (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, "
         "MobiclipDecoder (Gericom) and WiiLink24. JPEG frames: NanoJPEG (Martin J. Fiedler). Vorbis: Tremor.",
+
+        "WAV, AIFF, MP3 and FLAC: dr_libs (David Reid). zip, 7z and RAR 1.5 - 4: unarr (selmf, LZMA SDK by "
+        "Igor Pavlov); RAR5 from the public format description.\n\n"
+        "RVZ / WIA: written from Dolphin's format description, after the design of KakarottoCake's RiftWii; "
+        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts follow nintoolbox; lzop by Markus Oberhumer.",
     };
-    ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 3);
+    ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 4);
 }
 
 /* ---------------------------------------------------------------- actions */

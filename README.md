@@ -60,13 +60,16 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
 * **Export all saves** in the HOME menu: copies the save data of every disc game, channel and WiiWare title to
   `GodModeWii/save-export/<date-time>/<title id> <game id>/` on the SD card or a USB drive. The NAND is only read.
 * **Audio player** (press **A**): BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST and BTSND, streamed and decoded on the
-  console (DSP-ADPCM, AFC, PCM8 / PCM16), with looping. **A** pause, **1** loop on / off, **+** / **-** pick channels on multi-track
-  streams, **B** stop.
+  console (DSP-ADPCM, AFC, PCM8 / PCM16), with looping, and the common formats: **WAV** (PCM, float, IMA / MS ADPCM, A-law, µ-law,
+  RF64), **AIFF**, **MP3**, **FLAC** (also in Ogg) and **Ogg Vorbis**. **A** pause, **1** loop / repeat on / off, **+** / **-** pick
+  channels on multi-track streams, **B** stop.
 * **Image viewer** (press **A**): TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT effect textures, the textures inside J3D models,
-  and PNG, JPEG and WebP. Every GX texture format (I4 to CMPR, with palettes). **L / R** previous / next image, **+** / **-** zoom,
-  D-Pad pans, **A** background, **2** info.
+  and PNG, JPEG and WebP. Every GX texture format (I4 to CMPR, with palettes). Images open pixel for pixel (1:1) in their real
+  colours. **1** scale to fit / back to 1:1, **+** / **-** zoom, D-Pad pans, and when the whole image is on
+  screen D-Pad **Left / Right** go to the previous / next image; **A** background, **2** info.
 * **3D model viewer** (press **A**): MDL0 models in a `.brres` and J3D `.bmd` / `.bdl`, drawn with GX and lit, with bone / joint
-  placement. D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
+  placement and their textures (each material's first texture, with its wrap mode and cut-out alpha; a missing texture leaves
+  the mesh plain). D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
   browses a `.brres`.
 * **Video player** (press **A**): Mobiclip `.mo`, THP, and Flipnote `.kwz` / `.ppm`, with sound, played straight from any drive,
   the NAND, a disc or inside an archive. **A** / **+** pause, **B** stop.
@@ -74,6 +77,14 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   partition (DATA, UPDATE, CHANNEL) with its `ticket.bin`, `tmd.bin`, `sys/` (boot.bin, bi2.bin, apploader.img, main.dol,
   fst.bin) and `files/`, decrypted on the fly; a GameCube disc shows `sys/` and `files/`. Files inside open in the viewers like any
   other (a course `.szs`, a `.thp`, a `.brstm` ...). Split WBFS parts (`.wbf1` ...) are not joined.
+  **RVZ** and **WIA** images (Dolphin / wit) open the same way, decompressed on the fly (Zstandard, bzip2, LZMA, LZMA2, purge and
+  RVZ packing); chunks are limited to 32 MiB, which covers Dolphin's defaults.
+* **zip, 7z and RAR** (1.5 - 5.x) archives open like folders, read-only: files up to 16 MiB are unpacked whole the first time
+  they're read, bigger ones are streamed (a RAR5 file has to fit in 48 MiB). Images, models, sounds and archives inside open
+  directly. Encrypted and multi-volume archives aren't supported, and a big solid RAR5 can be too large for the Wii's memory.
+* **Retro Studios PAK** archives (Metroid Prime 1 - 3, Metroid Prime Trilogy, Donkey Kong Country Returns; compressed resources
+  included) and
+  **LZO** (`.lzo`, lzop) files open like folders.
 * **Text views**: BMG and MSBT messages, BREFF effect sets (their emitter list), BRLYT layouts (canvas, textures, fonts,
   materials and the pane tree with each text box's text), BRLAN animations (length and what they animate) and Mario Kart Wii
   KMP course data (sections, counts, laps).
@@ -202,7 +213,7 @@ The vWii NAND is as brick-prone as the Wii's, and a bricked vWii may need the Wi
 ## Building
 
 You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus these portlibs:
-`dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-libvorbisidec ppc-libogg`.
+`dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg`.
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
@@ -237,6 +248,10 @@ The CI and release builds enable it. NTFS and ext2/3/4 are optional in the same 
 make WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
 ```
 
+`make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1` builds a test version that opens each file listed in
+`sd:/gmwtest.txt` and saves a screenshot of every viewer; `scripts/autotest.sh` runs it in Dolphin with those files on a
+temporary SD card image and turns the screenshots into PNGs (`GFX=Vulkan` for real rendering, `AUDIO=True` to dump the sound).
+
 GitHub Actions builds every push (download the `GodModeWii` artifact: a zip ready to extract to the root of your SD card), and pushing a tag like `v0.1.0` publishes a GitHub Release with that zip.
 
 ## Status / honesty section
@@ -263,7 +278,8 @@ Don't pull the card out while it is writing. Cards are re-read every time you op
 The disc drive shows the Wii data partition only (not the update partition); there is no raw Wii disc image, but GameCube and unrecognised
 discs can be copied as `disc.iso`. A disc is only as readable as the Wii's drive makes it: copying a damaged disc is slow while the drive retries.
 
-Archives are read-only and **untested on real hardware** and only checked against generated samples on a PC. Limits: LZ files and
+Archives (zip / 7z / RAR, RVZ / WIA and Retro PAK included), the texture-mapped model viewer and the WAV / MP3 / FLAC / Ogg player are
+exercised in Dolphin only. Archives are read-only and **untested on real hardware** and only checked against generated samples on a PC. Limits: LZ files and
 IMD5 payloads are decompressed in memory (24 MiB at most), the vWii common key (index 2, used by Wii U era WADs) isn't included, `content.bin` needs this console's
 keys (OTP, so Homebrew Channel with AHBPROT) and only opens on the console that made it, and VFF is FAT12 / FAT16 with 8.3 names.
 WFS is read the way wfslib does it (no block hashes are checked, areas are assumed to be contiguous, links are not shown) and was tested
@@ -287,7 +303,11 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
   players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
   (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)
   and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
-* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing and Vorbis sound in Mobiclip videos.
+* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
+* **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC.
+* **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ.
+* **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
+* **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder follow nintoolbox's.
 
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
@@ -307,7 +327,7 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` layout (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents) and the IMET / U8 handling.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
-* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer; RAR5 is read by `source/rar5.c`, written from the public format description.
+* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
 * **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
 * **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
 * **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
