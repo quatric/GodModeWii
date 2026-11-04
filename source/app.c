@@ -852,10 +852,6 @@ static void actions_menu(void)
     for (int i = 0; i < nents && !any_wad; i++)
         if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             any_wad = true;
-    items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
-    if (!(on_entry && arc_name_has_ext(ents[e].name, ".app"))) {   /* channel contents are never launched */
-        items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
-    }
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
@@ -875,6 +871,10 @@ static void actions_menu(void)
     items[n] = "Deselect all"; en[n] = nmarks > 0; code[n++] = A_NONE;
     items[n] = "Invert selection"; en[n] = nents > 0; code[n++] = A_INVERT;
     items[n] = "Refresh"; en[n] = true; code[n++] = A_REFRESH;
+    items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
+    if (!(on_entry && arc_name_has_ext(ents[e].name, ".app"))) {   /* channel contents are never launched */
+        items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && entry_type(&ents[e]) == FT_PROGRAM; code[n++] = A_LAUNCH;
+    }
 
     int r = ui_menu("ACTIONS", items, en, n, 0);
     if (r < 0)
