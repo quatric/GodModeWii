@@ -35,7 +35,11 @@
 
 typedef struct { float p[3], n[3], t[2]; u8 c[4]; } vert_t;
 
-typedef struct { u32 start, count; int tex; } mesh_t;
+/* pe: the material's blend mode (GX PE_CMODE0: bit 0 blend, bits 5-7 destination factor, 8-10
+ * source factor, 11 subtract), with bit 31 set for translucent materials, drawn after the rest. */
+typedef struct { u32 start, count; int tex; u32 pe; } mesh_t;
+#define PE_XLU   0x80000000u
+#define PE_BLEND 0x00000001u
 
 typedef struct {
     GXTexObj obj;
@@ -101,7 +105,7 @@ static void mul34(const float *a, const float *b, float *o)
 
 /* ---------------------------------------------------------------- meshes and textures */
 
-static void add_mesh(model_t *m, u32 start, int tex)
+static void add_mesh(model_t *m, u32 start, int tex, u32 pe)
 {
     if (m->n <= start) return;
     if (m->nmesh == m->capmesh) {
@@ -111,7 +115,7 @@ static void add_mesh(model_t *m, u32 start, int tex)
         m->mesh = nm;
         m->capmesh = nc;
     }
-    m->mesh[m->nmesh++] = (mesh_t){ start, m->n - start, tex };
+    m->mesh[m->nmesh++] = (mesh_t){ start, m->n - start, tex, pe };
     if (tex >= 0) m->textured++;
 }
 
@@ -447,6 +451,23 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
                        (int)be32(ref + 0x18), (int)be32(ref + 0x1C));
 }
 
+/* An MDL0 material's blend mode, from the pixel-engine part of its display list
+ * (BP 0xFE mask, then BP 0x41 PE_CMODE0), and its translucent flag. 0: opaque, no blending. */
+static u32 mdl_material_pe(mdl_t *d, u32 mat)
+{
+    if (!mat || mat + 0x14 > d->len) return 0;
+    u32 size = be32(d->b + mat);
+    if (size < 0x20 || mat + size > d->len) size = d->len - mat;
+    u32 pe = be32(d->b + mat + 0x10) & PE_XLU;
+    const u8 *p = d->b + mat;
+    for (u32 i = 0x40; i + 10 <= size; i++)
+        if (p[i] == 0x61 && p[i + 1] == 0xFE && p[i + 5] == 0x61 && p[i + 6] == 0x41) {
+            pe |= (u32)p[i + 8] << 8 | p[i + 9];
+            break;
+        }
+    return pe;
+}
+
 static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, const char *name)
 {
     const u8 *b = file + off;
@@ -504,8 +525,12 @@ static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, co
         mdl_array(&d, grp_item(&d, g_uv, (s16)be16(b + o + 0x50), 0x20), ARR_UV, &uv);
         if (!pos.base) continue;
         int tex = -1;
-        if (uv.base && obj_mat && obj_mat[i] >= 0)
-            tex = mdl_material_texture(&d, m, grp_item(&d, g_mat, obj_mat[i], 0x34));
+        u32 pe = 0;
+        if (obj_mat && obj_mat[i] >= 0) {
+            u32 mat = grp_item(&d, g_mat, obj_mat[i], 0x34);
+            if (uv.base) tex = mdl_material_texture(&d, m, mat);
+            pe = mdl_material_pe(&d, mat);
+        }
         emit_t e = { m, &pos, &nrm, &uv, NULL, 0, 0, 0, mdl_matrix, &d, -1, { 0 } };
         if (tex >= 0) memset(e.tint, 255, 3);
         else memcpy(e.tint, PALETTE[i & 7], 3);
@@ -521,7 +546,7 @@ static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, co
         e.default_node = node >= 0 ? node : (obj_bone ? obj_bone[i] : -1);
         u32 start = m->n;
         mdl_object(&d, &e, o);
-        add_mesh(m, start, tex);
+        add_mesh(m, start, tex, pe);
         m->meshes++;
     }
     free(obj_bone);
@@ -804,7 +829,7 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
             }
         }
         (void)has_pm;
-        add_mesh(m, start, tex);
+        add_mesh(m, start, tex, 0);
         m->meshes++;
     }
     free(shape_tex);
@@ -919,8 +944,19 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
 
     GX_InvVtxCache();
     GX_InvalidateTexAll();
-    for (int k = 0; k < m->nmesh; k++) {
+    /* opaque meshes first, then the translucent / blended ones without writing depth */
+    for (int pass = 0, k = 0; pass < 2; k = 0, pass++)
+    for (; k < m->nmesh; k++) {
         const mesh_t *ms = &m->mesh[k];
+        bool blend = shade != SH_WIRE && (ms->pe & PE_BLEND);
+        if ((blend || (ms->pe & PE_XLU)) != (pass == 1)) continue;
+        if (blend) {
+            GX_SetBlendMode(ms->pe & 0x800 ? GX_BM_SUBTRACT : GX_BM_BLEND, (ms->pe >> 8) & 7, (ms->pe >> 5) & 7, GX_LO_CLEAR);
+            GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_FALSE);
+        } else {
+            GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+            GX_SetZMode(GX_TRUE, GX_LEQUAL, pass == 0 ? GX_TRUE : GX_FALSE);
+        }
         if (ms->tex >= 0 && ms->tex < m->ntex && shade != SH_WIRE) {
             GX_LoadTexObj((GXTexObj *)&m->tex[ms->tex].obj, GX_TEXMAP0);
             if (m->tex[ms->tex].cutout) GX_SetAlphaCompare(GX_GEQUAL, 128, GX_AOP_AND, GX_ALWAYS, 0);
@@ -933,6 +969,8 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
         }
         draw_range(m, ms->start, ms->start + ms->count, shade);
     }
+    GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+    GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
     GX_DrawDone();
     GX_CopyDisp(xfb, GX_TRUE);
     GX_Flush();
@@ -988,6 +1026,14 @@ static u8 *load_file(const char *path, u32 *len)
     }
     vfs_close(&f);
     if (b && got != n) { free(b); return NULL; }
+    if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
+        u32 un;
+        u8 *u = arc_lz_unwrap(b, n, &un);
+        free(b);
+        if (!u) return NULL;
+        b = u;
+        n = un;
+    }
     *len = n;
     return b;
 }
@@ -1009,6 +1055,8 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
 
 bool model_is_name(const char *name)
 {
+    char inner[256];
+    if (arc_lz_name(name, inner, sizeof(inner))) name = inner;
     return arc_name_has_ext(name, ".brres") || arc_name_has_ext(name, ".mdl0") || arc_name_has_ext(name, ".bmd") ||
            arc_name_has_ext(name, ".bdl");
 }
@@ -1019,6 +1067,24 @@ bool model_view(const char *path)
     ui_splash("Loading model...");
     u8 *b = load_file(path, &len);
     if (!b) return false;
+    /* An MDL0 opened from inside a BRRES ("x.brres|/3DModels(NW4R)/name"): its textures are in the
+     * same BRRES, so load all of it and start at this model. */
+    const char *want = NULL;
+    const char *bar = NULL;
+    for (const char *q = path; (q = strstr(q, "|/")); q += 2) bar = q;
+    if (!memcmp(b, "MDL0", 4) && bar) {
+        char outer[VFS_PATH_MAX];
+        snprintf(outer, sizeof(outer), "%.*s", (int)(bar - path), path);
+        u32 olen;
+        u8 *o = load_file(outer, &olen);
+        if (o && !memcmp(o, "bres", 4)) {
+            free(b);
+            b = o;
+            len = olen;
+            want = vfs_basename(path);
+        } else
+            free(o);
+    }
     u32 offs[MAX_MODELS];
     static char names[MAX_MODELS][64];
     int count;
@@ -1029,7 +1095,10 @@ bool model_view(const char *path)
 
     model_t m = { 0 };
     int cur = 0;
-    if (!load_model(&m, b, len, offs[0], names[0])) {
+    if (want)
+        for (int i = 0; i < count; i++)
+            if (!strncmp(names[i], want, strlen(names[i])) && !strcmp(want + strlen(names[i]), ".mdl0")) { cur = i; break; }
+    if (!load_model(&m, b, len, offs[cur], names[cur])) {
         /* a BRRES with no drawable model: let the caller browse it */
         free_model(&m);
         free(b);

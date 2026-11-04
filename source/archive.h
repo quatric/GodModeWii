@@ -87,6 +87,10 @@ uint64_t be64(const uint8_t *p);
 uint16_t be16(const uint8_t *p);
 uint32_t le32(const uint8_t *p);
 bool arc_name_has_ext(const char *name, const char *ext);
+/* Compressed single files (.lz, .lz77, .huff, ...): the name without that extension, and the data
+ * decompressed into a 32-byte aligned buffer (NULL if it isn't compressed that way). */
+bool arc_lz_name(const char *name, char *out, size_t outsz);
+uint8_t *arc_lz_unwrap(const uint8_t *buf, uint32_t len, uint32_t *out_len);
 archive_t *archive_alloc(const char *kind);
 archive_t *archive_open_memory(uint8_t *data, uint64_t size, const char *name);   /* consumes data; NULL (and frees it) if not an archive */
 archive_t *archive_open_single(uint8_t *data, uint64_t size, const char *fname);  /* one-file archive over a decompressed buffer */

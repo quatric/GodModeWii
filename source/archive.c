@@ -5,6 +5,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <malloc.h>
 #include <string.h>
 #include <strings.h>
 
@@ -639,6 +640,30 @@ static archive_t *open_lz(const src_t *file, const char *name)
     strip_name(name, inner, sizeof(inner));
     /* a compressed archive shows its contents directly; anything else is one file */
     return archive_open_memory(out, osz, inner);
+}
+
+/* "x.brres.lz" -> true, "x.brres" in out (when out is given). */
+bool arc_lz_name(const char *name, char *out, size_t outsz)
+{
+    const char *base = strrchr(name ? name : "", '/');
+    base = base ? base + 1 : (name ? name : "");
+    if (!lz_ext(base)) return false;
+    if (out) strip_name(base, out, outsz);
+    return true;
+}
+
+/* A whole LZ10 / LZ11 / Huffman / RL / LZH8 file (optionally behind "LZ77") decompressed into a
+ * new 32-byte aligned buffer; NULL when it isn't one or doesn't decode. */
+uint8_t *arc_lz_unwrap(const uint8_t *buf, uint32_t len, uint32_t *out_len)
+{
+    uint32_t skip = len >= 4 && !memcmp(buf, "LZ77", 4) ? 4 : 0, n;
+    uint8_t *u = lz_unpack(buf, len, skip, &n);
+    if (!u) return NULL;
+    uint8_t *a = memalign(32, (n + 31) & ~31u);
+    if (a) memcpy(a, u, n);
+    free(u);
+    if (a) *out_len = n;
+    return a;
 }
 
 /* ---------------------------------------------------------------- one-file archive */

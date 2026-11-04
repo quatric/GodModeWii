@@ -447,6 +447,14 @@ static u8 *load_file(const char *path, u32 *len)
     }
     vfs_close(&f);
     if (b && got != n) { free(b); return NULL; }
+    if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
+        u32 un;
+        u8 *u = arc_lz_unwrap(b, n, &un);
+        free(b);
+        if (!u) return NULL;
+        b = u;
+        n = un;
+    }
     *len = n;
     return b;
 }
@@ -677,6 +685,8 @@ static bool view(const char *path)
 
 bool image_is_name(const char *name)
 {
+    char inner[256];
+    if (arc_lz_name(name, inner, sizeof(inner))) name = inner;
     static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".breft", ".bmd", ".bdl",
                                        ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", ".txtr", NULL };
     for (int i = 0; ext[i]; i++)
