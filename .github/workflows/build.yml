@@ -25,6 +25,9 @@ jobs:
       - name: Install dolxz build dependencies
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev liblzma-dev pkg-config curl ca-certificates
 
+      - name: Install portlibs (PNG / JPEG / WebP for the image viewer)
+        run: dkp-pacman -S --noconfirm --needed ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib
+
       - name: Build controller libraries
         run: |
           apt-get update -qq && apt-get install -y -qq python3 git ca-certificates >/dev/null

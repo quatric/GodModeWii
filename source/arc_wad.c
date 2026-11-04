@@ -141,12 +141,13 @@ archive_t *arc_wad_open(const src_t *file, const char *name)
     (void)name;
     uint8_t h[0x20];
     if (!src_read_full(file, 0, h, sizeof(h))) return NULL;
-    uint32_t cert_sz = be32(h + 8), tik_sz = be32(h + 0x10), tmd_sz = be32(h + 0x14);
+    uint32_t cert_sz = be32(h + 8), crl_sz = be32(h + 0xC), tik_sz = be32(h + 0x10), tmd_sz = be32(h + 0x14);
     uint32_t data_sz = be32(h + 0x18), footer_sz = be32(h + 0x1C);
-    if (tik_sz < 0x2A4 || tmd_sz < 0x1E4 || tmd_sz > 1024 * 1024 || cert_sz > 1024 * 1024) return NULL;
+    if (tik_sz < 0x2A4 || tmd_sz < 0x1E4 || tmd_sz > 1024 * 1024 || cert_sz > 1024 * 1024 || crl_sz > 1024 * 1024) return NULL;
 
     uint64_t cert_off = 0x40;
-    uint64_t tik_off = cert_off + align64(cert_sz);
+    uint64_t crl_off = cert_off + align64(cert_sz);
+    uint64_t tik_off = crl_off + align64(crl_sz);
     uint64_t tmd_off = tik_off + align64(tik_sz);
     uint64_t data_off = tmd_off + align64(tmd_sz);
     uint64_t foot_off = data_off + align64(data_sz);
@@ -188,9 +189,47 @@ archive_t *arc_wad_open(const src_t *file, const char *name)
     if (tree_add(&a->tree, 0, nm, false, tik_sz, tik_off, 0, K_RAW) < 0) goto bad;
     snprintf(nm, sizeof(nm), "%016llx.tmd", (unsigned long long)t.title_id);
     if (tree_add(&a->tree, 0, nm, false, tmd_sz, tmd_off, 0, K_RAW) < 0) goto bad;
+    if (crl_sz) {
+        snprintf(nm, sizeof(nm), "%016llx.crl", (unsigned long long)t.title_id);
+        if (tree_add(&a->tree, 0, nm, false, crl_sz, crl_off, 0, K_RAW) < 0) goto bad;
+    }
     if (footer_sz) {
         snprintf(nm, sizeof(nm), "%016llx.footer", (unsigned long long)t.title_id);
         if (tree_add(&a->tree, 0, nm, false, footer_sz, foot_off, 0, K_RAW) < 0) goto bad;
+    }
+
+    /* wad_info.txt: what the package holds, readable in the text viewer. */
+    {
+        uint32_t tb2 = sig_body(be32(tmd));
+        const uint8_t *tm = tmd + tb2;
+        uint64_t sysv = be64(tm + 0x04);
+        int ck = tb ? tik[tb + 0xB1] : -1;
+        size_t cap = 1024 + (size_t)t.count * 80;
+        char *txt = malloc(cap);
+        if (!txt) goto bad;
+        int l = snprintf(txt, cap,
+            "Title ID:      %016llX (%08X-%08X)\n"
+            "Version:       %u\n"
+            "Runs on:       %s%u\n"
+            "Common key:    %d (%s)%s\n"
+            "Region:        %u\n"
+            "Contents:      %d\n\n"
+            "  #  Content   Index  Type    Size\n",
+            (unsigned long long)t.title_id, (unsigned)(t.title_id >> 32), (unsigned)t.title_id,
+            (unsigned)be16(tm + 0x9C),
+            (sysv >> 32) ? "IOS" : "- (this is an IOS) ", (sysv >> 32) ? (unsigned)(uint32_t)sysv : 0u,
+            ck, ck == 0 ? "Wii" : ck == 1 ? "Korean" : ck == 2 ? "vWii" : "unknown",
+            have_key ? "" : " - contents can't be decrypted",
+            (unsigned)be16(tm + 0x5C), t.count);
+        for (int i = 0; i < t.count && l > 0 && (size_t)l < cap; i++) {
+            const uint8_t *r = t.records + (size_t)i * 0x24;
+            l += snprintf(txt + l, cap - l, "%3d  %08x  %5u  %04x  %llu%s\n", i, (unsigned)be32(r), (unsigned)be16(r + 4),
+                          (unsigned)be16(r + 6), (unsigned long long)be64(r + 8), (be16(r + 6) & 0x8000) ? "  shared" : "");
+        }
+        if (l < 0 || (size_t)l >= cap) l = (int)strlen(txt);
+        p->blob = (uint8_t *)txt;
+        p->blob_len = (uint32_t)l;
+        if (tree_add(&a->tree, 0, "wad_info.txt", false, (uint64_t)l, 0, 0, K_MEM) < 0) goto bad;
     }
 
     uint64_t pos = data_off;

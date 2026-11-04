@@ -5,3 +5,5 @@ build/
 dist/
 portlibs/
 .dolxz/
+data/
+appboot/appboot.bin

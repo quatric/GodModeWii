@@ -16,6 +16,10 @@
 #include "virt.h"
 #include "ftp.h"
 #include "arcfs.h"
+#include "wadinstall.h"
+#include "launch.h"
+#include "saves.h"
+#include "media.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -465,6 +469,8 @@ static void hexview(const char *path)
 #define TEXT_MAX_BYTES (1024 * 1024)
 #define TEXT_MAX_LINES 200000
 
+void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated);
+
 static void textview(const char *path)
 {
     vfs_file f;
@@ -500,6 +506,12 @@ static void textview(const char *path)
         return;
     }
 
+    text_show(vfs_basename(path), buf, got, f.size, truncated);
+}
+
+/* Shows (and frees) a text buffer: also used by the BMG viewer. */
+void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
+{
     int cols = ui_cols(), rows = ui_rows();
     int width = cols - 2;
     int L = rows - 5;
@@ -540,7 +552,7 @@ static void textview(const char *path)
             ui_clear();
             ui_bg(C_BLUE);
             ui_color(C_WHITE, true);
-            ui_field(0, 0, cols - 1, " TEXT  %s", vfs_basename(path));
+            ui_field(0, 0, cols - 1, " TEXT  %s", title);
             ui_reset();
             ui_color(C_WHITE, false);
             ui_fill(1, 0, cols - 1, '-');
@@ -568,7 +580,7 @@ static void textview(const char *path)
             ui_reset();
             int pct = nl > 1 ? (int)((u64)(top + 1) * 100 / nl) : 100;
             char tsz[24];
-            ui_fmt_size(tsz, sizeof(tsz), f.size);
+            ui_fmt_size(tsz, sizeof(tsz), total);
             ui_color(C_CYAN, true);
             ui_field(rows - 3, 1, cols - 2, "Line %u / %u  (%d%%)   %s%s", (unsigned)(top + 1), (unsigned)nl, pct, tsz,
                      truncated ? "  - first 1 MiB shown" : "");
@@ -612,14 +624,22 @@ static void show_info(char **paths, int n)
 
 static void show_credits(void)
 {
-    ui_message("ABOUT / CREDITS", C_CYAN,
+    static const char *const pages[] = {
+        "quatric & cmyksoda\n\n"
         "GodModeWii " GMW_VERSION " - a GodMode9-style file manager for Wii and Wii U (vWii).\n"
-        "By quatric & cmyksoda.\n"
         "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
+        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-2.0. See README.",
+
+        "WAD installing and launching .dol / .elf programs: based on YAWM ModMii Edition "
+        "(github.com/modmii/YAWM-ModMii-Edition) by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak, "
+        "from Some YAWMM Mod, YAWMM and WAD Manager (Waninkoko). App booter by Segher Boessenkool and the yawmME team.\n\n"
         "NAND access + IOS patching: FSToolBox (nickasa), the Lupo96 mod, the WiiDatabase FSToolBox-Mod "
-        "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).\n"
-        "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n"
-        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-2.0. See README.");
+        "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).",
+
+        "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n\n"
+        "Audio and texture formats follow quatric's nintoolbox and mobipeg.",
+    };
+    ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 3);
 }
 
 /* ---------------------------------------------------------------- actions */
@@ -745,7 +765,9 @@ static void invert_marks(void)
     }
 }
 
-enum { A_OPEN, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+enum { A_OPEN, A_INSTALL_WAD, A_LAUNCH, A_PASTE, A_CLIP_CLEAR, A_COPY, A_CUT, A_DELETE, A_RENAME, A_MKDIR, A_INFO, A_HEX, A_TEXT, A_EDIT_HEX, A_EDIT_TEXT, A_ALL, A_NONE, A_INVERT, A_REFRESH, A_COUNT };
+
+static void actions_menu(void);
 
 static bool open_archive(const vfs_entry *en)
 {
@@ -756,6 +778,39 @@ static bool open_archive(const vfs_entry *en)
     if (load_dir(top, NULL))
         return true;
     return false;
+}
+
+static bool launch_requested;
+
+static void do_launch(const vfs_entry *en)
+{
+    char path[VFS_PATH_MAX], q[VFS_PATH_MAX + 128];
+    if (!vfs_join(path, sizeof(path), cwd, en->name))
+        return;
+    snprintf(q, sizeof(q), "Launch \"%s\"?\n\nGodModeWii closes and starts this program.", en->name);
+    if (!ui_confirm("LAUNCH PROGRAM", C_CYAN, q))
+        return;
+    if (launch_prepare(path)) {
+        launch_requested = true;
+        exit_req = EXIT_LAUNCH;
+    }
+}
+
+/* A on a .wad: install it or look inside (decrypted). False to fall back to the actions menu. */
+static void wad_menu(const vfs_entry *en)
+{
+    const char *items[] = { "Browse decrypted contents", "Install to NAND", "More actions..." };
+    int r = ui_menu(en->name, items, NULL, 3, 0);
+    char path[VFS_PATH_MAX];
+    if (r == 0) {
+        open_archive(en);
+    } else if (r == 1 && vfs_join(path, sizeof(path), cwd, en->name)) {
+        char *one = path;
+        wad_install_paths(&one, 1);
+        reload_keep();
+    } else if (r == 2) {
+        actions_menu();
+    }
 }
 
 static void actions_menu(void)
@@ -775,6 +830,12 @@ static void actions_menu(void)
     const char *del_label = "Delete", *ren_label = "Rename";
 
     items[n] = "Open as archive"; en[n] = on_entry && !nmarks && !ents[e].is_dir; code[n++] = A_OPEN;
+    bool any_wad = false;
+    for (int i = 0; i < nents && !any_wad; i++)
+        if ((nmarks ? marks[i] : (on_entry && i == e)) && !ents[i].is_dir && wad_is_name(ents[i].name))
+            any_wad = true;
+    items[n] = nmarks > 1 ? "Install marked WADs" : "Install WAD"; en[n] = any_wad; code[n++] = A_INSTALL_WAD;
+    items[n] = "Launch program"; en[n] = on_entry && !nmarks && !ents[e].is_dir && launch_is_name(ents[e].name); code[n++] = A_LAUNCH;
     if (clip_n) {
         snprintf(paste_label, sizeof(paste_label), "Paste %d item(s) here", clip_n);
         items[n] = paste_label; en[n] = !ro; code[n++] = A_PASTE;
@@ -806,6 +867,11 @@ static void actions_menu(void)
     int t; char **tp;
     switch (code[r]) {
     case A_OPEN:    open_archive(&ents[e]); break;
+    case A_INSTALL_WAD:
+        tp = targets(&t);
+        if (t) { wad_install_paths(tp, t); free_paths(tp, t); reload_keep(); }
+        break;
+    case A_LAUNCH:  do_launch(&ents[e]); break;
     case A_PASTE:   do_paste(); break;
     case A_CLIP_CLEAR: do_clip_clear(); break;
     case A_COPY:    do_copy_cut(false); break;
@@ -852,12 +918,12 @@ static void reload_keep_safe(void)
 /* Returns true if the user wants to leave the program. */
 static bool system_menu(void)
 {
-    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_ABOUT,
+    enum { M_LOCK, M_REMOUNT, M_FTP_RO, M_FTP_RW, M_FTP_SD, M_FTP_USB, M_MIIS, M_SAVES, M_ABOUT,
            M_LOADER, M_WIIMENU, M_RESTART, M_POWER };
     for (;;) {
         if (cwd[0]) draw_browser(); else draw_home();
-        const char *items[12];
-        int code[12];
+        const char *items[13];
+        int code[13];
         int n = 0;
         if (risk_unlocked() && !risk_forced()) { items[n] = "Lock risky options again"; code[n++] = M_LOCK; }
         items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
@@ -866,6 +932,7 @@ static bool system_menu(void)
         items[n] = "FTP install server (archives to SD)";  code[n++] = M_FTP_SD;
         items[n] = "FTP install server (archives to USB)"; code[n++] = M_FTP_USB;
         items[n] = "Export Miis";                       code[n++] = M_MIIS;
+        items[n] = "Export all saves";                  code[n++] = M_SAVES;
         items[n] = "About / credits";                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;
         items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
@@ -898,6 +965,10 @@ static bool system_menu(void)
             return false;
         case M_MIIS:
             mii_export();
+            return false;
+        case M_SAVES:
+            saves_export_all();
+            reload_keep_safe();
             return false;
         /* Only shows a box, so B comes back to the SYSTEM menu, redrawn over the browser. */
         case M_ABOUT: show_credits(); break;
@@ -961,7 +1032,7 @@ int app_run(void)
 {
     bool dirty = true;
 
-    while (!g_quit_request) {
+    while (!g_quit_request && !launch_requested) {
         if (dirty) {
             if (cwd[0]) draw_browser(); else draw_home();
             dirty = false;
@@ -1022,10 +1093,19 @@ int app_run(void)
                         load_dir(path, NULL);
                 } else {
                     char path[VFS_PATH_MAX];
-                    if (vfs_join(path, sizeof(path), cwd, en->name) && arcfs_can_open(path))
+                    bool joined = vfs_join(path, sizeof(path), cwd, en->name);
+                    if (joined && wad_is_name(en->name) && !vfs_is_archive(cwd) && arcfs_can_open(path))
+                        wad_menu(en);
+                    else if (joined && launch_is_name(en->name))
+                        do_launch(en);
+                    else if (joined && media_is_name(en->name) && media_open(path))
+                        ;
+                    else if (joined && arcfs_can_open(path))
                         open_archive(en);
                     else
                         actions_menu();
+                    if (launch_requested)
+                        break;
                 }
             }
         }

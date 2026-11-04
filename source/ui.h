@@ -39,4 +39,7 @@ bool ui_text_edit(const char *title, char *buf, int maxlen);
 
 void ui_splash(const char *status);
 
+/* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
+void *ui_framebuffer(int *w, int *h);
+
 #endif

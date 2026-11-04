@@ -153,6 +153,25 @@ s32 IosPatch_AHBPROT(bool verbose) {
 	return ERROR_AHBPROT;
 }
 
+/* GodModeWii: what the WAD installer needs, the same set YAWM ModMii Edition
+ * applies (fakesigned tickets / TMDs, reinstalling an older version), plus the
+ * vWii system-title install patches on a Wii U. */
+s32 IosPatch_WADInstall(bool vwii, bool verbose) {
+	if (!AHBPROT_DISABLED)
+		return ERROR_AHBPROT;
+	disable_memory_protection();
+	s32 count = 0;
+	count += apply_patch("hash_check", hash_old, sizeof(hash_old), hash_patch, sizeof(hash_patch), 1, verbose);
+	count += apply_patch("new_hash_check", new_hash_old, sizeof(new_hash_old), hash_patch, sizeof(hash_patch), 1, verbose);
+	count += apply_patch("ES_TitleVersionCheck", ES_TitleVersionCheck_old, sizeof(ES_TitleVersionCheck_old), ES_TitleVersionCheck_patch, sizeof(ES_TitleVersionCheck_patch), 0, verbose);
+	if (vwii) {
+		count += apply_patch("Kill_AntiSysTitleInstallv3_pt1", Kill_AntiSysTitleInstallv3_pt1_old, sizeof(Kill_AntiSysTitleInstallv3_pt1_old), Kill_AntiSysTitleInstallv3_pt1_patch, sizeof(Kill_AntiSysTitleInstallv3_pt1_patch), 0, verbose);
+		count += apply_patch("Kill_AntiSysTitleInstallv3_pt2", Kill_AntiSysTitleInstallv3_pt2_old, sizeof(Kill_AntiSysTitleInstallv3_pt2_old), Kill_AntiSysTitleInstallv3_pt2_patch, sizeof(Kill_AntiSysTitleInstallv3_pt2_patch), 0, verbose);
+		count += apply_patch("Kill_AntiSysTitleInstallv3_pt3", Kill_AntiSysTitleInstallv3_pt3_old, sizeof(Kill_AntiSysTitleInstallv3_pt3_old), Kill_AntiSysTitleInstallv3_pt3_patch, sizeof(Kill_AntiSysTitleInstallv3_pt3_patch), 0, verbose);
+	}
+	return count;
+}
+
 s32 IosPatch_RUNTIME(bool wii, bool sciifii, bool vwii, bool verbose) {
 	s32 count = 0;
 

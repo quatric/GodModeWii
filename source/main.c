@@ -21,6 +21,7 @@
 #include "risk.h"
 #include "ftp.h"
 #include "runtimeiospatch.h"
+#include "launch.h"
 
 /* Stay on the IOS the loader started us with (IOS58 under the Homebrew
  * Channel). Reloading IOS would drop the HW_AHBPROT access the NAND
@@ -179,6 +180,10 @@ int main(int argc, char **argv)
         break;
     case EXIT_MENU:
         SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
+        break;
+    case EXIT_LAUNCH:
+        launch_go();                    /* only comes back if nothing was loaded */
+        exit(0);
         break;
     default:
         exit(0);

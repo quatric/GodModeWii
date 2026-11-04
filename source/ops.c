@@ -611,6 +611,29 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
     return all_ok && !X.cancelled;
 }
 
+bool ops_copy_each(char **srcs, char **dst_dirs, int n, const char *title)
+{
+    u64 bytes = 0;
+    u32 files = 0, dirs = 0;
+    begin(title, 0, 0);
+    snprintf(X.src, sizeof(X.src), "Scanning...");
+    prog_paint(true);
+    for (int i = 0; i < n; i++)
+        ops_tree_info(srcs[i], &bytes, &files, &dirs);
+    X.total_bytes = bytes;
+    X.files_total = files;
+
+    bool all_ok = true;
+    for (int i = 0; i < n && !X.cancelled; i++)
+        all_ok &= copy_tree(srcs[i], dst_dirs[i], vfs_basename(srcs[i]));
+    summary("Copied", all_ok);
+    finish();
+
+    for (int i = 0; i < DEV_COUNT; i++)
+        vfs_update_space(i);
+    return all_ok && !X.cancelled;
+}
+
 bool ops_delete(char **srcs, int n)
 {
     for (int i = 0; i < n; i++)

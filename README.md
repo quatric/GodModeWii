@@ -47,7 +47,29 @@ Grab `GodModeWii.zip` from the [latest release](../../releases/latest). Older ve
   a **WAD**, a **`content.bin`** (the DLC / WiiWare SD-card backup), a **`data.bin`** (a Wii save backup) or a **VFF** (`.vff`, WiiConnect24 / Mii
   mailboxes). Archives nest (`sd:/x.wad|/00000001.app|/meta/banner.bin`), **B** goes back out, copy anything out
   with **+** / the actions menu. *Open as archive* is also in the actions menu. WAD, `content.bin` and `data.bin` contents are
-  decrypted while copying (contents of a Wii U vWii WAD signed with the vWii common key show as `.app.enc` instead).
+  decrypted while browsing and copying, vWii-key WADs included; a WAD also shows a `wad_info.txt` (title ID, version, IOS, contents).
+* **Install WADs**: press **A** on a `.wad` and pick *Install to NAND* (or *Browse decrypted contents*), or mark several and use
+  *Install marked WADs* in the actions menu. The install and its brick checks come from YAWM ModMii Edition: boot2 and System Menu
+  WADs are refused (install those with YAWM ModMii Edition itself, which keeps Priiloader), Wii IOS on vWii and vWii IOS on Wii are
+  refused, as are stubs over the System Menu's, EULA's, region select's or Homebrew Channel's IOS, System Menu IOS that would brick a
+  Korean-key Wii, and titles whose IOS is missing or a stub. **Save data is never deleted**: there is no uninstall, and when a title is
+  already installed its `data` folder is first copied to `GodModeWii/save-backups/` on the SD card (or a USB drive) and counted again
+  after the install. Needs the Konami code, like any other NAND change.
+* **Launch homebrew**: press **A** on a `.dol` or `.elf` and confirm. Arguments from a `meta.xml` next to it are passed on, after the
+  program's path, and HW_AHBPROT access is kept when GodModeWii has it.
+* **Export all saves** in the HOME menu: copies the save data of every disc game, channel and WiiWare title to
+  `GodModeWii/save-export/<date-time>/<title id> <game id>/` on the SD card or a USB drive. The NAND is only read.
+* **Audio player** (press **A**): BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST and BTSND, streamed and decoded on the
+  console (DSP-ADPCM, AFC, PCM8 / PCM16), with looping. **A** pause, **1** loop on / off, **+** / **-** pick channels on multi-track
+  streams, **B** stop.
+* **Image viewer** (press **A**): TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT effect textures, the textures inside J3D models,
+  and PNG, JPEG and WebP. Every GX texture format (I4 to CMPR, with palettes). **L / R** previous / next image, **+** / **-** zoom,
+  D-Pad pans, **A** background, **2** info.
+* **3D model viewer** (press **A**): MDL0 models in a `.brres` and J3D `.bmd` / `.bdl`, drawn with GX and lit, with bone / joint
+  placement. D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model in the file. *Open as archive* still
+  browses a `.brres`.
+* **BMG** message files open as text; **Yaz0 / SZS**, **Yay0**, **RARC** and **BRRES** open like folders.
+* Everything here is for looking and listening: nothing is converted, exported or repacked (that is nintoolbox's job).
 * **ustealth / USBHide drives**: a FAT32 USB drive hidden from the Wii U with ustealth (USBHide) is read and written like any other drive; the home screen notes that it is hidden.
 * **exFAT** SD cards and USB drives (release builds), partitioned MBR or GPT (as macOS formats them) or not at all: they mount like FAT32 ones, files over 4 GiB can be written to them, and the home screen shows *exFAT* next to the drive.
 * **Restart Wii** in the HOME menu: on a Wii U it leaves vWii and returns to the Wii U menu.
@@ -236,7 +258,16 @@ SaveGame Manager GX only covers saves stored in NAND, so a `data.bin` is read th
 
 ## Credits
 
-GodModeWii stands on a lot of other people's work. Thank you!
+**GodModeWii is by quatric & cmyksoda.** It also stands on a lot of other people's work. Thank you!
+
+* **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak
+  (from Some YAWMM Mod, YAWMM and WAD Manager by Waninkoko; GPL-2.0) — the WAD installer (`source/wadinstall.c`: the ES install
+  sequence, the vWii ticket fix-up and every brick check) and the `.dol` / `.elf` launcher (`source/launch.c` and its app booter in
+  `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
+* **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
+  every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
+  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, Yaz0 / Yay0 and RARC.
+* **libpng**, **libjpeg-turbo**, **libwebp** and **zlib**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing.
 
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.

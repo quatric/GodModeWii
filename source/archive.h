@@ -96,6 +96,12 @@ int32_t cbc_stream_read(const src_t *src, const aes128_t *ctx, const uint8_t iv0
 /* formats that live in their own files */
 bool arc_vff_probe(const src_t *file, const char *name);
 archive_t *arc_vff_open(const src_t *file, const char *name);
+bool arc_yaz0_probe(const src_t *file, const char *name);      /* Yaz0 and Yay0 */
+archive_t *arc_yaz0_open(const src_t *file, const char *name);
+bool arc_rarc_probe(const src_t *file, const char *name);
+archive_t *arc_rarc_open(const src_t *file, const char *name);
+bool arc_brres_probe(const src_t *file, const char *name);
+archive_t *arc_brres_open(const src_t *file, const char *name);
 bool arc_wad_probe(const src_t *file, const char *name);
 archive_t *arc_wad_open(const src_t *file, const char *name);
 bool arc_contentbin_probe(const src_t *file, const char *name);

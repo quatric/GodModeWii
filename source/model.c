@@ -1,0 +1,832 @@
+/*
+ * 3D model viewer: NW4R MDL0 (in .brres) and J3D BMD / BDL, drawn with GX.
+ *
+ * Layouts follow quatric's nintoolbox (lib-brres-model.c, lib-j3d.c):
+ *   MDL0  bones carry their world matrix; vertex arrays (VTX0 / NRM0 / CLR0)
+ *         are indexed from each object's GX display list, and LOAD_INDX_A
+ *         commands map matrix slots to nodes
+ *   J3D   INF1 hierarchy + JNT1 joints give world matrices; SHP1 packets carry
+ *         display lists whose matrix slots go through DRW1
+ * Vertices bound to a single bone / joint are moved into place with its world
+ * matrix; envelope-weighted ones are already in bind-pose model space.
+ * Shown untextured with GX hardware lighting (vertex colours where the model
+ * has them). View only.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <malloc.h>
+#include <math.h>
+#include <gccore.h>
+
+#include "media.h"
+#include "vfs.h"
+#include "ui.h"
+#include "input.h"
+#include <input_wii.h>
+#include "archive.h"
+
+#define FILE_MAX (32u * 1024 * 1024)
+#define MAX_VERTS (2u * 1024 * 1024)
+
+typedef struct { float p[3], n[3]; u8 c[4]; } vert_t;
+
+typedef struct {
+    vert_t *v;
+    u32 n, cap;
+    float min[3], max[3];
+    int meshes, bones;
+    char name[64];
+    const char *kind;
+} model_t;
+
+static float bef(const u8 *p) { u32 b = be32(p); float f; memcpy(&f, &b, 4); return f; }
+
+static bool push(model_t *m, const vert_t *v)
+{
+    if (m->n == m->cap) {
+        u32 nc = m->cap ? m->cap * 2 : 4096;
+        if (nc > MAX_VERTS) return false;
+        vert_t *nv = realloc(m->v, nc * sizeof(vert_t));
+        if (!nv) return false;
+        m->v = nv;
+        m->cap = nc;
+    }
+    m->v[m->n++] = *v;
+    for (int k = 0; k < 3; k++) {
+        if (v->p[k] < m->min[k]) m->min[k] = v->p[k];
+        if (v->p[k] > m->max[k]) m->max[k] = v->p[k];
+    }
+    return true;
+}
+
+/* 3x4 row-major affine matrices */
+static void xform(const float *M, const float *in, float *out)
+{
+    for (int r = 0; r < 3; r++)
+        out[r] = M[r * 4] * in[0] + M[r * 4 + 1] * in[1] + M[r * 4 + 2] * in[2] + M[r * 4 + 3];
+}
+static void xform_n(const float *M, const float *in, float *out)
+{
+    for (int r = 0; r < 3; r++)
+        out[r] = M[r * 4] * in[0] + M[r * 4 + 1] * in[1] + M[r * 4 + 2] * in[2];
+    float l = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+    if (l > 1e-6f) for (int k = 0; k < 3; k++) out[k] /= l;
+}
+static void mul34(const float *a, const float *b, float *o)
+{
+    float t[12];
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 4; c++)
+            t[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] + a[r * 4 + 2] * b[8 + c] + (c == 3 ? a[r * 4 + 3] : 0);
+    memcpy(o, t, sizeof(t));
+}
+
+static const u8 PALETTE[8][3] = {
+    { 220, 200, 170 }, { 170, 200, 230 }, { 200, 230, 170 }, { 230, 180, 200 },
+    { 230, 220, 150 }, { 180, 170, 230 }, { 160, 220, 210 }, { 230, 190, 150 },
+};
+
+/* ---------------------------------------------------------------- vertex arrays */
+
+typedef struct {
+    const u8 *base;             /* first element */
+    u32 count, stride;
+    int type, comps, frac;      /* type: 0 u8, 1 s8, 2 u16, 3 s16, 4 f32 */
+} arr_t;
+
+static float comp(const arr_t *a, u32 i, int k)
+{
+    const u8 *p = a->base + i * a->stride;
+    int sz = a->type < 2 ? 1 : a->type < 4 ? 2 : 4;
+    p += k * sz;
+    float d = (float)(1 << (a->frac & 31));
+    switch (a->type) {
+    case 0: return p[0] / d;
+    case 1: return (s8)p[0] / d;
+    case 2: return be16(p) / d;
+    case 3: return (s16)be16(p) / d;
+    default: return bef(p);
+    }
+}
+
+static void get_vec(const arr_t *a, u32 i, float *o)
+{
+    o[0] = o[1] = o[2] = 0;
+    if (!a->base || i >= a->count) return;
+    for (int k = 0; k < a->comps && k < 3; k++) o[k] = comp(a, i, k);
+}
+
+/* CLR0 / J3D colour formats: 0 RGB565, 1 RGB8, 2 RGBX8, 3 RGBA4, 4 RGBA6, 5 RGBA8 */
+static void get_color(const u8 *base, u32 count, u32 stride, int fmt, u32 i, u8 *o)
+{
+    if (!base || i >= count) return;
+    const u8 *p = base + i * stride;
+    switch (fmt) {
+    case 0: { u16 v = be16(p); o[0] = ((v >> 11) & 31) * 255 / 31; o[1] = ((v >> 5) & 63) * 255 / 63; o[2] = (v & 31) * 255 / 31; o[3] = 255; break; }
+    case 1: case 2: o[0] = p[0]; o[1] = p[1]; o[2] = p[2]; o[3] = 255; break;
+    case 3: { u16 v = be16(p); o[0] = (v >> 12) * 17; o[1] = ((v >> 8) & 15) * 17; o[2] = ((v >> 4) & 15) * 17; o[3] = (v & 15) * 17; break; }
+    case 4: { u32 v = p[0] << 16 | p[1] << 8 | p[2]; o[0] = ((v >> 18) & 63) * 255 / 63; o[1] = ((v >> 12) & 63) * 255 / 63; o[2] = ((v >> 6) & 63) * 255 / 63; o[3] = (v & 63) * 255 / 63; break; }
+    default: o[0] = p[0]; o[1] = p[1]; o[2] = p[2]; o[3] = p[3]; break;
+    }
+}
+
+/* ---------------------------------------------------------------- primitives */
+
+typedef struct {
+    u32 pos, nrm, clr;
+    int mtx;                    /* matrix slot node, -1 = none */
+} pv_t;
+
+typedef struct {
+    model_t *m;
+    const arr_t *pos, *nrm;
+    const u8 *clr; u32 clr_n, clr_stride; int clr_fmt;
+    const float *(*matrix)(void *ctx, int node);   /* node -> world matrix or NULL */
+    void *ctx;
+    int default_node;
+    u8 tint[3];
+} emit_t;
+
+static void make_vert(emit_t *e, const pv_t *p, vert_t *v)
+{
+    float pos[3], nrm[3] = { 0, 1, 0 };
+    get_vec(e->pos, p->pos, pos);
+    if (e->nrm && e->nrm->base) get_vec(e->nrm, p->nrm, nrm);
+    int node = p->mtx >= 0 ? p->mtx : e->default_node;
+    const float *M = node >= 0 && e->matrix ? e->matrix(e->ctx, node) : NULL;
+    if (M) { xform(M, pos, v->p); xform_n(M, nrm, v->n); }
+    else { memcpy(v->p, pos, 12); memcpy(v->n, nrm, 12); }
+    v->c[0] = e->tint[0]; v->c[1] = e->tint[1]; v->c[2] = e->tint[2]; v->c[3] = 255;
+    if (e->clr) get_color(e->clr, e->clr_n, e->clr_stride, e->clr_fmt, p->clr, v->c);
+}
+
+static void tri(emit_t *e, const pv_t *a, const pv_t *b, const pv_t *c)
+{
+    vert_t v[3];
+    make_vert(e, a, &v[0]);
+    make_vert(e, b, &v[1]);
+    make_vert(e, c, &v[2]);
+    if (push(e->m, &v[0]) && push(e->m, &v[1]))
+        push(e->m, &v[2]);
+}
+
+/* GX primitives -> triangles (winding reversed, as nintoolbox does). */
+static void emit_prim(emit_t *e, int prim, const pv_t *p, u32 n)
+{
+    if (prim == 0x90) for (u32 i = 0; i + 2 < n; i += 3) tri(e, &p[i + 2], &p[i + 1], &p[i]);
+    else if (prim == 0x80) for (u32 i = 0; i + 3 < n; i += 4) { tri(e, &p[i], &p[i + 2], &p[i + 1]); tri(e, &p[i], &p[i + 3], &p[i + 2]); }
+    else if (prim == 0x98) for (u32 i = 2; i < n; i++) { if (i & 1) tri(e, &p[i], &p[i - 2], &p[i - 1]); else tri(e, &p[i], &p[i - 1], &p[i - 2]); }
+    else if (prim == 0xA0) for (u32 i = 2; i < n; i++) tri(e, &p[0], &p[i], &p[i - 1]);
+}
+
+/* ---------------------------------------------------------------- MDL0 */
+
+typedef struct {
+    const u8 *b; u32 len, ver;
+    float (*mtx)[12];           /* by node id */
+    u8 *has;
+    int nmtx;
+} mdl_t;
+
+static const float *mdl_matrix(void *ctx, int node)
+{
+    mdl_t *d = ctx;
+    return node >= 0 && node < d->nmtx && d->has[node] ? d->mtx[node] : NULL;
+}
+
+static u32 mdl_group(const mdl_t *d, int idx)
+{
+    u32 f = 0x10 + idx * 4;
+    if (f + 4 > d->len) return 0;
+    s32 o = (s32)be32(d->b + f);
+    return o > 0 && (u32)o + 8 <= d->len ? (u32)o : 0;
+}
+
+/* entry `id` (0-based) of a resource group -> absolute offset */
+static u32 grp_item(const mdl_t *d, u32 grp, int id, u32 need)
+{
+    if (!grp || id < 0) return 0;
+    u32 cnt = be32(d->b + grp + 4);
+    if ((u32)id >= cnt || grp + 8 + (cnt + 1) * 16 > d->len) return 0;
+    s32 o = (s32)be32(d->b + grp + 8 + (id + 1) * 16 + 12);
+    u32 at = grp + o;
+    return o > 0 && at + need <= d->len ? at : 0;
+}
+
+static void mdl_array(const mdl_t *d, u32 at, bool normals, arr_t *a)
+{
+    memset(a, 0, sizeof(*a));
+    if (!at) return;
+    s32 doff = (s32)be32(d->b + at + 8);
+    a->comps = normals ? 3 : (be32(d->b + at + 20) ? 3 : 2);
+    a->type = be32(d->b + at + 24);
+    a->frac = d->b[at + 28];
+    a->stride = d->b[at + 29];
+    a->count = be16(d->b + at + 30);
+    if (doff <= 0 || a->type > 4 || at + doff + (u64)a->stride * a->count > d->len) { a->base = NULL; return; }
+    a->base = d->b + at + doff;
+}
+
+static void mdl_object(mdl_t *d, emit_t *e, u32 o)
+{
+    u32 lo = be32(d->b + o + 0x0C), hi = be32(d->b + o + 0x10);
+    s32 psz = (s32)be32(d->b + o + 0x28), poff = (s32)be32(d->b + o + 0x2C);
+    u32 dl = o + 0x24 + poff;
+    if (psz <= 0 || poff <= 0 || dl + psz > d->len) return;
+    int pos_t = lo >> 9 & 3, nrm_t = lo >> 11 & 3, c0_t = lo >> 13 & 3, c1_t = lo >> 15 & 3;
+    if (pos_t < 2) return;                          /* direct data: not handled */
+    int isz[4] = { 0, 0, 1, 2 };
+    if (nrm_t == 1 || c0_t == 1 || c1_t == 1) return;
+    for (int t = 0; t < 8; t++) if ((hi >> (t * 2) & 3) == 1) return;
+    int stride = (lo & 1);
+    for (int i = 0; i < 8; i++) stride += lo >> (i + 1) & 1;
+    stride += isz[pos_t] + isz[nrm_t] + isz[c0_t] + isz[c1_t];
+    for (int t = 0; t < 8; t++) stride += isz[hi >> (t * 2) & 3];
+
+    int slots[16];
+    for (int i = 0; i < 16; i++) slots[i] = -1;
+    const u8 *p = d->b + dl, *end = p + psz;
+    pv_t *pts = NULL;
+    u32 cap = 0;
+    while (p < end) {
+        u8 cmd = *p++;
+        if (!cmd) continue;                         /* NOP padding */
+        if (cmd == 0x08) { p += 5; continue; }      /* LOAD_CP */
+        if (cmd == 0x10) { if (p + 4 > end) break; u32 n = be16(p) + 1; p += 4 + n * 4; continue; }  /* LOAD_XF */
+        if (cmd >= 0x20 && cmd <= 0x38 && !(cmd & 7)) {
+            if (p + 4 > end) break;
+            if (cmd == 0x20) { u32 slot = (be16(p + 2) & 0xFFF) / 12; if (slot < 16) slots[slot] = be16(p); }
+            p += 4;
+            continue;
+        }
+        if (cmd == 0x48) continue;
+        u8 prim = cmd & 0xF8;
+        if (prim < 0x80 || prim > 0xB8 || p + 2 > end) break;
+        u32 n = be16(p);
+        p += 2;
+        if ((u64)n * stride > (u64)(end - p)) break;
+        if (n > cap) { pv_t *np = realloc(pts, n * sizeof(pv_t)); if (!np) break; pts = np; cap = n; }
+        for (u32 i = 0; i < n; i++) {
+            const u8 *q = p + i * stride;
+            pv_t *v = &pts[i];
+            v->mtx = -1;
+            if (lo & 1) { u32 s = *q++ / 3; v->mtx = s < 16 ? slots[s] : -1; }
+            for (int k = 0; k < 8; k++) q += lo >> (k + 1) & 1;
+            v->pos = pos_t == 2 ? *q : be16(q); q += isz[pos_t];
+            v->nrm = nrm_t == 2 ? *q : nrm_t == 3 ? be16(q) : 0; q += isz[nrm_t];
+            v->clr = c0_t == 2 ? *q : c0_t == 3 ? be16(q) : 0;
+        }
+        p += n * stride;
+        emit_prim(e, prim, pts, n);
+    }
+    free(pts);
+}
+
+static bool load_mdl0(model_t *m, const u8 *b, u32 len, const char *name)
+{
+    mdl_t d = { b, len, be32(b + 8), NULL, NULL, 0 };
+    if (d.ver < 8 || d.ver > 11) return false;
+    bool v10 = d.ver >= 10;
+    u32 g_def = mdl_group(&d, 0), g_bone = mdl_group(&d, 1), g_pos = mdl_group(&d, 2), g_nrm = mdl_group(&d, 3),
+        g_clr = mdl_group(&d, 4), g_obj = mdl_group(&d, v10 ? 10 : 8);
+    if (!g_obj || !g_pos) return false;
+
+    /* bones: node id -> world matrix */
+    int nb = g_bone ? (int)be32(b + g_bone + 4) : 0;
+    d.nmtx = 0;
+    for (int i = 0; i < nb; i++) {
+        u32 at = grp_item(&d, g_bone, i, 0xD0);
+        if (at) { s32 id = (s32)be32(b + at + 0x10); if (id >= d.nmtx && id < 4096) d.nmtx = id + 1; }
+    }
+    if (d.nmtx) { d.mtx = calloc(d.nmtx, sizeof(*d.mtx)); d.has = calloc(d.nmtx, 1); }
+    for (int i = 0; i < nb && d.mtx && d.has; i++) {
+        u32 at = grp_item(&d, g_bone, i, 0xD0);
+        if (!at) continue;
+        s32 id = (s32)be32(b + at + 0x10);
+        if (id < 0 || id >= d.nmtx) continue;
+        for (int k = 0; k < 12; k++) d.mtx[id][k] = bef(b + at + 0x70 + k * 4);
+        d.has[id] = 1;
+    }
+    m->bones = nb;
+
+    /* draw lists: object -> bone, for objects without their own node */
+    int nobj = be32(b + g_obj + 4);
+    int *obj_bone = malloc((nobj > 0 ? nobj : 1) * sizeof(int));
+    for (int i = 0; obj_bone && i < nobj; i++) obj_bone[i] = -1;
+    int ndef = g_def ? (int)be32(b + g_def + 4) : 0;
+    for (int i = 0; i < ndef && obj_bone; i++) {
+        u32 at = grp_item(&d, g_def, i, 1);
+        while (at && at + 8 <= len && b[at] == 4) {
+            u32 obj = be16(b + at + 3), bone = be16(b + at + 5);
+            if ((int)obj < nobj && obj_bone[obj] < 0) {
+                u32 ba = grp_item(&d, g_bone, bone, 0x14);
+                obj_bone[obj] = ba ? (s32)be32(b + ba + 0x10) : -1;
+            }
+            at += 8;
+        }
+    }
+
+    for (int i = 0; i < nobj; i++) {
+        u32 o = grp_item(&d, g_obj, i, 0x60);
+        if (!o) continue;
+        arr_t pos, nrm;
+        mdl_array(&d, grp_item(&d, g_pos, (s16)be16(b + o + 0x48), 0x20), false, &pos);
+        mdl_array(&d, grp_item(&d, g_nrm, (s16)be16(b + o + 0x4A), 0x20), true, &nrm);
+        if (!pos.base) continue;
+        emit_t e = { m, &pos, &nrm, NULL, 0, 0, 0, mdl_matrix, &d, -1, { 0 } };
+        memcpy(e.tint, PALETTE[i & 7], 3);
+        u32 ca = grp_item(&d, g_clr, (s16)be16(b + o + 0x4C), 0x20);
+        if (ca) {
+            s32 doff = (s32)be32(b + ca + 8);
+            e.clr_fmt = be32(b + ca + 24);
+            e.clr_stride = b[ca + 28];
+            e.clr_n = be16(b + ca + 30);
+            if (doff > 0 && e.clr_fmt <= 5 && ca + doff + (u64)e.clr_stride * e.clr_n <= len) e.clr = b + ca + doff;
+        }
+        s32 node = (s32)be32(b + o + 0x08);
+        e.default_node = node >= 0 ? node : (obj_bone ? obj_bone[i] : -1);
+        mdl_object(&d, &e, o);
+        m->meshes++;
+    }
+    free(obj_bone);
+    free(d.mtx);
+    free(d.has);
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "MDL0";
+    return m->n > 0;
+}
+
+/* MDL0s inside a BRRES ("3DModels(NW4R)"), or a bare MDL0. */
+static int brres_models(const u8 *b, u32 len, u32 *offs, char names[][64], int max)
+{
+    if (!memcmp(b, "MDL0", 4)) { offs[0] = 0; snprintf(names[0], 64, "model"); return 1; }
+    if (len < 0x10 || memcmp(b, "bres", 4)) return 0;
+    u32 root = be16(b + 0x0C);
+    if (root + 16 > len || memcmp(b + root, "root", 4)) return 0;
+    u32 g = root + 8, n = be32(b + g + 4), found = 0;
+    for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= len; i++) {
+        const u8 *e = b + g + 8 + i * 16;
+        u32 sub = g + be32(e + 12);
+        if (sub + 8 > len) continue;
+        u32 sn = be32(b + sub + 4);
+        for (u32 k = 1; k <= sn && sub + 8 + (k + 1) * 16 <= len && (int)found < max; k++) {
+            const u8 *se = b + sub + 8 + k * 16;
+            u32 at = sub + be32(se + 12), no = sub + be32(se + 8);
+            if (at + 0x40 > len || memcmp(b + at, "MDL0", 4)) continue;
+            offs[found] = at;
+            if (no < len) snprintf(names[found], 64, "%.*s", (int)(len - no < 63 ? len - no : 63), (const char *)b + no);
+            else snprintf(names[found], 64, "model %u", (unsigned)found + 1);
+            found++;
+        }
+    }
+    return found;
+}
+
+/* ---------------------------------------------------------------- J3D */
+
+typedef struct { float (*w)[12]; int nj; const u8 *drw_weighted; const u8 *drw_idx; int ndrw; } j3d_t;
+
+static const float *j3d_matrix(void *ctx, int drw)
+{
+    j3d_t *d = ctx;
+    if (drw < 0 || drw >= d->ndrw || d->drw_weighted[drw]) return NULL;
+    int j = be16(d->drw_idx + drw * 2);
+    return j < d->nj ? d->w[j] : NULL;
+}
+
+static void euler_mtx(const float s[3], const float r[3], const float t[3], float *M)
+{
+    float cx = cosf(r[0]), sx = sinf(r[0]), cy = cosf(r[1]), sy = sinf(r[1]), cz = cosf(r[2]), sz = sinf(r[2]);
+    /* R = Rz * Ry * Rx, then scale columns */
+    float R[9] = {
+        cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx,
+        sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx,
+        -sy,     cy * sx,                cy * cx,
+    };
+    for (int r2 = 0; r2 < 3; r2++) {
+        for (int c = 0; c < 3; c++) M[r2 * 4 + c] = R[r2 * 3 + c] * s[c];
+        M[r2 * 4 + 3] = t[r2];
+    }
+}
+
+static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
+{
+    u32 nsec = be32(b + 0x0C), pos = 0x20, inf = 0, vtx = 0, drw = 0, jnt = 0, shp = 0;
+    for (u32 i = 0; i < nsec && pos + 8 <= len; i++) {
+        u32 sz = be32(b + pos + 4);
+        if (!memcmp(b + pos, "INF1", 4)) inf = pos;
+        else if (!memcmp(b + pos, "VTX1", 4)) vtx = pos;
+        else if (!memcmp(b + pos, "DRW1", 4)) drw = pos;
+        else if (!memcmp(b + pos, "JNT1", 4)) jnt = pos;
+        else if (!memcmp(b + pos, "SHP1", 4)) shp = pos;
+        if (sz < 8 || pos + sz > len) break;
+        pos += sz;
+    }
+    if (!vtx || !shp) return false;
+
+    /* VTX1 arrays */
+    arr_t pa = { 0 }, na = { 0 };
+    const u8 *cbase = NULL; u32 cn = 0, cstride = 4; int cfmt = 5;
+    u32 vsz = be32(b + vtx + 4), offs[13];
+    for (int i = 0; i < 13; i++) offs[i] = be32(b + vtx + 12 + i * 4);
+    for (u32 hp = vtx + be32(b + vtx + 8); hp + 16 <= len; hp += 16) {
+        u32 attr = be32(b + hp);
+        if (attr == 0xFF) break;
+        u32 cnt = be32(b + hp + 4), type = be32(b + hp + 8);
+        int frac = b[hp + 12];
+        int slot = attr == 9 ? 0 : attr == 10 ? 1 : attr == 11 ? 3 : -1;
+        if (slot < 0 || !offs[slot]) continue;
+        u32 start = offs[slot], stop = vsz;
+        for (int k = 0; k < 13; k++) if (offs[k] > start && offs[k] < stop) stop = offs[k];
+        if (vtx + stop > len) continue;
+        if (attr == 11) {
+            static const u8 csz[6] = { 2, 3, 4, 2, 3, 4 };
+            if (type > 5) continue;
+            cbase = b + vtx + start; cfmt = type; cstride = csz[type]; cn = (stop - start) / cstride;
+            continue;
+        }
+        arr_t *a = attr == 9 ? &pa : &na;
+        int esz = type < 2 ? 1 : type < 4 ? 2 : 4;
+        a->type = type; a->frac = frac;
+        a->comps = attr == 9 ? (cnt ? 3 : 2) : 3;
+        a->stride = esz * a->comps;
+        a->base = b + vtx + start;
+        a->count = (stop - start) / a->stride;
+    }
+    if (!pa.base) return false;
+
+    /* joints: world matrices from the INF1 hierarchy */
+    j3d_t d = { 0 };
+    if (jnt) {
+        int n = (s16)be16(b + jnt + 8);
+        u32 oj = be32(b + jnt + 12), orm = be32(b + jnt + 16);
+        if (n > 0 && n < 4096 && jnt + oj + n * 64u <= len && jnt + orm + n * 2u <= len) {
+            float (*local)[12] = malloc(n * sizeof(*local));
+            d.w = calloc(n, sizeof(*d.w));
+            int *parent = malloc(n * sizeof(int));
+            if (local && d.w && parent) {
+                d.nj = n;
+                for (int i = 0; i < n; i++) {
+                    int src = (s16)be16(b + jnt + orm + i * 2);
+                    if (src < 0 || src >= n) src = i;
+                    const u8 *jo = b + jnt + oj + src * 64;
+                    float s[3], r[3], t[3];
+                    for (int k = 0; k < 3; k++) {
+                        s[k] = bef(jo + 4 + k * 4);
+                        r[k] = (s16)be16(jo + 16 + k * 2) * (float)M_PI / 32768.0f;
+                        t[k] = bef(jo + 24 + k * 4);
+                    }
+                    euler_mtx(s, r, t, local[i]);
+                    parent[i] = -2;
+                }
+                if (inf) {
+                    int stack[256], sp = 0, cur = -1, last = -1;
+                    for (u32 p = inf + be32(b + inf + 0x14); p + 4 <= len; p += 4) {
+                        int t = be16(b + p), idx = be16(b + p + 2);
+                        if (t == 0) break;
+                        if (t == 1) { if (sp < 256) stack[sp++] = cur; cur = last; }
+                        else if (t == 2) { cur = sp ? stack[--sp] : -1; }
+                        else if (t == 0x10 && idx < n) { if (parent[idx] == -2) parent[idx] = cur; last = idx; }
+                    }
+                }
+                /* parents come first in the hierarchy; resolve in passes */
+                u8 *done = calloc(n, 1);
+                for (int pass = 0; done && pass < n; pass++) {
+                    bool progress = false;
+                    for (int i = 0; i < n; i++) {
+                        if (done[i]) continue;
+                        int p = parent[i] < 0 ? -1 : parent[i];
+                        if (p >= 0 && !done[p]) continue;
+                        if (p < 0) memcpy(d.w[i], local[i], sizeof(local[i]));
+                        else mul34(d.w[p], local[i], d.w[i]);
+                        done[i] = 1;
+                        progress = true;
+                    }
+                    if (!progress) break;
+                }
+                free(done);
+                m->bones = n;
+            }
+            free(local);
+            free(parent);
+        }
+    }
+    if (drw) {
+        d.ndrw = (s16)be16(b + drw + 8);
+        u32 ob = be32(b + drw + 12), oi = be32(b + drw + 16);
+        if (d.ndrw < 0 || drw + ob + d.ndrw > len || drw + oi + d.ndrw * 2u > len) d.ndrw = 0;
+        else { d.drw_weighted = b + drw + ob; d.drw_idx = b + drw + oi; }
+    }
+
+    /* SHP1 */
+    int nshape = be16(b + shp + 8);
+    u32 o_shape = shp + be32(b + shp + 0x0C), o_attr = shp + be32(b + shp + 0x18), o_mtab = shp + be32(b + shp + 0x1C),
+        o_dl = shp + be32(b + shp + 0x20), o_mdat = shp + be32(b + shp + 0x24), o_pkt = shp + be32(b + shp + 0x28);
+    pv_t *pts = NULL;
+    u32 cap = 0;
+    for (int si = 0; si < nshape; si++) {
+        const u8 *sh = b + o_shape + si * 0x28;
+        if (sh + 0x28 > b + len) break;
+        int npkt = be16(sh + 2), first_md = be16(sh + 6), first_pkt = be16(sh + 8);
+        /* attribute list */
+        int attrs[26], types[26], na2 = 0, stride = 0;
+        bool has_pm = false;
+        for (const u8 *ap = b + o_attr + be16(sh + 4); ap + 8 <= b + len && na2 < 26; ap += 8) {
+            u32 at = be32(ap), ty = be32(ap + 4);
+            if (at == 0xFF) break;
+            attrs[na2] = at; types[na2] = ty; na2++;
+            stride += ty == 3 ? 2 : 1;
+            if (at == 0) has_pm = true;
+        }
+        emit_t e = { m, &pa, &na, cbase, cn, cstride, cfmt, j3d_matrix, &d, -1, { 0 } };
+        memcpy(e.tint, PALETTE[si & 7], 3);
+        int prev_mtx[16];
+        for (int k = 0; k < 16; k++) prev_mtx[k] = -1;
+        for (int pk = 0; pk < npkt; pk++) {
+            const u8 *pl = b + o_pkt + (first_pkt + pk) * 8;
+            const u8 *md = b + o_mdat + (first_md + pk) * 8;
+            if (pl + 8 > b + len || md + 8 > b + len) break;
+            u32 psize = be32(pl), poff = be32(pl + 4);
+            int mcount = be16(md + 2);
+            u32 mstart = be32(md + 4);
+            int slots[16];
+            for (int k = 0; k < 16; k++) {
+                int v = k < mcount && o_mtab + (mstart + k) * 2 + 2 <= len ? be16(b + o_mtab + (mstart + k) * 2) : 0xFFFF;
+                slots[k] = v == 0xFFFF ? prev_mtx[k] : v;
+                prev_mtx[k] = slots[k];
+            }
+            e.default_node = slots[0];
+            const u8 *p = b + o_dl + poff, *end = p + psize;
+            if (end > b + len) break;
+            while (p + 3 <= end) {
+                u8 prim = *p & 0xF8;
+                if (!*p || prim < 0x80 || prim > 0xB8) break;
+                u32 n = be16(p + 1);
+                p += 3;
+                if ((u64)n * stride > (u64)(end - p)) break;
+                if (n > cap) { pv_t *np = realloc(pts, n * sizeof(pv_t)); if (!np) break; pts = np; cap = n; }
+                for (u32 i = 0; i < n; i++) {
+                    pv_t *v = &pts[i];
+                    memset(v, 0, sizeof(*v));
+                    v->mtx = -1;
+                    for (int a = 0; a < na2; a++) {
+                        u32 idx = types[a] == 3 ? be16(p) : *p;
+                        p += types[a] == 3 ? 2 : 1;
+                        if (attrs[a] == 0) { int s = types[a] == 1 ? idx / 3 : idx; v->mtx = s < 16 ? slots[s] : -1; }
+                        else if (attrs[a] == 9) v->pos = idx;
+                        else if (attrs[a] == 10) v->nrm = idx;
+                        else if (attrs[a] == 11) v->clr = idx;
+                    }
+                }
+                emit_prim(&e, prim, pts, n);
+            }
+        }
+        (void)has_pm;
+        m->meshes++;
+    }
+    free(pts);
+    free(d.w);
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "J3D";
+    return m->n > 0;
+}
+
+/* ---------------------------------------------------------------- GX drawing */
+
+static void *gx_fifo;
+
+static void gx_setup(void)
+{
+    int fw, fh;
+    void *xfb = ui_framebuffer(&fw, &fh);
+    (void)xfb;
+    GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
+    if (!gx_fifo) {
+        gx_fifo = memalign(32, 256 * 1024);
+        memset(gx_fifo, 0, 256 * 1024);
+        GX_Init(gx_fifo, 256 * 1024);
+    }
+    GXColor bg = { 24, 28, 40, 255 };
+    GX_SetCopyClear(bg, GX_MAX_Z24);
+    GX_SetViewport(0, 0, rm->fbWidth, rm->efbHeight, 0, 1);
+    f32 ys = GX_GetYScaleFactor(rm->efbHeight, rm->xfbHeight);
+    u32 xh = GX_SetDispCopyYScale(ys);
+    GX_SetScissor(0, 0, rm->fbWidth, rm->efbHeight);
+    GX_SetDispCopySrc(0, 0, rm->fbWidth, rm->efbHeight);
+    GX_SetDispCopyDst(rm->fbWidth, xh);
+    GX_SetCopyFilter(rm->aa, rm->sample_pattern, GX_TRUE, rm->vfilter);
+    GX_SetFieldMode(rm->field_rendering, (rm->viHeight == 2 * rm->xfbHeight) ? GX_ENABLE : GX_DISABLE);
+    GX_SetPixelFmt(rm->aa ? GX_PF_RGB565_Z16 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+    GX_SetCullMode(GX_CULL_NONE);
+    GX_SetDispCopyGamma(GX_GM_1_0);
+
+    GX_ClearVtxDesc();
+    GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+    GX_SetVtxDesc(GX_VA_NRM, GX_DIRECT);
+    GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_NRM, GX_NRM_XYZ, GX_F32, 0);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+    GX_SetNumTexGens(0);
+    GX_SetNumTevStages(1);
+    GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+    GX_SetNumChans(1);
+    GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
+    GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
+    GX_SetColorUpdate(GX_TRUE);
+}
+
+enum { SH_LIT, SH_FLAT, SH_WIRE, SH_COUNT };
+
+static void render(const model_t *m, float yaw, float pitch, float dist, int shade)
+{
+    GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
+    void *xfb = ui_framebuffer(NULL, NULL);
+    Mtx44 proj;
+    guPerspective(proj, 45, (f32)rm->fbWidth / rm->efbHeight, 0.1f * dist / 10, dist * 10);
+    GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
+
+    float c[3], r = 0;
+    for (int k = 0; k < 3; k++) { c[k] = (m->min[k] + m->max[k]) / 2; float e = (m->max[k] - m->min[k]) / 2; r += e * e; }
+    r = sqrtf(r);
+    if (r < 1e-4f) r = 1;
+
+    Mtx view, model, rx, ry, mv, tr;
+    guVector cam = { 0, 0, dist * r }, up = { 0, 1, 0 }, look = { 0, 0, 0 };
+    guLookAt(view, &cam, &up, &look);
+    guMtxTrans(tr, -c[0], -c[1], -c[2]);
+    guVector ax = { 1, 0, 0 }, ay = { 0, 1, 0 };
+    guMtxRotAxisDeg(rx, &ax, pitch);
+    guMtxRotAxisDeg(ry, &ay, yaw);
+    guMtxConcat(ry, tr, model);
+    guMtxConcat(rx, model, model);
+    guMtxConcat(view, model, mv);
+    GX_LoadPosMtxImm(mv, GX_PNMTX0);
+    Mtx nm;
+    guMtxInverse(mv, nm);
+    guMtxTranspose(nm, nm);
+    GX_LoadNrmMtxImm(nm, GX_PNMTX0);
+
+    /* light from the camera, a little up and left */
+    GXLightObj light;
+    guVector lp = { -dist * r, dist * r, dist * r };
+    GX_InitLightPos(&light, lp.x, lp.y, lp.z);
+    GXColor white = { 255, 255, 255, 255 }, amb = { 70, 70, 70, 255 };
+    GX_InitLightColor(&light, white);
+    GX_LoadLightObj(&light, GX_LIGHT0);
+    GX_SetChanAmbColor(GX_COLOR0A0, amb);
+    if (shade == SH_LIT)
+        GX_SetChanCtrl(GX_COLOR0A0, GX_ENABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHT0, GX_DF_CLAMP, GX_AF_NONE);
+    else
+        GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_REG, GX_SRC_VTX, GX_LIGHTNULL, GX_DF_NONE, GX_AF_NONE);
+
+    GX_InvVtxCache();
+    u32 done = 0;
+    while (done < m->n) {
+        u32 n = m->n - done;
+        if (shade == SH_WIRE) {
+            if (n > 21843) n = 21843;               /* 3 lines (6 verts) per triangle, < 65536 */
+            n -= n % 3;
+            GX_Begin(GX_LINES, GX_VTXFMT0, (u16)(n * 2));
+            for (u32 i = 0; i < n; i += 3)
+                for (int e = 0; e < 3; e++)
+                    for (int s = 0; s < 2; s++) {
+                        const vert_t *v = &m->v[done + i + (e + s) % 3];
+                        GX_Position3f32(v->p[0], v->p[1], v->p[2]);
+                        GX_Normal3f32(v->n[0], v->n[1], v->n[2]);
+                        GX_Color4u8(v->c[0], v->c[1], v->c[2], 255);
+                    }
+        } else {
+            if (n > 65535) n = 65535 - 65535 % 3;
+            GX_Begin(GX_TRIANGLES, GX_VTXFMT0, (u16)n);
+            for (u32 i = 0; i < n; i++) {
+                const vert_t *v = &m->v[done + i];
+                GX_Position3f32(v->p[0], v->p[1], v->p[2]);
+                GX_Normal3f32(v->n[0], v->n[1], v->n[2]);
+                GX_Color4u8(v->c[0], v->c[1], v->c[2], 255);
+            }
+        }
+        GX_End();
+        done += n;
+    }
+    GX_DrawDone();
+    GX_CopyDisp(xfb, GX_TRUE);
+    GX_Flush();
+    GX_DrawDone();
+}
+
+/* ---------------------------------------------------------------- viewer */
+
+static u8 *load_file(const char *path, u32 *len)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return NULL;
+    if (f.size > FILE_MAX || f.size < 0x20) { vfs_close(&f); return NULL; }
+    u32 n = (u32)f.size, got = 0;
+    u8 *b = memalign(32, (n + 31) & ~31u);
+    while (b && got < n) {
+        s32 r = vfs_read(&f, b + got, n - got > 0x40000 ? 0x40000 : n - got);
+        if (r <= 0) break;
+        got += r;
+    }
+    vfs_close(&f);
+    if (b && got != n) { free(b); return NULL; }
+    *len = n;
+    return b;
+}
+
+static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *name)
+{
+    free(m->v);
+    memset(m, 0, sizeof(*m));
+    for (int k = 0; k < 3; k++) { m->min[k] = 1e30f; m->max[k] = -1e30f; }
+    if (!memcmp(b + off, "MDL0", 4)) {
+        u32 sz = be32(b + off + 4);
+        if (off + sz > len) sz = len - off;
+        return load_mdl0(m, b + off, sz, name);
+    }
+    return load_j3d(m, b, len, name);
+}
+
+#define MAX_MODELS 64
+
+bool model_is_name(const char *name)
+{
+    return arc_name_has_ext(name, ".brres") || arc_name_has_ext(name, ".mdl0") || arc_name_has_ext(name, ".bmd") ||
+           arc_name_has_ext(name, ".bdl");
+}
+
+bool model_view(const char *path)
+{
+    u32 len;
+    ui_splash("Loading model...");
+    u8 *b = load_file(path, &len);
+    if (!b) return false;
+    u32 offs[MAX_MODELS];
+    static char names[MAX_MODELS][64];
+    int count;
+    bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4);
+    if (j3d) { count = 1; offs[0] = 0; snprintf(names[0], 64, "%s", vfs_basename(path)); }
+    else count = brres_models(b, len, offs, names, MAX_MODELS);
+    if (!count) { free(b); return false; }
+
+    model_t m = { 0 };
+    int cur = 0;
+    if (!load_model(&m, b, len, offs[0], names[0])) {
+        /* a BRRES with no drawable model: let the caller browse it */
+        free(m.v);
+        free(b);
+        if (j3d) { ui_message("MODEL", C_YELLOW, "No drawable geometry was found in this model."); return true; }
+        return false;
+    }
+
+    gx_setup();
+    float yaw = 30, pitch = 15, dist = 2.6f;
+    int shade = SH_LIT;
+    bool info = true, redraw = true;
+    for (;;) {
+        if (redraw) {
+            render(&m, yaw, pitch, dist, shade);
+            ui_color(C_WHITE, true);
+            ui_field(0, 0, ui_cols() - 1, " MODEL  %s  [%d/%d] %s", vfs_basename(path), cur + 1, count, m.name);
+            if (info)
+                ui_field(1, 0, ui_cols() - 1, " %s  %u triangles  %d meshes  %d bones  %s", m.kind, (unsigned)(m.n / 3), m.meshes,
+                         m.bones, shade == SH_LIT ? "lit" : shade == SH_FLAT ? "unlit" : "wireframe");
+            ui_color(C_CYAN, true);
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " D-Pad Rotate  +/- Zoom  A Shading  1 Next model  2 Info  B Close");
+            ui_reset();
+            redraw = false;
+        }
+        u32 p = DetectInput(IN_DOWN), h = INPUT_ButtonsHeld();
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
+        u32 dir = h & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT | WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS);
+        if (dir) {
+            if (h & WPAD_BUTTON_LEFT) yaw -= 4;
+            if (h & WPAD_BUTTON_RIGHT) yaw += 4;
+            if (h & WPAD_BUTTON_UP) pitch -= 4;
+            if (h & WPAD_BUTTON_DOWN) pitch += 4;
+            if (h & WPAD_BUTTON_PLUS) dist *= 0.96f;
+            if (h & WPAD_BUTTON_MINUS) dist *= 1.04f;
+            if (dist < 0.3f) dist = 0.3f;
+            if (dist > 40) dist = 40;
+            redraw = true;
+        }
+        if (p & WPAD_BUTTON_A) { shade = (shade + 1) % SH_COUNT; redraw = true; }
+        if (p & WPAD_BUTTON_2) { info = !info; redraw = true; }
+        if ((p & WPAD_BUTTON_1) && count > 1) {
+            for (int tries = 0; tries < count; tries++) {
+                cur = (cur + 1) % count;
+                ui_splash("Loading model...");
+                if (load_model(&m, b, len, offs[cur], names[cur])) break;
+            }
+            yaw = 30; pitch = 15; dist = 2.6f;
+            redraw = true;
+        }
+    }
+    free(m.v);
+    free(b);
+    ui_clear();
+    return true;
+}

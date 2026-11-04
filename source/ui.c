@@ -12,6 +12,13 @@ static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
 static int g_cols = 76, g_rows = 28;
 
+void *ui_framebuffer(int *w, int *h)
+{
+    if (w) *w = rmode ? rmode->fbWidth : 0;
+    if (h) *h = rmode ? rmode->xfbHeight : 0;
+    return xfb;
+}
+
 void ui_init(void)
 {
     VIDEO_Init();

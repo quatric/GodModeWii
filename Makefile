@@ -16,10 +16,12 @@ CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
-LIBS	:=	-ldi -lfat -lwiikeyboard -lwiiuse -lbte -logc -lm
+LIBS	:=	-lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)
 LIBDIRS	:=	$(CURDIR)/libwiiinput # headers: <input_wii.h>
 LIBDIRS	+=	$(CURDIR)/libwiiupdate
+# libpng, libjpeg, libwebp, zlib, libmad, tremor: devkitPro portlibs (ppc-libpng, ppc-libjpeg-turbo, ppc-libwebp, ...)
+LIBDIRS	+=	$(PORTLIBS_PATH)/ppc
 # Optional controller support (build the libraries first with
 # scripts/build_controller_portlibs.sh):
 #   make WITH_WIIDRC=1     Wii U GamePad (vWii)
@@ -89,7 +91,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=
 sFILES		:=
 SFILES		:=
-BINFILES	:=
+BINFILES	:=	appboot.bin
 
 export LD	:=	$(CC)
 export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
@@ -124,14 +126,22 @@ $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-$(BUILD): libwiiupdate-lib
-.PHONY: libwiiupdate-lib
+$(BUILD): libwiiupdate-lib appboot-bin
+.PHONY: libwiiupdate-lib appboot-bin
 libwiiupdate-lib:
 	@$(MAKE) --no-print-directory -C libwiiupdate
 
+# The app booter used to launch .dol / .elf files (from YAWM ModMii Edition),
+# built on its own and linked in as data/appboot.bin.
+appboot-bin:
+	@$(MAKE) --no-print-directory -C appboot
+	@mkdir -p data
+	@cmp -s appboot/appboot.bin data/appboot.bin || cp appboot/appboot.bin data/appboot.bin
+
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol $(OUTPUT)-xz.dol
+	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol $(OUTPUT)-xz.dol data/appboot.bin
+	@$(MAKE) --no-print-directory -C appboot clean
 
 run:
 	wiiload $(TARGET).dol
@@ -152,6 +162,12 @@ endif
 
 $(OUTPUT).dol: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
+
+launch.o: appboot_bin.h
+
+%.bin.o %_bin.h : %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
 
 -include $(DEPENDS)
 

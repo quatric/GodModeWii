@@ -120,6 +120,7 @@ s32 IosPatch_RUNTIME(bool wii, bool sciifii, bool vwii, bool verbose);
 /* GodModeWii additions: single-purpose patches (see runtimeiospatch.c). */
 s32 IosPatch_DIReadLimit(bool verbose);
 s32 IosPatch_ISFS(bool verbose);
+s32 IosPatch_WADInstall(bool vwii, bool verbose);
 
 
 /**
