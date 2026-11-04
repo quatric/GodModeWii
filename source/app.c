@@ -687,7 +687,7 @@ static void show_credits(void)
         "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).",
 
         "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n\n"
-        "Audio and texture formats follow quatric's nintoolbox and mobipeg.\n\n"
+        "Audio and texture formats match quatric's nintoolbox and mobipeg.\n\n"
         "Mobiclip, THP and Flipnote playback: quatric's wii-mobiclip-player (MIT), whose Mobiclip decoder is "
         "ported from FFmpeg (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, "
         "MobiclipDecoder (Gericom) and WiiLink24. JPEG frames: NanoJPEG (Martin J. Fiedler). Vorbis: Tremor.",
@@ -695,7 +695,7 @@ static void show_credits(void)
         "RSEQ sequences: layouts from VGMTrans. WAV, AIFF, MP3 and FLAC: dr_libs (David Reid). zip, 7z and RAR 1.5 - 4: unarr (selmf, LZMA SDK by "
         "Igor Pavlov); RAR5 from the public format description.\n\n"
         "RVZ / WIA: written from Dolphin's format description, after the design of KakarottoCake's RiftWii; "
-        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts follow nintoolbox; lzop by Markus Oberhumer.",
+        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.",
     };
     ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 4);
 }
