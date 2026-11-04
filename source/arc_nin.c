@@ -496,7 +496,7 @@ archive_t *arc_ash0_open(const src_t *f, const char *name)
 
 /* Byte pair encoding, Good-Feel's GFCP mode 1: per block, a pair table and a
  * big endian block length, then bytes expanded recursively through the table. */
-static bool bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
+bool arc_bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
 {
     uint32_t sp = 0, dp = 0;
     uint8_t t0[256], t1[256], stack[512];
@@ -555,7 +555,7 @@ static bool bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t 
 }
 
 /* Plain LZ10 bit stream without the usual 4 byte header (GFCP modes 2 / 3). */
-static bool lz10_raw(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
+bool arc_lz10_raw(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz)
 {
     uint32_t sp = 0, dp = 0;
     while (dp < dsz) {
@@ -606,8 +606,8 @@ archive_t *arc_gfa_open(const src_t *f, const char *name)
 
     blob = malloc(olen);
     if (!blob) goto out;
-    bool ok = mode == 1 ? bpe_decode(blob, olen, cp + 20, zsz)
-            : (mode == 2 || mode == 3) ? lz10_raw(blob, olen, cp + 20, zsz) : false;
+    bool ok = mode == 1 ? arc_bpe_decode(blob, olen, cp + 20, zsz)
+            : (mode == 2 || mode == 3) ? arc_lz10_raw(blob, olen, cp + 20, zsz) : false;
     if (!ok) goto out;
 
     a = archive_alloc("GFA");

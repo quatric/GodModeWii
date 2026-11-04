@@ -10,6 +10,8 @@
  * converted, exported or repacked. */
 
 bool audio_play(const char *path);          /* false if the file isn't a stream it can play */
+/* A Monster Games .sfx header (no magic): the first n bytes of a size-byte file. */
+bool audio_sfx_header(const u8 *h, u32 n, u64 size);
 
 bool image_view(const char *path);          /* false if there is no image in it */
 

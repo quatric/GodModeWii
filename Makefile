@@ -8,9 +8,9 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
-SOURCES		:=	source source/mobiclip source/zstd libwiiinput/source $(UNARR)
+SOURCES		:=	source source/mobiclip source/zstd source/ajpg libwiiinput/source $(UNARR)
 DATA		:=	data res
-INCLUDES	:=	source source/mobiclip source/zstd $(UNARR)
+INCLUDES	:=	source source/mobiclip source/zstd source/ajpg $(UNARR)
 
 CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
 # make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1: a test build that opens the files listed

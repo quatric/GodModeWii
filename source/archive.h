@@ -103,6 +103,15 @@ bool arc_name_has_ext(const char *name, const char *ext);
 /* Compressed single files (.lz, .lz77, .huff, .stpl, .z, .gz ...): the name without that extension, and the data
  * decompressed into a 32-byte aligned buffer (NULL if it isn't compressed that way). */
 bool arc_lz_name(const char *name, char *out, size_t outsz);
+/* Codecs shared with the compression wrapper: Good-Feel GFCP modes 1 (byte pair) and 2 / 3 (headerless
+ * LZ10), and Arika ALZ1 run to the end of its input. */
+bool arc_bpe_decode(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz);
+bool arc_lz10_raw(uint8_t *dst, uint32_t dsz, const uint8_t *src, uint32_t ssz);
+uint8_t *arc_alz1_unpack(const uint8_t *src, uint32_t n, uint32_t *out_len);
+/* Camelot GX texture bank (TPL magic, but its own layout); arc_camelot_bank_tpl rewrites one as a TPL. */
+bool arc_camelot_bank_valid(const uint8_t *b, uint32_t n);
+uint8_t *arc_camelot_unpack(const uint8_t *src, uint32_t n, uint32_t *out_len);   /* Camelot LZ, as is */
+uint8_t *arc_camelot_bank_tpl(const uint8_t *b, uint32_t n, uint32_t *out_len);
 uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len);   /* by name or contents: Camelot / zlib / CX */
 archive_t *archive_alloc(const char *kind);
 /* consumes data; NULL (and frees it) if not an archive */
@@ -171,6 +180,10 @@ bool arc_disk_probe(const src_t *file, const char *name);      /* MBR / GPT / Ap
 archive_t *arc_disk_open(const src_t *file, const char *name);
 bool arc_hsd_probe(const src_t *file, const char *name);       /* HAL sysdolphin .dat */
 archive_t *arc_hsd_open(const src_t *file, const char *name);
+bool arc_rst_probe(const src_t *file, const char *name);       /* Monster Games RST (+ .toc), QuickLZ */
+archive_t *arc_rst_open(const src_t *file, const char *name);
+bool arc_pdf_probe(const src_t *file, const char *name);       /* PDF: page text and embedded images */
+archive_t *arc_pdf_open(const src_t *file, const char *name);
 bool arc_nand_probe(const src_t *file, const char *name);      /* BootMii nand.bin */
 archive_t *arc_nand_open(const src_t *file, const char *name);
 void archive_set_nand_key_provider(archive_key_fn fn);        /* the console's own NAND key, when running on it */

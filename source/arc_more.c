@@ -776,13 +776,27 @@ static void arika_destroy(archive_t *a)
     free(p);
 }
 
-static bool alz1(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+/* Decodes until dn bytes are out, or (with grow) until the input runs out, enlarging *dst as it goes. */
+static bool alz1_run(uint8_t **dst, uint32_t *dn, bool grow, const uint8_t *src, uint32_t sn)
 {
     uint8_t ring[0x1000] = { 0 };
-    uint32_t p = 0xFEE, sp = 0, dp = 0, flags = 0, bits = 0;
-    while (dp < dn) {
+    uint32_t p = 0xFEE, sp = 0, dp = 0, flags = 0, bits = 0, cap = *dn;
+    uint8_t *o = *dst;
+#define ALZ_PUT(v)                                                                       \
+    do {                                                                                 \
+        if (dp == cap) {                                                                 \
+            if (!grow || cap >= MAX_OUT) return false;                                   \
+            uint32_t nc = cap < 0x10000 ? 0x10000 : cap > MAX_OUT / 2 ? MAX_OUT : cap * 2; \
+            uint8_t *no = realloc(o, nc);                                                \
+            if (!no) return false;                                                       \
+            *dst = o = no;                                                               \
+            cap = nc;                                                                    \
+        }                                                                                \
+        o[dp++] = (v);                                                                   \
+    } while (0)
+    while (grow || dp < *dn) {
         if (!bits) {
-            if (sp >= sn) return false;
+            if (sp >= sn) break;
             flags = src[sp++];
             bits = 8;
         }
@@ -790,17 +804,43 @@ static bool alz1(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
         flags >>= 1;
         bits--;
         if (lit) {
-            if (sp >= sn) return false;
-            dst[dp++] = ring[p++ & 0xFFF] = src[sp++];
+            if (sp >= sn) break;
+            uint8_t c = ring[p++ & 0xFFF] = src[sp++];
+            ALZ_PUT(c);
         } else {
-            if (sp + 2 > sn) return false;
+            if (sp + 2 > sn) break;
             uint32_t q = src[sp] | (uint32_t)(src[sp + 1] >> 4) << 8, l = (src[sp + 1] & 15) + 3;
             sp += 2;
-            for (uint32_t i = 0; i < l && dp < dn; i++)
-                dst[dp++] = ring[p++ & 0xFFF] = ring[q++ & 0xFFF];
+            for (uint32_t i = 0; i < l && (grow || dp < *dn); i++) {
+                uint8_t c = ring[p++ & 0xFFF] = ring[q++ & 0xFFF];
+                ALZ_PUT(c);
+            }
         }
     }
-    return true;
+#undef ALZ_PUT
+    if (!grow) return dp == *dn;
+    *dn = dp;
+    return dp > 0;
+}
+
+static bool alz1(uint8_t *dst, uint32_t dn, const uint8_t *src, uint32_t sn)
+{
+    return alz1_run(&dst, &dn, false, src, sn);
+}
+
+/* A standalone "ALZ1" (or "ZALZ" + 4 bytes) file: no size is stored, so it runs to the end of the input. */
+uint8_t *arc_alz1_unpack(const uint8_t *src, uint32_t n, uint32_t *out_len)
+{
+    uint32_t hdr = n >= 4 && !memcmp(src, "ALZ1", 4) ? 4 : n >= 8 && !memcmp(src, "ZALZ", 4) ? 8 : 0;
+    if (!hdr) return NULL;
+    uint32_t dn = 0;
+    uint8_t *out = NULL;
+    if (!alz1_run(&out, &dn, true, src + hdr, n - hdr)) {
+        free(out);
+        return NULL;
+    }
+    *out_len = dn;
+    return out;
 }
 
 static int32_t arika_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, uint32_t len)
@@ -943,6 +983,54 @@ static archive_t *rf2_open(const src_t *f, const char *name)
     return a;
 }
 
+/* ---------------------------------------------------------------- Camelot modules (.sbn) */
+
+/* Camelot's models are PowerPC relocatable modules (elfbin/xcmdl_*.sbn on We Love Golf!) with their
+ * texture banks inline, so a bank is found by scanning (4-byte aligned) for one that checks out, as
+ * nintoolbox's lib-camtexbank.c does; a module may also be Camelot LZ packed. Only for .sbn names:
+ * a signature scan is too weak to run on anything else. Each bank is listed as a TPL. */
+static bool sbn_probe(const src_t *f, const char *name)
+{
+    return arc_name_has_ext(name, ".sbn") && f->size >= 16 && f->size <= MAX_OUT;
+}
+
+static archive_t *sbn_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint32_t len;
+    uint8_t *d = read_all(f, &len);
+    if (!d) return NULL;
+    if (d[0] == 1 || d[0] == 2) {
+        uint32_t un;
+        uint8_t *u = arc_camelot_unpack(d, len, &un);
+        if (u) {
+            free(d);
+            d = u;
+            len = un;
+        }
+    }
+    mb_t m;
+    archive_t *a = NULL;
+    unsigned banks = 0;
+    if (mb_init(&m, "Camelot textures")) {
+        for (uint32_t off = 0; off + 16 <= len; off += 4) {
+            if (be32(d + off) != 0x0020AF30u || !arc_camelot_bank_valid(d + off, len - off)) continue;
+            uint32_t tl;
+            uint8_t *t = arc_camelot_bank_tpl(d + off, len - off, &tl);
+            if (!t) continue;
+            char nm[48];
+            snprintf(nm, sizeof(nm), "bank_%02u_at_%06X.tpl", banks++, (unsigned)off);
+            mb_file(&m, nm, t, tl);
+            free(t);
+        }
+        if (banks) a = mb_done(&m, f);
+        else mb_drop(&m);
+    }
+    free(d);
+    if (!a && !banks) g_archive_err = "No Camelot texture bank in this module";
+    return a;
+}
+
 /* ---------------------------------------------------------------- dispatch */
 
 typedef struct {
@@ -954,7 +1042,7 @@ static const more_t more[] = {
     { vcra_probe, vcra_open }, { sszl_probe, sszl_open }, { blpkg_probe, blpkg_open },
     { gpak_probe, gpak_open }, { gpkg_probe, gpkg_open }, { rfl_probe, rfl_open },
     { fsys_probe, fsys_open }, { ptd_probe, ptd_open }, { pres_probe, pres_open },
-    { arika_probe, arika_open }, { rf2_probe, rf2_open },
+    { arika_probe, arika_open }, { rf2_probe, rf2_open }, { sbn_probe, sbn_open },
 };
 
 bool arc_more_probe(const src_t *f, const char *name)

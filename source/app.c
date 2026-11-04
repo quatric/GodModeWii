@@ -1325,6 +1325,8 @@ int app_run(void)
                         ;
                     else if (joined && arcfs_can_open(path))
                         open_archive(en);
+                    else if (joined && arc_name_has_ext(en->name, ".txt"))
+                        textview(path);         /* PDF pages, logs, readmes */
                     else
                         actions_menu();
                     if (launch_requested)

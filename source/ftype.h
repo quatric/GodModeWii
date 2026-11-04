@@ -11,12 +11,13 @@
 
 typedef enum {
     FT_NONE,
-    FT_STREAM,          /* BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, AST, DSP, BTSND */
+    FT_STREAM,          /* BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, AST, DSP, BTSND, SFX */
     FT_AUDIO,           /* WAV, AIFF, MP3, FLAC, Ogg Vorbis */
     FT_MIDI,            /* standard MIDI, RIFF RMID */
     FT_SEQ,             /* RSEQ in a BRSAR */
     FT_VIDEO,           /* Mobiclip (MOC5), THP, Flipnote PPM / KWZ */
-    /* TPL, TEX0, BRFNT / BRFNA, BREFT, PNG, JPEG, WebP, banners, BTI, TXTR, DKZ */
+    /* TPL, TEX0, PLT0, BRFNT / BRFNA, BREFT, PNG, JPEG, WebP, AJPG, banners, BTI, TXTR, DKZ,
+     * Monster Games TEX / ART / IMG / TM0 */
     FT_IMAGE,
     FT_MODEL,           /* BRRES, MDL0, J3D BMD / BDL */
     FT_BMG,

@@ -6,6 +6,8 @@
 #include "ftype.h"
 #include "vfs.h"
 #include "archive.h"
+#include "excite.h"
+#include "media.h"
 
 #define M(s) (n >= sizeof(s) - 1 && !memcmp(h, s, sizeof(s) - 1))
 
@@ -17,8 +19,17 @@ static bool ext_any(const char *name, const char *const *ext)
 }
 
 /* The formats that carry no magic of their own. */
-static ftype_t by_name(const char *name)
+static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
 {
+    /* Monster Games: .sfx audio checks its header against the size; .tex / .art go to the image viewer,
+     * .tm0 when its header at 0x80 checks out, .img (also a disk image name) only when it is shaped like
+     * one (the header, or 2^k pixel bytes and a 128-byte tail) */
+    if (arc_name_has_ext(name, ".sfx") && audio_sfx_header(h, n, size)) return FT_STREAM;
+    if (arc_name_has_ext(name, ".tex") || arc_name_has_ext(name, ".art")) return FT_IMAGE;
+    if (arc_name_has_ext(name, ".tm0") && n >= 0x86 && excite_head_ok(h + 0x80, n - 0x80)) return FT_IMAGE;
+    if (arc_name_has_ext(name, ".img") && size > 128 && size <= (4u << 20) + 128 &&
+        (excite_head_ok(h, n) || !((size - 128) & (size - 129))))
+        return FT_IMAGE;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
     static const char *const audio[] = { ".mp3", ".mp2", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };
@@ -82,6 +93,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (M("MOC5") || M("THP\0") || M("PARA") || M("KFH")) return FT_VIDEO;
 
         if (be32(h) == 0x0020AF30u) return FT_IMAGE;                                   /* TPL */
+        if (M("PLT0") || M("AJPG")) return FT_IMAGE;
         if (M("TEX0") || M("RFNT") || M("RFNU") || M("RFNA") || M("REFT") || M("DKZF") ||
             M("\x89PNG"))
             return FT_IMAGE;
@@ -114,7 +126,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
             return FT_PROGRAM;
         if (!app && dol(h, n, size)) return FT_PROGRAM;
     }
-    return name ? by_name(name) : FT_NONE;
+    return name ? by_name(name, h, n, size) : FT_NONE;
 }
 
 ftype_t ftype_detect(const char *path)

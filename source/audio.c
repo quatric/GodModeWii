@@ -7,6 +7,7 @@
  *   BRWAV / BCWAV / BFWAV     one wave per channel (DSP-ADPCM, PCM16, PCM8)
  *   BNS                       Wii banner sound (DSP-ADPCM)
  *   DSP                       standard DSP-ADPCM header(s)
+ *   SFX                       Monster Games' DSP-ADPCM (Excite Truck, Excitebots)
  *   AST                       GameCube / Wii AFC ADPCM or PCM16 blocks
  *   BTSND                     Wii U boot sound, 48 kHz stereo PCM16
  * Everything is decoded block by block while playing (libogc's ASND), so
@@ -383,6 +384,34 @@ static bool open_dsp(snd_t *s)
     return true;
 }
 
+/* Monster Games .sfx (Excite Truck / Excitebots), after nintoolbox's lib-sfx.c: no magic; a 0x80 header
+ * of mixed byte order (little endian payload size, header size 0x80, rate at 0x10, byte rate rate * 2
+ * at 0x14; big endian nibble count at 0x34 and DSP coefficients at 0x3C) over one mono DSP-ADPCM stream. */
+bool audio_sfx_header(const u8 *h, u32 n, u64 size)
+{
+    if (n < 0x5C || size <= 0x80) return false;
+    u32 ds = h[0] | h[1] << 8 | h[2] << 16 | (u32)h[3] << 24, hs = h[4] | h[5] << 8 | h[6] << 16 | (u32)h[7] << 24;
+    u32 rate = h[0x10] | h[0x11] << 8 | h[0x12] << 16 | (u32)h[0x13] << 24;
+    u32 br = h[0x14] | h[0x15] << 8 | h[0x16] << 16 | (u32)h[0x17] << 24, nib = be32(h + 0x34);
+    return hs == 0x80 && (u64)ds + 0x80 == size && rate && rate <= 48000 && br == rate * 2 && nib >= ds &&
+           nib <= (u64)ds * 2 + 16;
+}
+
+static bool open_sfx(snd_t *s, const u8 *h, u32 hlen)
+{
+    s->fmt = "Monster Games SFX";
+    if (!audio_sfx_header(h, hlen, s->f.size)) return false;
+    s->nch = 1;
+    s->rate = h[0x10] | h[0x11] << 8 | h[0x12] << 16 | (u32)h[0x13] << 24;
+    s->total = nibbles_to_samples(be32(h + 0x34));
+    u32 max = (u32)((s->f.size - 0x80) / 8 * 14);
+    if (s->total > max) s->total = max;
+    s->codec = CO_ADPCM;
+    load_coefs(s, 0, h + 0x3C);
+    s->choff[0] = 0x80;
+    return s->total > 0;
+}
+
 static bool open_ast(snd_t *s, const u8 *h)
 {
     s->fmt = "AST";
@@ -488,6 +517,9 @@ static bool snd_open(snd_t *s, const char *path)
     } else if (arc_name_has_ext(path, ".dsp")) {
         s->layout = L_PLANAR;
         ok = open_dsp(s);
+    } else if (arc_name_has_ext(path, ".sfx") && audio_sfx_header(h, hlen, s->f.size)) {
+        s->layout = L_PLANAR;
+        ok = open_sfx(s, h, hlen);
     } else if (arc_name_has_ext(path, ".btsnd")) {
         s->layout = L_PLANAR;
         ok = open_btsnd(s);

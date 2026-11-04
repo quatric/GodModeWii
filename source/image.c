@@ -4,7 +4,9 @@
  * GX texture formats (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, C4, C8, C14X2,
  * CMPR) in the first-party GameCube / Wii containers nintoolbox reads:
  *   TPL, BTI, TEX0 (.tex0 / .brtex, with its PLT0 when inside a BRRES),
- *   BRFNT font sheets, BREFT effect textures, J3D BMD / BDL (TEX1)
+ *   BRFNT font sheets, BREFT effect textures, J3D BMD / BDL (TEX1), a PLT0 on its own (as swatches),
+ *   Camelot texture banks (as the TPL archive.c turns them into), Monster Games .tex / .art / .img /
+ *   .tm0 (excite.c), and ActImagine AJPG (the Wii Message Board's photos; ajpg/odh_core.c)
  * plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
  * libwebp). View only: nothing is converted or written.
  *
@@ -31,6 +33,8 @@
 #include "archive.h"
 #include "arcfs.h"
 #include "ftype.h"
+#include "excite.h"
+#include "ajpg.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_IMAGES 512
@@ -745,11 +749,12 @@ static u8 *load_file(const char *path, u32 *len)
 static u8 *sibling_palette(const char *path)
 {
     const char *tex = strstr(path, "/Textures(NW4R)/");
-    if (!tex) return NULL;
     char p[VFS_PATH_MAX];
-    snprintf(p, sizeof(p), "%.*s/Palettes(NW4R)/%s", (int)(tex - path), path, tex + 16);
+    if (tex) snprintf(p, sizeof(p), "%.*s/Palettes(NW4R)/%s", (int)(tex - path), path, tex + 16);
+    else snprintf(p, sizeof(p), "%s", path);                 /* a bare name.tex0: name.plt0 beside it */
     size_t l = strlen(p);
     if (l > 5 && !strcasecmp(p + l - 5, ".tex0")) memcpy(p + l - 5, ".plt0", 5);
+    else if (!tex) return NULL;
     u32 len;
     u8 *b = load_file(p, &len);
     if (b && (len < 0x20 || memcmp(b, "PLT0", 4))) {
@@ -782,6 +787,46 @@ static void parse_txtr(set_t *s)
     }
     img_t *im = add(s, gx[f], w, h, off, "texture");
     if (im && pc) set_pal(s, im, pf, pc, po);
+}
+
+/* A PLT0 on its own: its colours as 16 x 16 swatches, 16 to a row. */
+static void parse_plt0(set_t *s)
+{
+    u32 doff = be32(s->buf + 0x10), fmt = be32(s->buf + 0x18), cnt = be16(s->buf + 0x1C);
+    if (s->len < 0x20 || !cnt || fmt > 2 || doff >= s->len || (u64)doff + cnt * 2ull > s->len) return;
+    img_t pal = { .pal = s->buf + doff, .palfmt = (int)fmt, .palcount = (int)cnt };
+    int cols = cnt < 16 ? (int)cnt : 16, rows = (int)(cnt + 15) / 16, w = cols * 16, h = rows * 16;
+    u8 *px = calloc(1, (size_t)w * h * 4);
+    if (!px) return;
+    for (u32 i = 0; i < cnt; i++) {
+        u8 c[4];
+        pal_color(&pal, i, c);
+        int x0 = (int)(i % 16) * 16, y0 = (int)(i / 16) * 16;
+        for (int y = 1; y < 15; y++)
+            for (int x = 1; x < 15; x++) memcpy(px + ((size_t)(y0 + y) * w + x0 + x) * 4, c, 4);
+    }
+    static const char *const names[] = { "PLT0 (IA8)", "PLT0 (RGB565)", "PLT0 (RGB5A3)" };
+    add_rgba(s, w, h, px, names[fmt]);
+}
+
+static void load_ajpg(set_t *s)
+{
+    u8 *px = NULL;
+    int w = 0, h = 0;
+    if (AjpgDecodeRGBA(s->buf, s->len, &px, &w, &h)) add_rgba(s, w, h, px, "AJPG");
+}
+
+/* Monster Games textures, by extension (they have no magic). */
+static void load_excite(set_t *s, const char *path)
+{
+    int w = 0, h = 0;
+    u8 *px = NULL;
+    const char *kind = "Monster Games texture";
+    if (arc_name_has_ext(path, ".tm0")) px = excite_tm0(s->buf, s->len, &w, &h), kind = "Monster Games TM0";
+    else if (arc_name_has_ext(path, ".tex")) px = excite_tex(s->buf, s->len, &w, &h), kind = "Monster Games TEX";
+    else if (arc_name_has_ext(path, ".art") || arc_name_has_ext(path, ".img"))
+        px = excite_art(s->buf, s->len, &w, &h), kind = "Monster Games ART";
+    if (px) add_rgba(s, w, h, px, kind);
 }
 
 static bool load_set(set_t *s, const char *path)
@@ -818,6 +863,11 @@ static bool load_set(set_t *s, const char *path)
             add(s, TF_RGB5A3, 48, 48, off, lab);
         }
     }
+    else if (!memcmp(b, "PLT0", 4)) parse_plt0(s);
+    else if (!memcmp(b, "AJPG", 4)) load_ajpg(s);
+    else if (arc_name_has_ext(path, ".tm0") || arc_name_has_ext(path, ".tex") || arc_name_has_ext(path, ".art") ||
+             arc_name_has_ext(path, ".img"))
+        load_excite(s, path);
     else if (arc_name_has_ext(path, ".txtr")) parse_txtr(s);
     else if (arc_name_has_ext(path, ".bti")) {
         s->kind = "BTI";

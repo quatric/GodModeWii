@@ -104,14 +104,15 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 
 | Kind | Formats |
 | --- | --- |
-| Nintendo archives | U8 (`.arc`, `.app`, `.bnr`, `.carc` …, also with an IMET / IMD5 header), RARC, BRRES, Virtual Console CCF, Brawl PAC, Good-Feel GFA |
-| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11 (bare or behind an `LZ77` tag), Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`), **zlib** and gzip (found by their header whatever the name, as well as `.z`, `.zlib`, `.gz`), and **Camelot STPL** (`.stpl`, or an extensionless file that unpacks to a TPL texture bank, as on the Mario Power Tennis / Mario Golf: Toadstool Tour discs) |
+| Nintendo archives | U8 (`.arc`, `.app`, `.bnr`, `.carc` …, also with an IMET / IMD5 header), RARC, BRRES, Virtual Console CCF, Brawl PAC, Good-Feel GFA, Arika `INFO.DAT` + `GAME.DAT` (Dr. Mario Online Rx, Endless Ocean; ALZ1 members, RF2 groups) |
+| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11 (bare or behind an `LZ77` tag), Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`), **zlib** and gzip (found by their header whatever the name, as well as `.z`, `.zlib`, `.gz`), **QuickLZ** 1.4.0 / 1.20 (bare, or Monster Games' `PMCr` wrapper), Good-Feel **GFCP** (byte pair or LZ10) and Arika **ALZ1** on their own, and **Camelot STPL** (`.stpl`, or an extensionless file that unpacks to a Camelot texture bank, as on the Mario Power Tennis / Mario Golf: Toadstool Tour discs; the bank is shown as a TPL) |
 | Titles and saves | WAD (with a `wad_info.txt`), `content.bin` (DLC / WiiWare SD backup), `data.bin` (Wii save backup), VFF (WiiConnect24 / Mii mailboxes). Decrypted as you browse, vWii-key WADs included |
 | Sound archives | BRSAR: groups, sequences, banks, sound files and every wave, playable |
 | Disc images | GameCube / Wii `.iso` / `.gcm`, single-file `.wbfs`, `.ciso`, **RVZ** and **WIA** |
 | PC archives | zip, 7z, RAR 1.5 – 5.x |
-| Game archives | Retro Studios PAK (Metroid Prime 1 – 3, Trilogy, Donkey Kong Country Returns), **HAL sysdolphin `.dat` (HSD)**: its roots, external references and every plain GX texture (as a one-image TPL, opened by the image viewer) |
+| Game archives | **Monster Games RST** with its `.toc` (Excite Truck, Excitebots, Excitebike: World Rally; QuickLZ blocks, big- and little-endian, WiiWare `tocres.res`), Camelot `.sbn` modules (their inline texture banks, as TPLs; We Love Golf!), Retro Studios PAK (Metroid Prime 1 – 3, Trilogy, Donkey Kong Country Returns), **HAL sysdolphin `.dat` (HSD)**: its roots, external references and every plain GX texture (as a one-image TPL, opened by the image viewer) |
 | NAND dumps | **BootMii `nand.bin`** (with or without spare areas, with or without the appended keys): the newest SFFS superblock as folders, files decrypted with the NAND key from the dump, a `keys.bin` / `otp.bin` next to it, or this console's own OTP |
+| Documents | **PDF**: each page's text (`page_001.txt`), all of it in `text.txt`, and every embedded image (JPEG as stored, the rest as PNG). See below for what it reads |
 | Disks and partitions | MBR (with logical partitions), GPT and Apple partition maps; **ext2 / ext3 / ext4**, **XFS**, **HFS+ / HFSX**, **APFS** and **OpenZFS** volumes (see [Drives](#drives)) |
 
 * A Wii disc image shows each partition (DATA, UPDATE, CHANNEL) with `ticket.bin`, `tmd.bin`, `sys/` and `files/`, decrypted on the
@@ -123,15 +124,19 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 
 | Viewer | Formats | Buttons |
 | --- | --- | --- |
-| **Images** | TPL, BTI, TEX0 / BRTEX, BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, PNG, JPEG, WebP. Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
+| **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as colour swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP. Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, and Mario Party `.hsf` (HSFV037, flat colour per part); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
-| **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
+| **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat, **B** stop |
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 | **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
 
 * **Images** open pixel for pixel (1:1) in their real colours. A `.stpl` is unpacked first and shown as the TPL it holds.
+* **Monster Games textures** don't store their pixel format, so `.tex` / `.art` / `.img` are decoded in every format that fits and
+  the one whose mip levels agree (or whose GX tiles join up) is shown, as nintoolbox and ExciteExtract do: best effort, a few
+  percent of files come out in the wrong format. `.tm0` and Excitebots' headed files are exact.
+* **Text files** (`.txt`, such as a PDF's pages) open in the text viewer straight away.
 * **A bare MDL0** (opened on its own, not inside its BRRES) gets its textures too: each one is looked up as `<name>.tex0` (with its
   `.plt0`) next to the model, or inside any `.brres` in the same folder. A model opened from inside a BRRES uses that BRRES.
 * **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colours,
@@ -394,7 +399,12 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **BootMii NAND:** the file system is read from the newest superblock; without the NAND key (nothing appended, no `keys.bin` /
   `otp.bin` next to the dump, not this console) the folders can be browsed but file contents can't be read. No ECC or HMAC checks.
 * **HSD / HSF:** HSD archives show roots and plain GX textures (palette textures aren't listed); HSF models show geometry in a flat
-  colour per part, without materials, skinning or animation. A Camelot texture bank is read as a standard TPL.
+  colour per part, without materials, skinning or animation.
+* **PDF:** pages aren't drawn, only their text and images come out. Text is in drawing order with a line break wherever it moves
+  to another line, which reads well for most documents but not for multi-column layouts. Read: FlateDecode (with predictors), LZW,
+  ASCIIHex, ASCII85 and RunLength streams, object streams, ToUnicode maps, WinAnsi / MacRoman encodings and glyph-name
+  differences; images in grey, RGB, CMYK, ICC-based and indexed colour at 1 – 16 bits. Not read: encrypted documents, JPEG 2000,
+  JBIG2 and CCITT images, and text in a composite font without a ToUnicode map (marked in the text). Up to 32 MiB per PDF.
 * **WFS** is read the way wfslib does (no block hashes checked, areas assumed contiguous, links not shown), tested against
   generated images and one real Wii U drive. Large folders take a moment to list.
 
@@ -441,7 +451,17 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
   (ISO, WBFS, CISO), and file-type detection.
 * **[HSDLib](https://github.com/Ploaj/HSDLib)** by Ploaj (MIT) — the HSD `.dat` container and relocation layout, via nintoolbox's `lib-hsd.c`; and **[Metanoia](https://github.com/Ploaj/Metanoia)**'s HSF reader, via nintoolbox's `lib-hsf.c` (Mario Party HSFV037 models).
-* **Camelot STPL** — the codec layout comes from nintoolbox's `lib-camelot.c`, and so does finding an extensionless one by the texture bank it unpacks to; the `LZ77` tag handling follows its `lib-wii-banner.c`.
+* **Camelot STPL and texture banks** — the codec and bank layout come from nintoolbox's `lib-camelot.c` and `lib-camtexbank.c`. nintoolbox only claims
+  a Camelot file by its name, because scanning for the bank signature matched inside other archives; GodModeWii also opens an
+  extensionless one, but only when the first bytes it unpacks to are the start of a valid bank, and scans for banks only in `.sbn`
+  modules. The `LZ77` tag handling follows nintoolbox's `lib-wii-banner.c`.
+* **Monster Games** (Excite Truck, Excitebots) — the RST / TOC layouts (`lib-rst.c`), the `.sfx` header (`lib-sfx.c`) and the
+  `.tex` / `.art` / `.tm0` texture recovery (`lib-excite.c`, itself ported from the **ExciteExtract** research tool), all via nintoolbox.
+* **[QuickLZ](http://www.quicklz.com/)** by Lasse Mikkel Reinhold (GPL) — `source/qlz.c` decodes the 1.4.0 (level 3) and 1.20
+  streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
+* **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
+  nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
+* **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
 * **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
 * **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.

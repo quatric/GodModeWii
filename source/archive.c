@@ -12,6 +12,7 @@
 #include <zlib.h>
 
 #include "archive.h"
+#include "qlz.h"
 
 const char *g_archive_err;
 static archive_key_fn prng_provider;
@@ -786,11 +787,13 @@ static bool zlib_ext(const char *name)
     return arc_name_has_ext(name, ".z") || arc_name_has_ext(name, ".zlib") || arc_name_has_ext(name, ".zz") ||
            arc_name_has_ext(name, ".gz");
 }
+static bool qlz_ext(const char *name) { return arc_name_has_ext(name, ".qlz") || arc_name_has_ext(name, ".quicklz"); }
 
 static bool lz_ext(const char *name)
 {
-    static const char *const ext[] = { ".lz",  ".lz10", ".lz11", ".lz77",   ".huff", ".huf", ".rl", ".rle", ".lzh8",
-                                       ".lh",  ".cx",   ".stpl", ".camelot", ".z",    ".zlib", ".zz", ".gz",  NULL };
+    static const char *const ext[] = { ".lz",  ".lz10", ".lz11", ".lz77", ".huff", ".huf",     ".rl",   ".rle",
+                                       ".lzh8", ".lh",  ".cx",   ".stpl", ".camelot", ".z",    ".zlib", ".zz",
+                                       ".gz",  ".gfcp", ".alz",  ".alz1", ".qlz",  ".quicklz", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i])) return true;
     return false;
@@ -807,6 +810,91 @@ static bool known_magic(const uint8_t *m)
     for (int i = 0; tags[i]; i++)
         if (!memcmp(m, tags[i], 4)) return true;
     return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
+}
+
+static void wbe16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
+static void wbe32(uint8_t *p, uint32_t v) { wbe16(p, (uint16_t)(v >> 16)); wbe16(p + 2, (uint16_t)v); }
+
+/* ---- Camelot GX texture bank: what a Camelot stream usually holds (Mario Golf: Toadstool Tour, Mario
+ * Power Tennis, We Love Golf!). It starts with the TPL magic, 0x0020AF30, but is not a TPL: u32 count,
+ * u32 table offset, table of {u32 entry offset, u32 0}, entries of {u16 width, u16 height, u32 GX format,
+ * u32 data offset, sampler}, every offset relative to the bank. Validity and layout follow nintoolbox's
+ * lib-camtexbank.c, which declines the palettised formats (where their palette lives is unknown). */
+static uint32_t gx_level(uint32_t fmt, uint32_t w, uint32_t h)
+{
+    uint32_t bw, bh, bpp;
+    switch (fmt) {
+    case 0: case 14: bw = 8, bh = 8, bpp = 4; break;
+    case 1: case 2: bw = 8, bh = 4, bpp = 8; break;
+    case 3: case 4: case 5: bw = 4, bh = 4, bpp = 16; break;
+    case 6: bw = 4, bh = 4, bpp = 32; break;
+    default: return 0;
+    }
+    return (w + bw - 1) / bw * ((h + bh - 1) / bh) * bw * bh * bpp / 8;
+}
+
+bool arc_camelot_bank_valid(const uint8_t *b, uint32_t n)
+{
+    if (n < 16 || be32(b) != 0x0020AF30u) return false;
+    uint32_t count = be32(b + 4), tbl = be32(b + 8);
+    if (!count || count > 0x1000 || tbl < 12 || (uint64_t)tbl + count * 8ull > n) return false;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t e = be32(b + tbl + i * 8);
+        if ((uint64_t)e + 16 > n) return false;
+        uint32_t w = be16(b + e), h = be16(b + e + 2), need = gx_level(be32(b + e + 4), w, h);
+        if (!w || !h || !need || (uint64_t)be32(b + e + 8) + need > n) return false;
+    }
+    return true;
+}
+
+/* The bank rewritten as a real TPL (one image per entry), so every viewer reads it the usual way. */
+uint8_t *arc_camelot_bank_tpl(const uint8_t *b, uint32_t n, uint32_t *out_len)
+{
+    if (!arc_camelot_bank_valid(b, n)) return NULL;
+    uint32_t count = be32(b + 4), tbl = be32(b + 8);
+    uint64_t total = 12 + count * (8ull + 0x24);
+    total = (total + 31) & ~31ull;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t e = be32(b + tbl + i * 8);
+        total += (gx_level(be32(b + e + 4), be16(b + e), be16(b + e + 2)) + 31) & ~31u;
+    }
+    if (total > ARC_MAX_DECOMPRESSED) return NULL;
+    uint8_t *t = calloc(1, (size_t)total);
+    if (!t) return NULL;
+    wbe32(t, 0x0020AF30u);
+    wbe32(t + 4, count);
+    wbe32(t + 8, 12);
+    uint32_t hdr = 12 + count * 8, data = (uint32_t)((hdr + count * 0x24ull + 31) & ~31ull);
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t e = be32(b + tbl + i * 8), w = be16(b + e), h = be16(b + e + 2), f = be32(b + e + 4);
+        uint32_t need = gx_level(f, w, h), ih = hdr + i * 0x24;
+        wbe32(t + 12 + i * 8, ih);
+        wbe16(t + ih, (uint16_t)h);
+        wbe16(t + ih + 2, (uint16_t)w);
+        wbe32(t + ih + 4, f);
+        wbe32(t + ih + 8, data);
+        memcpy(t + data, b + be32(b + e + 8), need);
+        data += (need + 31) & ~31u;
+    }
+    *out_len = (uint32_t)total;
+    return t;
+}
+
+uint8_t *arc_camelot_unpack(const uint8_t *src, uint32_t n, uint32_t *out_len)
+{
+    return camelot_unpack(src, n, out_len);
+}
+
+/* Camelot data decoded, and a texture bank in it turned into a TPL. */
+static uint8_t *camelot_unpack_tpl(const uint8_t *src, uint32_t n, uint32_t *osz)
+{
+    uint8_t *u = camelot_unpack(src, n, osz);
+    uint32_t tl;
+    uint8_t *t = u ? arc_camelot_bank_tpl(u, *osz, &tl) : NULL;
+    if (!t) return u;
+    free(u);
+    *osz = tl;
+    return t;
 }
 
 /* zlib data inflates cleanly from its first bytes: no error, and either 16 bytes out or the whole stream */
@@ -832,24 +920,78 @@ static bool lz77_tagged(const uint8_t *h, uint32_t n)
     return n > 8 && !memcmp(h, "LZ77", 4) && (h[4] == 0x10 || h[4] == 0x11);
 }
 
-enum { PK_NONE, PK_CX, PK_CAMELOT, PK_ZLIB };
+/* Good-Feel "GFCP": u32 mode at 8 (1 byte pair, 2 / 3 headerless LZ10), output size at 12, packed size at 16 */
+static bool gfcp_header(const uint8_t *h, uint32_t n, uint64_t size)
+{
+    if (n < 20 || memcmp(h, "GFCP", 4)) return false;
+    uint32_t mode = le32(h + 8), olen = le32(h + 12), zsz = le32(h + 16);
+    return mode >= 1 && mode <= 3 && olen && olen <= ARC_MAX_DECOMPRESSED && 20ull + zsz <= size;
+}
+
+static uint8_t *gfcp_unpack(const uint8_t *src, uint32_t n, uint32_t *osz)
+{
+    uint32_t mode = le32(src + 8), olen = le32(src + 12), zsz = le32(src + 16);
+    uint8_t *out = malloc(olen);
+    if (!out) { g_archive_err = "Out of memory"; return NULL; }
+    bool ok = mode == 1 ? arc_bpe_decode(out, olen, src + 20, zsz) : arc_lz10_raw(out, olen, src + 20, zsz);
+    if (!ok) {
+        free(out);
+        g_archive_err = "Corrupt GFCP data";
+        return NULL;
+    }
+    *osz = olen;
+    return out;
+}
+
+/* Monster Games' "PMCr" (or "rMCP") wrapper: u32 stream length at 8 (either byte order), the QuickLZ
+ * stream at 16; a bare QuickLZ stream's header holds its own exact length. */
+static bool qlz_at(const uint8_t *h, uint32_t n, uint64_t size, uint32_t *skip, uint32_t *plen)
+{
+    uint32_t ds, hl;
+    int v;
+    if (n >= 25 && (!memcmp(h, "PMCr", 4) || !memcmp(h, "rMCP", 4)))
+        for (int be = 0; be < 2; be++) {
+            uint32_t l = be ? be32(h + 8) : le32(h + 8);
+            if (l && l <= size - 16 && qlz_header(h + 16, l, &ds, &hl, &v)) {
+                *skip = 16;
+                *plen = l;
+                return true;
+            }
+        }
+    if (n >= 9 && size <= 0xFFFFFFFFu && qlz_header(h, (uint32_t)size, &ds, &hl, &v)) {
+        *skip = 0;
+        *plen = (uint32_t)size;
+        return true;
+    }
+    return false;
+}
+
+enum { PK_NONE, PK_CX, PK_CAMELOT, PK_ZLIB, PK_GFCP, PK_ALZ1, PK_QLZ };
 
 /* What compression the data in h (the first n bytes of a size-byte file) is in, if any. A name decides
- * Camelot and zlib on its own; "LZ77" and gzip / zlib carry their own magic; a bare CX or Camelot header
- * is only taken when what it decodes to starts with a known Nintendo magic (a TPL texture bank, ...),
- * which is how nintoolbox finds the extensionless STPL files on Camelot's discs. `loose` (an explicit
- * unwrap of data the caller knows is compressed) takes any valid CX header. */
-static int pack_kind(const char *name, const uint8_t *h, uint32_t n, uint64_t size, bool loose, uint32_t *skip)
+ * Camelot and zlib on its own; "LZ77", gzip / zlib, GFCP, ALZ1 and PMCr carry their own magic, and a bare
+ * QuickLZ header its exact length. A bare CX stream is only taken when what it decodes to starts with a
+ * known Nintendo magic. A Camelot stream without its .stpl name only when it decodes to the start of a
+ * texture bank: nintoolbox claims Camelot by name alone after its signature scan matched inside other
+ * archives, so this never scans, it only looks at the first bytes out. `loose` (an explicit unwrap of
+ * data the caller knows is compressed) takes any valid CX header. */
+static int pack_kind(const char *name, const uint8_t *h, uint32_t n, uint64_t size, bool loose, uint32_t *skip,
+                     uint32_t *plen)
 {
     uint8_t t, peek[16];
     uint32_t s, hl;
     *skip = 0;
+    *plen = n;
     if (camelot_ext(name)) return camelot_header(h, n, &s) ? PK_CAMELOT : PK_NONE;
     if (zlib_ext(name)) return zlib_header(h, n) ? PK_ZLIB : PK_NONE;
     if (lz77_tagged(h, n)) {
         *skip = 4;
         return lz_header(h + 4, n - 4, &t, &s, &hl) ? PK_CX : PK_NONE;
     }
+    if (gfcp_header(h, n, size)) return PK_GFCP;
+    if (n >= 8 && (!memcmp(h, "ALZ1", 4) || !memcmp(h, "ZALZ", 4))) return PK_ALZ1;
+    if (qlz_at(h, n, size, skip, plen)) return PK_QLZ;
+    if (qlz_ext(name)) return PK_NONE;
     if (cx_header(h, n, &t, &s, &hl)) {
         if (loose || lz_ext(name)) return PK_CX;
         if (s >= 16 && s <= ARC_MAX_DECOMPRESSED && (uint64_t)s * 64 >= size &&
@@ -859,18 +1001,20 @@ static int pack_kind(const char *name, const uint8_t *h, uint32_t n, uint64_t si
     if (n >= 6 && ((h[0] == 0x1F && h[1] == 0x8B) || h[0] == 0x78) && zlib_header(h, n) && zlib_peek(h, n))
         return PK_ZLIB;
     if (camelot_header(h, n, &s) && s >= 16 && s <= ARC_MAX_DECOMPRESSED && (uint64_t)s * 64 >= size &&
-        size <= (uint64_t)s + s / 8 + 64 && camelot_decode(h, n, s, peek, sizeof(peek)) && known_magic(peek))
+        size <= (uint64_t)s + s / 8 + 64 && camelot_decode(h, n, s, peek, sizeof(peek)) &&
+        be32(peek) == 0x0020AF30u && be32(peek + 4) && be32(peek + 4) <= 0x1000 && be32(peek + 8) >= 12 &&
+        be32(peek + 8) < s)
         return PK_CAMELOT;
     return PK_NONE;
 }
 
-/* By name (.lz, .stpl, .gz ...), by magic ("LZ77", zlib, gzip), or by a known Nintendo file inside */
+/* By name (.lz, .stpl, .gz ...), by magic ("LZ77", zlib, gzip, GFCP, ALZ1, QuickLZ) or by what is inside */
 static bool probe_lz(const src_t *file, const char *name)
 {
     uint8_t h[4096];
-    uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h), skip;
+    uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h), skip, plen;
     if (n < 6 || !src_read_full(file, 0, h, n)) return false;
-    return pack_kind(name, h, n, file->size, false, &skip) != PK_NONE;
+    return pack_kind(name, h, n, file->size, false, &skip, &plen) != PK_NONE;
 }
 
 static void strip_name(const char *name, char *out, size_t outsz)
@@ -893,11 +1037,19 @@ static void strip_name(const char *name, char *out, size_t outsz)
 /* The right decoder for a compressed single file, by its name or its contents. */
 static uint8_t *wrap_unpack(const char *name, const uint8_t *buf, uint32_t len, uint32_t *osz)
 {
-    uint32_t skip;
-    switch (pack_kind(name, buf, len, len, true, &skip)) {
-    case PK_CAMELOT: return camelot_unpack(buf, len, osz);
+    uint32_t skip, plen;
+    uint8_t *u;
+    switch (pack_kind(name, buf, len, len, true, &skip, &plen)) {
+    case PK_CAMELOT: return camelot_unpack_tpl(buf, len, osz);
     case PK_ZLIB: return zlib_unpack(buf, len, osz);
     case PK_CX: return lz_unpack(buf, len, skip, osz);
+    case PK_GFCP: return gfcp_unpack(buf, len, osz);
+    case PK_ALZ1:
+        if (!(u = arc_alz1_unpack(buf, len, osz))) g_archive_err = "Corrupt ALZ1 data";
+        return u;
+    case PK_QLZ:
+        if (!(u = qlz_unpack(buf + skip, plen, ARC_MAX_DECOMPRESSED, osz))) g_archive_err = "Corrupt QuickLZ data";
+        return u;
     }
     g_archive_err = zlib_ext(name) ? "Not zlib data" : camelot_ext(name) ? "Not Camelot data" : "Not compressed data";
     return NULL;
@@ -1208,6 +1360,7 @@ static const fmt_t formats[] = {
     { "CCF",         arc_ccf_probe,        arc_ccf_open },
     { "PAC",         arc_pac_probe,        arc_pac_open },
     { "Retro PAK",   arc_retro_probe,      arc_retro_open },
+    { "RST",         arc_rst_probe,        arc_rst_open },
     { "LZO",         arc_lzop_probe,       arc_lzop_open },
     { "disc image",  arc_disc_probe,       arc_disc_open },
     { "zip/7z/rar",  arc_zip7zrar_probe,   arc_zip7zrar_open },
@@ -1220,6 +1373,7 @@ static const fmt_t formats[] = {
     { "ZFS",         arc_zfs_probe,        arc_zfs_open },
     { "BootMii NAND", arc_nand_probe,      arc_nand_open },
     { "HSD",         arc_hsd_probe,        arc_hsd_open },
+    { "PDF",         arc_pdf_probe,        arc_pdf_open },
     { "partitions",  arc_disk_probe,       arc_disk_open },
 };
 
