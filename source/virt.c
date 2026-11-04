@@ -360,8 +360,12 @@ static void refresh_disc(void)
     }
 
     if (!di_started) {
-        if (!g_is_dolphin)
+        if (!g_is_dolphin) {
             IosPatch_DIReadLimit(false);
+            /* Opening a Wii partition makes ES set HW_AHBPROT from the game's TMD, which locks
+             * the keys, SEEPROM and later disc reads; this ES patch keeps it off. */
+            IosPatch_AHBPROT(false);
+        }
         DI_UseCache(false);
         DI_Init();
         di_started = true;
