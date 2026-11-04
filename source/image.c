@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <malloc.h>
+#include <zlib.h>
 #include <setjmp.h>
 #include <gccore.h>
 #include <png.h>
@@ -49,6 +50,7 @@ typedef struct {
     u8 *buf;
     u32 len;
     u8 *pal_buf;                /* PLT0 loaded from a sibling file */
+    u8 *extra;                  /* decompressed BRFNA sheets */
     img_t img[MAX_IMAGES];
     int n;
     const char *kind;
@@ -281,6 +283,95 @@ static void parse_tex0(set_t *s, u32 at, const char *label)
     }
 }
 
+/* ---- BRFNA: font sheets stored compressed, each as a u32 size and a chunk whose first (little
+ * endian) word is the output size << 8 | codec (0x10 LZSS, 0x20 Huffman, 0x30 RLE). The decoders
+ * follow nintoolbox's lib-brfna.c. */
+
+static u32 fna_lzss(const u8 *src, u32 n, u32 target, u8 *dst)
+{
+    u32 out = 0, in = 0;
+    while (out < target && in < n) {
+        u8 ctrl = src[in++];
+        for (int bit = 0; bit < 8 && out < target; bit++, ctrl <<= 1) {
+            if (ctrl & 0x80) {
+                if (in + 1 >= n) return out;
+                u8 b0 = src[in], b1 = src[in + 1];
+                in += 2;
+                u32 len = (b0 >> 4) + 3, dist = (b1 | (b0 & 15) << 8) + 1;
+                if (dist > out) return out;
+                for (u32 k = 0; k < len && out < target; k++, out++) dst[out] = dst[out - dist];
+            } else {
+                if (in >= n) return out;
+                dst[out++] = src[in++];
+            }
+        }
+    }
+    return out;
+}
+
+static u32 fna_rle(const u8 *src, u32 n, u32 target, u8 *dst)
+{
+    u32 out = 0, in = 0;
+    while (out < target && in < n) {
+        u8 b = src[in];
+        if (b & 0x80) {
+            if (in + 1 >= n) return out;
+            u8 v = src[in + 1];
+            u32 c = (b & 0x7F) + 3;
+            in += 2;
+            for (u32 k = 0; k < c && out < target; k++) dst[out++] = v;
+        } else {
+            u32 c = b + 1;
+            in++;
+            for (u32 k = 0; k < c && out < target; k++) {
+                if (in >= n) return out;
+                dst[out++] = src[in++];
+            }
+        }
+    }
+    return out;
+}
+
+/* The code tree sits in the chunk itself: each entry a 6-bit skip and two "leaf" flags. */
+static u32 fna_huff(const u8 *t, u32 n, u32 target, u8 *dst, int low)
+{
+    if (n < 2) return 0;
+    u8 bl = t[1], half = 0;
+    bool pending = false;
+    u32 out = 0, cx = 1, bp = ((u32)t[0] + 1) * 2 & 0xFFFF;
+    while (out < target) {
+        if (bp + 4 > n) return out;
+        u32 w = t[bp] | t[bp + 1] << 8 | t[bp + 2] << 16 | (u32)t[bp + 3] << 24;
+        bp += 4;
+        for (int b = 0; b < 32 && out < target; b++) {
+            u32 bit = w >> 31 & 1;
+            w <<= 1;
+            bool leaf = bit ? (bl & 0x40) != 0 : (bl & 0x80) != 0;
+            u32 idx = cx * 2 + bit;
+            if (idx >= n) return out;
+            if (!leaf) { bl = t[idx]; cx += (bl & 0x3F) + 1; continue; }
+            u8 v = t[idx];
+            if (low == 8) dst[out++] = v;
+            else if (pending) { dst[out++] = half | v << 4; pending = false; }
+            else { half = v; pending = true; }
+            bl = t[1];
+            cx = 1;
+        }
+    }
+    return out;
+}
+
+static bool fna_sheet(const u8 *c, u32 n, u8 *dst, u32 size)
+{
+    if (n < 4) return false;
+    u32 w = c[0] | c[1] << 8 | c[2] << 16 | (u32)c[3] << 24, target = w >> 8;
+    if (!target || target > size) return false;
+    u32 got = (w & 0xF0) == 0x10 ? fna_lzss(c + 4, n - 4, target, dst)
+            : (w & 0xF0) == 0x20 ? fna_huff(c + 4, n - 4, target, dst, w & 15)
+            : (w & 0xF0) == 0x30 ? fna_rle(c + 4, n - 4, target, dst) : 0;
+    return got >= target;
+}
+
 static void parse_brfnt(set_t *s)
 {
     s->kind = "BRFNT font";
@@ -290,8 +381,32 @@ static void parse_brfnt(set_t *s)
         if (!memcmp(s->buf + pos, "TGLP", 4)) {
             const u8 *g = s->buf + pos;
             u32 sheet = be32(g + 0x0C), cnt = be16(g + 0x10), fmt = be16(g + 0x12);
-            if (fmt & 0x8000) break;                /* compressed sheets (.brfna): not shown */
             u32 data = be32(g + 0x1C);
+            if (fmt & 0x8000) {                     /* BRFNA: each sheet compressed on its own */
+                s->kind = "BRFNA font";
+                int w = be16(g + 0x18), h = be16(g + 0x1A);
+                fmt &= 0xFF;
+                if (!sheet || sheet > (4u << 20) || cnt > 256 || !valid_fmt(fmt) || tex_size(fmt, w, h) > sheet) break;
+                s->extra = memalign(32, sheet * cnt);
+                if (!s->extra) break;
+                u32 at = data, end = pos + sz <= s->len ? pos + sz : s->len;
+                for (u32 k = 0; k < cnt && at + 4 <= end; k++) {
+                    u32 cs = be32(s->buf + at);
+                    if (!cs || at + 4 + (u64)cs > end) break;
+                    u8 *d = s->extra + sheet * k;
+                    if (fna_sheet(s->buf + at + 4, cs, d, sheet) && s->n < MAX_IMAGES) {
+                        DCFlushRange(d, sheet);
+                        img_t *im = &s->img[s->n++];
+                        memset(im, 0, sizeof(*im));
+                        im->fmt = fmt; im->w = w; im->h = h;
+                        im->data = d;
+                        im->avail = sheet;
+                        snprintf(im->label, sizeof(im->label), "sheet %u", (unsigned)k + 1);
+                    }
+                    at += 4 + cs;
+                }
+                break;
+            }
             for (u32 k = 0; k < cnt && data + (u64)sheet * (k + 1) <= s->len; k++) {
                 char lab[32];
                 snprintf(lab, sizeof(lab), "sheet %u", (unsigned)k + 1);
@@ -448,6 +563,12 @@ static u8 *load_file(const char *path, u32 *len)
     }
     vfs_close(&f);
     if (b && got != n) { free(b); return NULL; }
+    if (b && n > 10 && !memcmp(b, "DKZF", 4)) {             /* Donkey Konga .tpl.dkz: zlib inside */
+        uLongf dn = be32(b + 4);
+        u8 *u = dn && dn <= FILE_MAX ? memalign(32, (dn + 31) & ~31u) : NULL;
+        if (u && uncompress(u, &dn, b + 8, n - 8) == Z_OK) { free(b); b = u; n = (u32)dn; }
+        else { free(u); free(b); return NULL; }
+    }
     if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
         u32 un;
         u8 *u = arc_lz_unwrap(b, n, &un);
@@ -507,7 +628,7 @@ static bool load_set(set_t *s, const char *path)
     const u8 *b = s->buf;
     if (be32(b) == 0x0020AF30) parse_tpl(s);
     else if (!memcmp(b, "TEX0", 4)) { s->kind = "TEX0"; s->pal_buf = sibling_palette(path); parse_tex0(s, 0, vfs_basename(path)); }
-    else if (!memcmp(b, "RFNT", 4) || !memcmp(b, "RFNU", 4)) parse_brfnt(s);
+    else if (!memcmp(b, "RFNT", 4) || !memcmp(b, "RFNU", 4) || !memcmp(b, "RFNA", 4)) parse_brfnt(s);
     else if (!memcmp(b, "REFT", 4)) parse_breft(s);
     else if (!memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4)) parse_j3d(s);
     else if (!memcmp(b, "\x89PNG", 4)) load_png(s);
@@ -537,6 +658,7 @@ static void free_set(set_t *s)
         if (s->img[i].fmt == IMG_RGBA) free(s->img[i].rgba);
     free(s->buf);
     free(s->pal_buf);
+    free(s->extra);
 }
 
 /* ---------------------------------------------------------------- drawing */
@@ -647,7 +769,7 @@ static bool view(const char *start_path)
     if (!load_set(s, path)) { free_set(s); free(s); return false; }
 
     int cur = 0, zoom = ZOOM_NATIVE, panx = 0, pany = 0, bg = BG_CHECK;
-    bool info = true, redraw = true, fit = false, full = true;
+    bool info = true, redraw = true, fit = true, full = true;   /* opens scaled to fit; 1: 1:1 */
     u8 *rgba = NULL;
     bool owned = false;                         /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
     int shown = -1;
@@ -783,7 +905,12 @@ bool image_is_name(const char *name)
 {
     char inner[256];
     if (arc_lz_name(name, inner, sizeof(inner))) name = inner;
-    static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".breft", ".bmd", ".bdl",
+    if (arc_name_has_ext(name, ".dkz")) {                     /* Donkey Konga "x.tpl.dkz" */
+        snprintf(inner, sizeof(inner), "%s", name);
+        inner[strlen(inner) - 4] = 0;
+        name = inner;
+    }
+    static const char *const ext[] = { ".tpl", ".bti", ".tex0", ".brtex", ".brfnt", ".brfna", ".breft", ".bmd", ".bdl",
                                        ".png", ".jpg", ".jpeg", ".webp", ".bnr", "banner.bin", ".txtr", NULL };
     for (int i = 0; ext[i]; i++)
         if (arc_name_has_ext(name, ext[i]))
