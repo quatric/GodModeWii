@@ -62,6 +62,12 @@ static int mc_close(void *c)
 
 FILE *mc_fopen(const char *path)
 {
+    /* SD / USB: libfat directly, as wii-mobiclip-player reads (the demuxer sets a 128 KiB
+     * buffer). Going through vfs adds a stream, a bounce copy and a second buffer per read,
+     * which made playback stutter. Archives, the NAND and discs still go through vfs. */
+    int dev = vfs_dev_of(path);
+    if (dev >= 0 && !vfs_is_archive(path) && !vfs_is_virtual(dev) && dev != DEV_NAND)
+        return fopen(path, "rb");
     mc_file *m = calloc(1, sizeof(*m));
     if (!m) return NULL;
     m->buf = memalign(32, BOUNCE);

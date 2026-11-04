@@ -599,7 +599,7 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
     fmt_time(t2, sizeof(t2), s->total, s->rate);
     fmt_time(t3, sizeof(t3), s->loop_start, s->rate);
     ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
-             s->loop ? (loop ? "" : "(loop off)") : "");
+             s->loop ? (loop ? "" : "(loop off)") : loop ? "(repeat)" : "");
     if (s->loop)
         ui_field(8, 2, cols - 4, "Loops back to %s", t3);
     int pct = s->total ? (int)((u64)(played % (s->total + 1)) * 100 / s->total) : 0;
@@ -847,7 +847,9 @@ static bool play(const char *path)
     bool loop = s.loop, paused = false, ended = false;
     int pair = 0, chans[2] = { 0, s.nch > 1 ? 1 : 0 };
     u32 loop_block = 0;
-    s32 loop_h1[MAXCH], loop_h2[MAXCH];
+    s32 loop_h1[MAXCH], loop_h2[MAXCH], start_h1[MAXCH], start_h2[MAXCH];
+    memcpy(start_h1, s.h1, sizeof(start_h1));
+    memcpy(start_h2, s.h2, sizeof(start_h2));
     bool have_loop_state = false;
     if (s.loop)
         for (loop_block = 0; loop_block + 1 < s.nblocks && block_first(&s, loop_block + 1) <= s.loop_start; loop_block++) ;
@@ -865,6 +867,14 @@ static bool play(const char *path)
                     memcpy(s.h2, loop_h2, sizeof(loop_h2));
                     skip = s.loop_start - block_first(&s, block);
                     decoded_to = block_first(&s, block);
+                    continue;
+                }
+                if (loop && !s.loop) {        /* no loop point: repeat starts it over */
+                    block = 0;
+                    memcpy(s.h1, start_h1, sizeof(start_h1));
+                    memcpy(s.h2, start_h2, sizeof(start_h2));
+                    skip = 0;
+                    decoded_to = 0;
                     continue;
                 }
                 ended = true;
@@ -907,8 +917,8 @@ static bool play(const char *path)
             paused = !paused;
             oq_pause(paused);
         }
-        if ((p & WPAD_BUTTON_1) && s.loop)
-            loop = !loop;
+        if (p & WPAD_BUTTON_1)
+            loop = !loop;                       /* the loop on / off, or repeat for streams without one */
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && s.nch > 2) {
             int pairs = (s.nch + 1) / 2;
             pair = (pair + (p & WPAD_BUTTON_PLUS ? 1 : pairs - 1)) % pairs;
@@ -919,6 +929,8 @@ static bool play(const char *path)
             u32 played = (u32)oq_played(submitted);
             if (s.loop && loop && played > s.total)
                 played = s.loop_start + (played - s.total) % (s.total - s.loop_start ? s.total - s.loop_start : 1);
+            else if (!s.loop && loop && s.total)
+                played %= s.total;
             draw(&s, name, played > s.total ? s.total : played, paused, loop, pair, !drawn);
             drawn = true;
         }

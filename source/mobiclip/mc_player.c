@@ -109,6 +109,14 @@ static int read_pcm_frame(MoDemux *mux, MobiDecoder *dec, MoAudio *audio_dec,
     return 0;
 }
 
+/* Controllers every third frame while playing: GodModeWii's input layer also polls the USB
+ * keyboard and the other pads, time a frame can't spare. Presses are kept until read. */
+static u32 poll_some(void)
+{
+    static int n;
+    return ++n % 3 ? 0 : input_poll_nowait();
+}
+
 static int play_pcm(MoDemux *mux, MobiDecoder *dec, MoAudio *audio_dec,
                      int16_t *audio_buf, int audio_cap, int ch,
                      int period_us, int hz, int vspf)
@@ -165,7 +173,7 @@ static int play_pcm(MoDemux *mux, MobiDecoder *dec, MoAudio *audio_dec,
             current = vid_retraces() - start_retrace;
         }
 
-        u32 b = input_poll_nowait();
+        u32 b = poll_some();
         if (b & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) stop = 1;
         if (b & (WPAD_BUTTON_A | WPAD_BUTTON_PLUS)) paused = 1;
     }
@@ -297,7 +305,7 @@ static void play_file(const char *path)
             }
         }
 
-        u32 b = input_poll_nowait();
+        u32 b = poll_some();
         if (b & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) stop = 1;
         if (b & (WPAD_BUTTON_A | WPAD_BUTTON_PLUS)) paused = 1;
     }
@@ -389,7 +397,7 @@ static void play_rgb(RgbSource *src)
             current_retrace = vid_retraces() - start_retrace;
         }
 
-        u32 b = input_poll_nowait();
+        u32 b = poll_some();
         if (b & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) stop = 1;
         if (b & (WPAD_BUTTON_A | WPAD_BUTTON_PLUS)) paused = 1;
         frame++;
