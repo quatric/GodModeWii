@@ -365,14 +365,14 @@ void ui_message_pages(const char *title, int color, const char *const *pages, in
         char strip[64], head[96];
         int left;
         snprintf(head, sizeof(head), "%s  (%d/%d)", title, i + 1, n);
-        snprintf(strip, sizeof(strip), "L / R  Prev / Next    A  OK");
+        snprintf(strip, sizeof(strip), "L / R or - / +  Prev / Next    A  OK");
         draw_text_box(head, color, pages[i], strip, 0, NULL, &left);
         for (;;) {
             u32 p = DetectInput(IN_DOWN);
             if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
                 return;
-            if (p & WPAD_BUTTON_PLUS) { i = (i + 1) % n; break; }
-            if (p & WPAD_BUTTON_MINUS) { i = (i + n - 1) % n; break; }
+            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS)) { i = (i + 1) % n; break; }
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS)) { i = (i + n - 1) % n; break; }
         }
     }
 }

@@ -504,7 +504,7 @@ static void summary(const char *verb, bool ok)
     else if (X.fails) {
         char sz[32];
         ui_fmt_size(sz, sizeof(sz), X.done_bytes);
-        snprintf(msg, sizeof(msg), "%s %u file(s)%s%s in %us.\n\n%d problem(s). Press R to browse them.",
+        snprintf(msg, sizeof(msg), "%s %u file(s)%s%s in %us.\n\n%d problem(s). Press Right to browse them.",
                  verb, (unsigned)X.files_done, X.done_bytes ? ", " : "", X.done_bytes ? sz : "", (unsigned)el, X.fails);
     } else {
         char sz[32];
