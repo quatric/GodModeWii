@@ -690,6 +690,33 @@ static bool camelot_header(const uint8_t *h, uint32_t avail, uint32_t *size)
     return *size != 0;
 }
 
+/* Decodes the first `want` bytes of a stream that holds `out_len`; a peek stops early. */
+static bool camelot_decode(const uint8_t *src, uint32_t n, uint32_t out_len, uint8_t *out, uint32_t want)
+{
+    uint32_t sp = 4, dp = 0;
+    while (sp < n && dp < want) {
+        uint8_t flags = src[sp++];
+        for (int bit = 0; bit < 8 && dp < want; bit++) {
+            if (flags & (0x80 >> bit)) {
+                if (sp + 2 > n) return false;
+                uint8_t a = src[sp++], b = src[sp++];
+                uint32_t back = ((uint32_t)(a >> 4) << 8) | b, len = a & 15;
+                if (!len) {
+                    if (sp >= n) return false;
+                    len = src[sp++] + 17u;
+                } else
+                    len++;
+                if (!back || len > out_len - dp) return false;
+                for (; len && dp < want; len--, dp++) out[dp] = back <= dp ? out[dp - back] : 0;
+            } else {
+                if (sp >= n) return false;
+                out[dp++] = src[sp++];
+            }
+        }
+    }
+    return dp == want;
+}
+
 static uint8_t *camelot_unpack(const uint8_t *src, uint32_t n, uint32_t *osz)
 {
     uint32_t out_len;
@@ -697,34 +724,13 @@ static uint8_t *camelot_unpack(const uint8_t *src, uint32_t n, uint32_t *osz)
     if (out_len > ARC_MAX_DECOMPRESSED) { g_archive_err = "Decompressed size is too big for memory"; return NULL; }
     uint8_t *out = malloc(out_len);
     if (!out) { g_archive_err = "Out of memory"; return NULL; }
-    uint32_t sp = 4, dp = 0;
-    while (sp < n && dp < out_len) {
-        uint8_t flags = src[sp++];
-        for (int bit = 0; bit < 8 && dp < out_len; bit++) {
-            if (flags & (0x80 >> bit)) {
-                if (sp + 2 > n) goto bad;
-                uint8_t a = src[sp++], b = src[sp++];
-                uint32_t back = ((uint32_t)(a >> 4) << 8) | b, len = a & 15;
-                if (!len) {
-                    if (sp >= n) goto bad;
-                    len = src[sp++] + 17u;
-                } else
-                    len++;
-                if (!back || len > out_len - dp) goto bad;
-                while (len--) { out[dp] = back <= dp ? out[dp - back] : 0; dp++; }
-            } else {
-                if (sp >= n) goto bad;
-                out[dp++] = src[sp++];
-            }
-        }
+    if (!camelot_decode(src, n, out_len, out, out_len)) {
+        free(out);
+        g_archive_err = "Corrupt Camelot data";
+        return NULL;
     }
-    if (dp != out_len) goto bad;
     *osz = out_len;
     return out;
-bad:
-    free(out);
-    g_archive_err = "Corrupt Camelot data";
-    return NULL;
 }
 
 /* zlib (78 xx) or gzip (1F 8B) data; the size is not stored, so the buffer grows */
@@ -803,26 +809,68 @@ static bool known_magic(const uint8_t *m)
     return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
 }
 
-/* By name (.lz, .huff, ...) or "LZ77" prefix; otherwise only when the first
- * decompressed bytes are a known Nintendo file (a compressed .brsar, ...). */
+/* zlib data inflates cleanly from its first bytes: no error, and either 16 bytes out or the whole stream */
+static bool zlib_peek(const uint8_t *h, uint32_t n)
+{
+    uint8_t out[64];
+    z_stream z;
+    memset(&z, 0, sizeof(z));
+    if (inflateInit2(&z, 15 + 32) != Z_OK) return false;
+    z.next_in = (Bytef *)h;
+    z.avail_in = n;
+    z.next_out = out;
+    z.avail_out = sizeof(out);
+    int rc = inflate(&z, Z_NO_FLUSH);
+    uint32_t got = (uint32_t)z.total_out;
+    inflateEnd(&z);
+    return rc == Z_STREAM_END ? got > 0 : (rc == Z_OK || rc == Z_BUF_ERROR) && got >= 16;
+}
+
+/* "LZ77" then an LZ10 / LZ11 stream, as on Wii banners; like nintoolbox, no other codec goes behind it */
+static bool lz77_tagged(const uint8_t *h, uint32_t n)
+{
+    return n > 8 && !memcmp(h, "LZ77", 4) && (h[4] == 0x10 || h[4] == 0x11);
+}
+
+enum { PK_NONE, PK_CX, PK_CAMELOT, PK_ZLIB };
+
+/* What compression the data in h (the first n bytes of a size-byte file) is in, if any. A name decides
+ * Camelot and zlib on its own; "LZ77" and gzip / zlib carry their own magic; a bare CX or Camelot header
+ * is only taken when what it decodes to starts with a known Nintendo magic (a TPL texture bank, ...),
+ * which is how nintoolbox finds the extensionless STPL files on Camelot's discs. `loose` (an explicit
+ * unwrap of data the caller knows is compressed) takes any valid CX header. */
+static int pack_kind(const char *name, const uint8_t *h, uint32_t n, uint64_t size, bool loose, uint32_t *skip)
+{
+    uint8_t t, peek[16];
+    uint32_t s, hl;
+    *skip = 0;
+    if (camelot_ext(name)) return camelot_header(h, n, &s) ? PK_CAMELOT : PK_NONE;
+    if (zlib_ext(name)) return zlib_header(h, n) ? PK_ZLIB : PK_NONE;
+    if (lz77_tagged(h, n)) {
+        *skip = 4;
+        return lz_header(h + 4, n - 4, &t, &s, &hl) ? PK_CX : PK_NONE;
+    }
+    if (cx_header(h, n, &t, &s, &hl)) {
+        if (loose || lz_ext(name)) return PK_CX;
+        if (s >= 16 && s <= ARC_MAX_DECOMPRESSED && (uint64_t)s * 64 >= size &&
+            cx_decode(h, n, t, hl, peek, sizeof(peek)) && known_magic(peek))
+            return PK_CX;
+    }
+    if (n >= 6 && ((h[0] == 0x1F && h[1] == 0x8B) || h[0] == 0x78) && zlib_header(h, n) && zlib_peek(h, n))
+        return PK_ZLIB;
+    if (camelot_header(h, n, &s) && s >= 16 && s <= ARC_MAX_DECOMPRESSED && (uint64_t)s * 64 >= size &&
+        size <= (uint64_t)s + s / 8 + 64 && camelot_decode(h, n, s, peek, sizeof(peek)) && known_magic(peek))
+        return PK_CAMELOT;
+    return PK_NONE;
+}
+
+/* By name (.lz, .stpl, .gz ...), by magic ("LZ77", zlib, gzip), or by a known Nintendo file inside */
 static bool probe_lz(const src_t *file, const char *name)
 {
     uint8_t h[4096];
-    uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h);
-    if (n < 8 || !src_read_full(file, 0, h, n)) return false;
-    {
-        uint32_t csz;
-        if (camelot_ext(name)) return camelot_header(h, n, &csz);
-        if (zlib_ext(name)) return zlib_header(h, n);
-    }
-    uint32_t skip = !memcmp(h, "LZ77", 4) ? 4 : 0;
-    uint8_t t;
-    uint32_t s, hl;
-    if (!cx_header(h + skip, n - skip, &t, &s, &hl)) return false;
-    if (skip || lz_ext(name)) return true;
-    if (s < 16 || s > ARC_MAX_DECOMPRESSED || (uint64_t)s * 64 < file->size) return false;
-    uint8_t peek[16];
-    return cx_decode(h, n, t, hl, peek, sizeof(peek)) && known_magic(peek);
+    uint32_t n = file->size < sizeof(h) ? (uint32_t)file->size : (uint32_t)sizeof(h), skip;
+    if (n < 6 || !src_read_full(file, 0, h, n)) return false;
+    return pack_kind(name, h, n, file->size, false, &skip) != PK_NONE;
 }
 
 static void strip_name(const char *name, char *out, size_t outsz)
@@ -842,15 +890,17 @@ static void strip_name(const char *name, char *out, size_t outsz)
     if (!out[0]) snprintf(out, outsz, "data.bin");
 }
 
-/* The right decoder for a compressed single file, by its name (Camelot has no magic) or its header. */
+/* The right decoder for a compressed single file, by its name or its contents. */
 static uint8_t *wrap_unpack(const char *name, const uint8_t *buf, uint32_t len, uint32_t *osz)
 {
-    if (camelot_ext(name)) return camelot_unpack(buf, len, osz);
-    if (zlib_ext(name) || (len >= 3 && buf[0] == 0x1F && buf[1] == 0x8B)) {
-        if (zlib_header(buf, len)) return zlib_unpack(buf, len, osz);
-        if (zlib_ext(name)) { g_archive_err = "Not zlib data"; return NULL; }
+    uint32_t skip;
+    switch (pack_kind(name, buf, len, len, true, &skip)) {
+    case PK_CAMELOT: return camelot_unpack(buf, len, osz);
+    case PK_ZLIB: return zlib_unpack(buf, len, osz);
+    case PK_CX: return lz_unpack(buf, len, skip, osz);
     }
-    return lz_unpack(buf, len, !memcmp(buf, "LZ77", 4) && len >= 4 ? 4 : 0, osz);
+    g_archive_err = zlib_ext(name) ? "Not zlib data" : camelot_ext(name) ? "Not Camelot data" : "Not compressed data";
+    return NULL;
 }
 
 static archive_t *open_lz(const src_t *file, const char *name)
@@ -878,8 +928,8 @@ bool arc_lz_name(const char *name, char *out, size_t outsz)
     return true;
 }
 
-/* A whole LZ10 / LZ11 / Huffman / RL / LZH8 file (optionally behind "LZ77") decompressed into a
- * new 32-byte aligned buffer; NULL when it isn't one or doesn't decode. */
+/* A whole LZ10 / LZ11 (optionally behind "LZ77") / Huffman / RL / LZH8, Camelot or zlib / gzip file
+ * decompressed into a new 32-byte aligned buffer; NULL when it isn't one or doesn't decode. */
 uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len)
 {
     uint32_t n;
@@ -1105,7 +1155,7 @@ static archive_t *open_imd5(const src_t *file, const char *name)
     if (psize > rlen - 0x20) psize = rlen - 0x20;
     uint8_t *payload = NULL;
     uint32_t plen = 0;
-    if (!memcmp(raw + 0x20, "LZ77", 4))
+    if (lz77_tagged(raw + 0x20, psize))
         payload = lz_unpack(raw + 0x20, psize, 4, &plen);
     else
         payload = NULL;

@@ -105,7 +105,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | Kind | Formats |
 | --- | --- |
 | Nintendo archives | U8 (`.arc`, `.app`, `.bnr`, `.carc` …, also with an IMET / IMD5 header), RARC, BRRES, Virtual Console CCF, Brawl PAC, Good-Feel GFA |
-| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`), **zlib** (`.z`, `.zlib`) and gzip (`.gz`), and **Camelot STPL** (`.stpl`, Mario Power Tennis / Mario Golf: Toadstool Tour; holds a TPL texture bank) |
+| Compression | Yaz0 / SZS, Yay0, ASH0, LZ10 / LZ11 (bare or behind an `LZ77` tag), Huffman, run length, LZH8 (the HOME Menu's compressed files), LZO (`.lzo`), **zlib** and gzip (found by their header whatever the name, as well as `.z`, `.zlib`, `.gz`), and **Camelot STPL** (`.stpl`, or an extensionless file that unpacks to a TPL texture bank, as on the Mario Power Tennis / Mario Golf: Toadstool Tour discs) |
 | Titles and saves | WAD (with a `wad_info.txt`), `content.bin` (DLC / WiiWare SD backup), `data.bin` (Wii save backup), VFF (WiiConnect24 / Mii mailboxes). Decrypted as you browse, vWii-key WADs included |
 | Sound archives | BRSAR: groups, sequences, banks, sound files and every wave, playable |
 | Disc images | GameCube / Wii `.iso` / `.gcm`, single-file `.wbfs`, `.ciso`, **RVZ** and **WIA** |
@@ -441,7 +441,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
   (ISO, WBFS, CISO), and file-type detection.
 * **[HSDLib](https://github.com/Ploaj/HSDLib)** by Ploaj (MIT) — the HSD `.dat` container and relocation layout, via nintoolbox's `lib-hsd.c`; and **[Metanoia](https://github.com/Ploaj/Metanoia)**'s HSF reader, via nintoolbox's `lib-hsf.c` (Mario Party HSFV037 models).
-* **Camelot STPL** — the codec layout comes from nintoolbox's `lib-camelot.c`.
+* **Camelot STPL** — the codec layout comes from nintoolbox's `lib-camelot.c`, and so does finding an extensionless one by the texture bank it unpacks to; the `LZ77` tag handling follows its `lib-wii-banner.c`.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
 * **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
 * **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.

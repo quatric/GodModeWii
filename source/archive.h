@@ -103,7 +103,7 @@ bool arc_name_has_ext(const char *name, const char *ext);
 /* Compressed single files (.lz, .lz77, .huff, .stpl, .z, .gz ...): the name without that extension, and the data
  * decompressed into a 32-byte aligned buffer (NULL if it isn't compressed that way). */
 bool arc_lz_name(const char *name, char *out, size_t outsz);
-uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len);   /* name picks Camelot / zlib / CX */
+uint8_t *arc_lz_unwrap(const char *name, const uint8_t *buf, uint32_t len, uint32_t *out_len);   /* by name or contents: Camelot / zlib / CX */
 archive_t *archive_alloc(const char *kind);
 /* consumes data; NULL (and frees it) if not an archive */
 archive_t *archive_open_memory(uint8_t *data, uint64_t size, const char *name);
