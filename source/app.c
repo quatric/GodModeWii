@@ -824,15 +824,15 @@ static void do_launch(const vfs_entry *en)
 /* A on a .wad: install it or look inside (decrypted). False to fall back to the actions menu. */
 static void wad_menu(const vfs_entry *en)
 {
-    const char *items[] = { "Browse decrypted contents", "Install to NAND", "More actions..." };
+    const char *items[] = { "Install to NAND", "Browse decrypted contents", "More actions..." };
     int r = ui_menu(en->name, items, NULL, 3, 0);
     char path[VFS_PATH_MAX];
-    if (r == 0) {
-        open_archive(en);
-    } else if (r == 1 && vfs_join(path, sizeof(path), cwd, en->name)) {
+    if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
         char *one = path;
         wad_install_paths(&one, 1);
         reload_keep();
+    } else if (r == 1) {
+        open_archive(en);
     } else if (r == 2) {
         actions_menu();
     }
