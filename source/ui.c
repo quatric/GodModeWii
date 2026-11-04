@@ -19,6 +19,22 @@ void *ui_framebuffer(int *w, int *h)
     return xfb;
 }
 
+#ifdef GMW_AUTOTEST
+bool ui_test_dump(void)
+{
+    static int n;
+    char name[32];
+    snprintf(name, sizeof name, "sd:/shot_%d.yuv", n++);
+    VIDEO_WaitVSync();
+    FILE *f = fopen(name, "wb");
+    if (f) {
+        fwrite(xfb, 1, rmode->fbWidth * rmode->xfbHeight * 2, f);
+        fclose(f);
+    }
+    return true;
+}
+#endif
+
 void ui_init(void)
 {
     VIDEO_Init();

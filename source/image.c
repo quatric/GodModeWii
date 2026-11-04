@@ -518,16 +518,18 @@ static void free_set(set_t *s)
 
 /* ---------------------------------------------------------------- drawing */
 
+/* ITU-R BT.601 with the TV ranges the video interface expects (Y 16-235, U / V 16-240). */
 static void rgb_to_yuv(int r, int g, int b, int *y, int *u, int *v)
 {
-    *y = (299 * r + 587 * g + 114 * b) / 1000;
-    *u = (-169 * r - 331 * g + 500 * b) / 1000 + 128;
-    *v = (500 * r - 419 * g - 81 * b) / 1000 + 128;
+    *y = 16 + ((66 * r + 129 * g + 25 * b + 128) >> 8);
+    *u = 128 + ((-38 * r - 74 * g + 112 * b + 128) >> 8);
+    *v = 128 + ((112 * r - 94 * g - 18 * b + 128) >> 8);
 }
 
 enum { BG_CHECK, BG_BLACK, BG_WHITE, BG_COUNT };
 
-static void blit(const u8 *rgba, int w, int h, int zoom_pct, int panx, int pany, int bg)
+/* scale is in 1/256ths of a screen pixel per image pixel (256 = native size). */
+static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, int bg)
 {
     int fw, fh;
     u8 *fb = ui_framebuffer(&fw, &fh);
@@ -536,14 +538,18 @@ static void blit(const u8 *rgba, int w, int h, int zoom_pct, int panx, int pany,
     int vw = fw, vh = bottom - top;
     int cx = w / 2 + panx, cy = h / 2 + pany;
     for (int y = 0; y < fh; y++) {
-        u8 *row = fb + y * fw * 2;
+        /* The framebuffer is uncached: a byte store there writes the whole 32-bit word (the other three
+         * bytes become zero, which shows as green), so each pair of pixels goes out as one word. */
+        u32 *row = (u32 *)(fb + y * fw * 2);
+        int sy = y - top - vh / 2;
+        sy = sy >= 0 ? cy + (sy * 256) / scale : cy - ((-sy * 256) + scale - 1) / scale;
         for (int x = 0; x < fw; x += 2) {
             int yy[2], uu = 0, vv = 0;
             for (int k = 0; k < 2; k++) {
                 int r = 0, g = 0, b = 0;
                 if (y >= top && y < bottom) {
-                    int sx = cx + ((x + k - vw / 2) * 100) / zoom_pct;
-                    int sy = cy + ((y - top - vh / 2) * 100) / zoom_pct;
+                    int sx = x + k - vw / 2;
+                    sx = sx >= 0 ? cx + (sx * 256) / scale : cx - ((-sx * 256) + scale - 1) / scale;
                     int br, bgc, bb;
                     if (bg == BG_CHECK) { int c = (((x + k) >> 4) ^ (y >> 4)) & 1 ? 0x99 : 0x66; br = bgc = bb = c; }
                     else if (bg == BG_WHITE) br = bgc = bb = 255;
@@ -560,11 +566,15 @@ static void blit(const u8 *rgba, int w, int h, int zoom_pct, int panx, int pany,
                 rgb_to_yuv(r, g, b, &yy[k], &u, &v);
                 uu += u; vv += v;
             }
-            u8 *o = row + x * 2;                    /* YUY2: Y0 U Y1 V, byte by byte */
-            o[0] = (u8)yy[0]; o[1] = (u8)(uu / 2); o[2] = (u8)yy[1]; o[3] = (u8)(vv / 2);
+            row[x / 2] = (u32)yy[0] << 24 | (u32)(uu / 2) << 16 | (u32)yy[1] << 8 | (u32)(vv / 2);   /* Y0 U Y1 V */
         }
     }
 }
+
+/* Zoom steps in 1/256ths; index ZOOM_NATIVE is 1:1. */
+static const int ZOOMS[] = { 32, 64, 128, 256, 512, 1024, 2048 };
+#define ZOOM_COUNT  ((int)(sizeof(ZOOMS) / sizeof(ZOOMS[0])))
+#define ZOOM_NATIVE 3
 
 static bool view(const char *path)
 {
@@ -573,72 +583,78 @@ static bool view(const char *path)
     ui_splash("Loading image...");
     if (!load_set(s, path)) { free_set(s); free(s); return false; }
 
-    int cur = 0, zoom = 0, panx = 0, pany = 0, bg = BG_CHECK;
-    bool info = true, redraw = true;
+    int cur = 0, zoom = ZOOM_NATIVE, panx = 0, pany = 0, bg = BG_CHECK;
+    bool info = true, redraw = true, fit = false;
     u8 *rgba = NULL;
+    bool owned = false;                         /* rgba was decoded here (PNG / JPEG / WebP pixels belong to the set) */
     int shown = -1;
     const char *err = NULL;
+    int fw_all, fh_all;
+    ui_framebuffer(&fw_all, &fh_all);
     for (;;) {
         img_t *im = &s->img[cur];
         if (shown != cur) {
-            free(rgba);
+            if (owned) free(rgba);
             rgba = NULL;
+            owned = false;
             err = NULL;
             if (im->fmt == IMG_RGBA) {
                 rgba = im->rgba;
             } else {
                 rgba = malloc(im->w * im->h * 4);
+                owned = rgba != NULL;
                 if (!rgba) err = "Out of memory";
-                else if (!gx_decode(im, rgba)) { free(rgba); rgba = NULL; err = "Truncated texture data"; }
+                else if (!gx_decode(im, rgba)) { free(rgba); rgba = NULL; owned = false; err = "Truncated texture data"; }
             }
             shown = cur;
-            zoom = 0; panx = pany = 0;
+            zoom = ZOOM_NATIVE; panx = pany = 0;
             redraw = true;
         }
         if (redraw) {
             int fw, fh;
             ui_framebuffer(&fw, &fh);
-            int fit = 100;
-            if (rgba) {
-                int fx = (fw * 100) / im->w, fy = ((fh - 80) * 100) / im->h;
-                fit = fx < fy ? fx : fy;
-                if (fit > 100 && im->w * 4 <= fw && im->h * 4 <= fh - 80) fit = (fit / 100) * 100;  /* small: whole multiples */
-                else if (fit > 100) fit = 100 * ((fit + 50) / 100);
-                if (fit < 1) fit = 1;
+            int scale = ZOOMS[zoom];
+            if (fit && rgba) {                      /* the largest size that shows all of it */
+                int fx = (fw * 256) / im->w, fy = ((fh - 80) * 256) / im->h;
+                scale = fx < fy ? fx : fy;
+                if (scale < 1) scale = 1;
             }
-            int pct = fit << zoom;
+            int pct = (scale * 100 + 128) / 256;
             ui_clear();
-            if (rgba) blit(rgba, im->w, im->h, pct, panx, pany, bg);
+            if (rgba) blit(rgba, im->w, im->h, scale, panx, pany, bg);
             ui_color(C_WHITE, true);
             ui_field(0, 0, ui_cols() - 1, " %s  %s  [%d/%d] %s", s->kind ? s->kind : "IMAGE", vfs_basename(path), cur + 1, s->n, im->label);
             if (info)
-                ui_field(1, 0, ui_cols() - 1, " %dx%d %s%s  zoom %d%%", im->w, im->h, fmt_name(im->fmt),
-                         im->pal ? " +palette" : "", pct);
+                ui_field(1, 0, ui_cols() - 1, " %dx%d %s%s  %s %d%%", im->w, im->h, fmt_name(im->fmt),
+                         im->pal ? " +palette" : "", fit ? "fit" : "zoom", pct);
             if (err) { ui_color(C_RED, true); ui_field(3, 2, ui_cols() - 4, "%s", err); }
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " L/R Prev/Next  +/- Zoom  D-Pad Pan  A Background  2 Info  B Close");
+            ui_field(ui_rows() - 1, 0, ui_cols() - 1, " <> Prev/Next  +/- Zoom  1 Fit/1:1  D-Pad Pan  A Bg  2 Info  B Close");
             ui_reset();
             redraw = false;
+            UI_TEST_SHOT();
         }
         u32 p = input_pressed();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         int step = im->w / 8 > 8 ? im->w / 8 : 8;
-        if (zoom > 0) {
-            if (p & WPAD_BUTTON_LEFT)  { panx -= step; redraw = true; }
-            if (p & WPAD_BUTTON_RIGHT) { panx += step; redraw = true; }
-        } else if (s->n > 1) {
-            if (p & WPAD_BUTTON_LEFT)  cur = (cur + s->n - 1) % s->n;
-            if (p & WPAD_BUTTON_RIGHT) cur = (cur + 1) % s->n;
-        }
-        if (p & WPAD_BUTTON_UP)   { pany -= step; redraw = true; }
-        if (p & WPAD_BUTTON_DOWN) { pany += step; redraw = true; }
-        if ((p & WPAD_BUTTON_PLUS) && zoom < 4)  { zoom++; redraw = true; }
-        if ((p & WPAD_BUTTON_MINUS) && zoom > 0) { zoom--; if (!zoom) panx = pany = 0; redraw = true; }
+        /* All of the image on screen: Left / Right go to the previous / next one. Bigger: the D-Pad pans. */
+        bool whole = fit || !rgba || ((im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80);
+        if (!whole && (p & WPAD_BUTTON_LEFT))  { panx -= step; redraw = true; }
+        if (!whole && (p & WPAD_BUTTON_RIGHT)) { panx += step; redraw = true; }
+        if (!whole && (p & WPAD_BUTTON_UP))    { pany -= step; redraw = true; }
+        if (!whole && (p & WPAD_BUTTON_DOWN))  { pany += step; redraw = true; }
+        if (whole && s->n > 1 && (p & WPAD_BUTTON_LEFT))  cur = (cur + s->n - 1) % s->n;
+        if (whole && s->n > 1 && (p & WPAD_BUTTON_RIGHT)) cur = (cur + 1) % s->n;
+        if ((p & WPAD_BUTTON_PLUS) && (fit || zoom < ZOOM_COUNT - 1))  { if (!fit) zoom++; fit = false; redraw = true; }
+        if ((p & WPAD_BUTTON_MINUS) && (fit || zoom > 0)) { if (!fit) zoom--; fit = false; redraw = true; }
+        if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && rgba &&
+            (im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80)
+            panx = pany = 0;                        /* back to all of it on screen: centre it again */
         if (p & WPAD_BUTTON_A) { bg = (bg + 1) % BG_COUNT; redraw = true; }
         if (p & WPAD_BUTTON_2) { info = !info; redraw = true; }
-        if (p & WPAD_BUTTON_1) { cur = 0; redraw = true; }
+        if (p & WPAD_BUTTON_1) { fit = !fit; if (!fit) { zoom = ZOOM_NATIVE; panx = pany = 0; } redraw = true; }
     }
-    if (rgba && s->img[cur].fmt != IMG_RGBA) free(rgba);
+    if (owned) free(rgba);
     free_set(s);
     free(s);
     ui_clear();

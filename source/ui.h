@@ -42,4 +42,12 @@ void ui_splash(const char *status);
 /* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
 void *ui_framebuffer(int *w, int *h);
 
+#ifdef GMW_AUTOTEST
+/* Test builds only: saves the framebuffer as sd:/shot_N.yuv (YUY2) and says the viewer should close. */
+bool ui_test_dump(void);
+#define UI_TEST_SHOT() if (ui_test_dump()) break
+#else
+#define UI_TEST_SHOT() do { } while (0)
+#endif
+
 #endif

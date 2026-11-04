@@ -7,3 +7,4 @@ portlibs/
 .dolxz/
 data/
 appboot/appboot.bin
+build_test/

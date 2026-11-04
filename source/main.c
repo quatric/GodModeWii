@@ -138,7 +138,11 @@ int main(int argc, char **argv)
 
     input_init();
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
+#ifdef GMW_AUTOTEST
+    bool update = false;
+#else
     bool update = check_for_update();
+#endif
     ui_splash("Looking for drives...");
     u64 began = ticks_to_millisecs(gettime());
     risk_startup_poll_begin();
@@ -160,6 +164,23 @@ int main(int argc, char **argv)
                    "Dangerous permissions are ALWAYS enabled. Nothing will ask for a warning or code first.");
     }
 
+#ifdef GMW_AUTOTEST
+    /* Test builds only: open each path listed in sd:/gmwtest.txt (the viewers dump the screen), then stop. */
+    {
+        extern bool media_open(const char *path);
+        FILE *tf = fopen("sd:/gmwtest.txt", "r");
+        char line[512];
+        while (tf && fgets(line, sizeof line, tf)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0]) media_open(line);
+        }
+        if (tf) fclose(tf);
+        FILE *done = fopen("sd:/gmwtest.done", "w");
+        if (done) fclose(done);
+        vfs_shutdown();
+        for (;;) VIDEO_WaitVSync();
+    }
+#endif
     int mode = update && install_update() ? EXIT_LOADER : app_run();
 
     ui_splash("Unmounting...");

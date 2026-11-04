@@ -13,6 +13,11 @@ DATA		:=	data
 INCLUDES	:=	source source/mobiclip $(UNARR)
 
 CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
+# make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1: a test build that opens the files listed
+# in sd:/gmwtest.txt at start and saves each viewer's screen to the SD card (see scripts/autotest.sh).
+ifeq ($(AUTOTEST),1)
+CFLAGS	+=	-DGMW_AUTOTEST
+endif
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
 
