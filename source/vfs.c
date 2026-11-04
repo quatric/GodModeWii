@@ -237,6 +237,19 @@ static int usb_seen;            /* mass-storage devices IOS listed */
 static char usb_diag[48];       /* why a device could not be used */
 static u8 *usb_bounce;
 
+/* libogc retries a failed USB command but gives up at once on a timeout, so each transfer gets two more tries. */
+static s32 us_xfer(usb_slot *s, sec_t sector, u32 cnt, bool write)
+{
+    s32 r = -1;
+    for (int t = 0; t < 3 && r < 0; t++) {
+        if (t)
+            usleep(100000);
+        r = write ? USBStorage_Write(s->h, s->lun, sector, cnt, usb_bounce)
+                  : USBStorage_Read(s->h, s->lun, sector, cnt, usb_bounce);
+    }
+    return r;
+}
+
 static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
 {
     usb_slot *s = &uslot[i];
@@ -256,7 +269,7 @@ static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
         u32 bytes = cnt * s->sector_size;
         s32 r;
         if (rbuf) {
-            r = USBStorage_Read(s->h, s->lun, sector, cnt, usb_bounce);
+            r = us_xfer(s, sector, cnt, false);
             if (r < 0) return false;
             if (sector == 0 && s->hidden && usb_bounce[510] == 0x55 && usb_bounce[511] == 0xAB)
                 usb_bounce[511] = 0xAA;         /* show the MBR as if the drive were not hidden */
@@ -266,7 +279,7 @@ static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
             memcpy(usb_bounce, wp, bytes);
             if (sector == 0 && s->hidden && usb_bounce[510] == 0x55 && usb_bounce[511] == 0xAA)
                 usb_bounce[511] = 0xAB;         /* keep the drive hidden */
-            r = USBStorage_Write(s->h, s->lun, sector, cnt, usb_bounce);
+            r = us_xfer(s, sector, cnt, true);
             if (r < 0) return false;
             wp += bytes;
         }
