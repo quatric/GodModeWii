@@ -61,7 +61,6 @@ struct rvz {
     uint32_t stored_cap, tmp_cap;
     uint32_t cached;                    /* group in cache, or ~0 */
     uint32_t cached_len;
-    char desc[96];
 };
 
 /* ---------------------------------------------------------------- the padding generator */
@@ -454,7 +453,6 @@ static uint8_t *read_table(rvz_t *r, uint64_t off, uint32_t stored, uint32_t nee
 
 rvz_t *rvz_open(const src_t *f, const char **err)
 {
-    static const char *const names[] = { "none", "purge", "bzip2", "LZMA", "LZMA2", "Zstandard" };
     uint8_t h[0x48 + 0xDC];
     *err = "Not an RVZ or WIA image";
     if (f->size < sizeof(h) || !src_read_full(f, 0, h, sizeof(h)) || !rvz_probe(h)) return NULL;
@@ -588,9 +586,6 @@ rvz_t *rvz_open(const src_t *f, const char **err)
         goto fail;
     }
 
-    unsigned kib = r->chunk / 1024;
-    snprintf(r->desc, sizeof(r->desc), "%s, %s, %u %s chunks", r->is_rvz ? "RVZ" : "WIA",
-             names[r->method], kib >= 1024 ? kib / 1024 : kib, kib >= 1024 ? "MiB" : "KiB");
     *err = NULL;
     return r;
 fail:
