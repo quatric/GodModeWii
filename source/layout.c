@@ -239,6 +239,10 @@ static int tex_slot(lyt_t *L, const char *name)
     return L->ntex++;
 }
 
+#ifdef GMW_AUTOTEST
+int g_lyt_test_frame = -1;              /* test builds: "@frame N" in gmwtest.txt */
+#endif
+
 static GXTexObj white_obj;
 static u8 white_pix[32] __attribute__((aligned(32)));
 
@@ -712,25 +716,64 @@ static void draw_window(lyt_t *L, const pane_t *p, u8 alpha)
         bind_material(L, &L->mat[p->mat]);
         quad(x0 - p->inf[0], y0 + p->inf[2], p->w + p->inf[0] + p->inf[1], p->h + p->inf[2] + p->inf[3], p->vc, alpha, p->tc);
     }
-    /* frames: one corner texture (mirrored to the other corners) or one per corner, at its own size */
+    /* Frames, as NW4R lays them out: four bands around the edge (top from the left corner, right from
+     * the top, bottom from the right, left from the bottom), each starting with its corner at its own
+     * size and stretching the texture's inner edge along the rest. The file's frames are in the order
+     * left top, right top, left bottom, right bottom; one frame is mirrored into the other corners.
+     * Each frame has a flip: 1 horizontal, 2 vertical, 3 / 4 / 5 turned 90 / 180 / 270 degrees. */
     if (!p->nfr) return;
     static const u8 white[4][4] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 }, { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
+    enum { LT, RT, LB, RB };
+    tex_t *ft[4] = { 0 };
+    const mat_t *fm[4] = { 0 };
+    float tw[4], th[4];
     for (int k = 0; k < 4; k++) {
         int fi = p->nfr >= 4 ? k : 0;
         int mi = p->fmat[fi];
-        if (mi < 0 || mi >= L->nmat) continue;
-        const mat_t *m = &L->mat[mi];
-        if (!m->ntm || m->tm[0].tex >= L->ntex) continue;
-        tex_t *t = &L->tex[m->tm[0].tex];
-        if (!t->ok && t->name[0]) tex_load(L, t);
-        if (!t->ok) continue;
-        float fw = t->w, fh = t->h;
-        if (fw > p->w / 2) fw = p->w / 2;
-        if (fh > p->h / 2) fh = p->h / 2;
-        bool fx = p->nfr < 4 ? (k & 1) : false, fy = p->nfr < 4 ? (k >> 1) : false;
-        float tc[4][2] = { { fx, fy }, { !fx, fy }, { fx, !fy }, { !fx, !fy } };
-        bind_material(L, m);
-        quad(x0 + ((k & 1) ? p->w - fw : 0), y0 - ((k >> 1) ? p->h - fh : 0), fw, fh, white, alpha, tc);
+        if (mi < 0 || mi >= L->nmat) return;
+        fm[k] = &L->mat[mi];
+        tex_t *t = fm[k]->ntm && fm[k]->tm[0].tex < L->ntex ? &L->tex[fm[k]->tm[0].tex] : NULL;
+        if (t && !t->ok && t->name[0]) tex_load(L, t);
+        ft[k] = t && t->ok ? t : NULL;
+        tw[k] = ft[k] ? ft[k]->w : 8;
+        th[k] = ft[k] ? ft[k]->h : 8;
+    }
+    float W = p->w, H = p->h;
+    /* band k: top left corner, size; which corner of it is the frame's own corner */
+    float bx[4] = { x0, x0 + W - tw[RT], x0, x0 + tw[LB] };
+    float by[4] = { y0, y0, y0 - th[LT], y0 - H + th[RB] };
+    float bw[4] = { W - tw[RT], tw[RT], tw[LB], W - tw[LB] };
+    float bh[4] = { th[LT], H - th[RB], H - th[LT], th[RB] };
+    for (int k = 0; k < 4; k++) {
+        if (bw[k] <= 0 || bh[k] <= 0) continue;
+        /* texture coordinates with the texture's corner at the band's outer corner; past it, the
+         * clamped edge texels stretch inward */
+        bool right = k == RT || k == RB, bottom = k == LB || k == RB;
+        float su = bw[k] / tw[k], sv = bh[k] / th[k];
+        float s0 = right ? 1 - su : 0, s1 = right ? 1 : su;
+        float t0 = bottom ? 1 - sv : 0, t1 = bottom ? 1 : sv;
+        float tc[4][2] = { { s0, t0 }, { s1, t0 }, { s0, t1 }, { s1, t1 } };     /* TL TR BL BR */
+        int flip = p->fflip[p->nfr >= 4 ? k : 0];
+        if (p->nfr < 4) {                       /* one frame: mirrored into the other corners */
+            static const int implied[4] = { 0, 1, 2, 4 };   /* none, horizontal, vertical, both */
+            bool fh = (implied[k] == 1 || implied[k] == 4) ^ (flip == 1 || flip == 4);
+            bool fv = (implied[k] == 2 || implied[k] == 4) ^ (flip == 2 || flip == 4);
+            flip = fh && fv ? 4 : fh ? 1 : fv ? 2 : 0;
+        }
+        for (int v = 0; v < 4 && flip; v++) {
+            float s = tc[v][0], t = tc[v][1];
+            switch (flip) {
+            case 1: s = 1 - s; break;                                       /* horizontal */
+            case 2: t = 1 - t; break;                                       /* vertical */
+            case 3: { float o = s; s = t; t = 1 - o; break; }               /* 90 */
+            case 4: s = 1 - s; t = 1 - t; break;                            /* 180 */
+            case 5: { float o = s; s = 1 - t; t = o; break; }               /* 270 */
+            }
+            tc[v][0] = s;
+            tc[v][1] = t;
+        }
+        bind_material(L, fm[k]);
+        quad(bx[k], by[k], bw[k], bh[k], white, alpha, tc);
     }
 }
 
@@ -968,6 +1011,9 @@ bool lyt_view(const char *path)
     float frame = 0, zoom = 1;
     bool paused = false, info = true, first = true;
     bool looping = false, at_end = false;       /* animations play once and stop on their last frame */
+#ifdef GMW_AUTOTEST
+    if (g_lyt_test_frame >= 0) { frame = g_lyt_test_frame; paused = true; g_lyt_test_frame = -1; }
+#endif
     int ntex_ok = -1;
     for (;;) {
         /* the layout at this frame */

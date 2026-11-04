@@ -175,6 +175,11 @@ int main(int argc, char **argv)
         while (tf && fgets(line, sizeof line, tf)) {
             line[strcspn(line, "\r\n")] = 0;
             if (!line[0]) continue;
+            if (!strncmp(line, "@frame ", 7)) {         /* the next layout opens paused on this frame */
+                extern int g_lyt_test_frame;
+                g_lyt_test_frame = atoi(line + 7);
+                continue;
+            }
             if (!strcmp(line, "@wiiload")) {        /* one wiiload upload (sent from the PC), logged */
                 extern bool wiiload_run(char *launch, size_t launchsz);
                 char prog[512] = "";
