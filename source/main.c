@@ -250,7 +250,7 @@ int main(int argc, char **argv)
         break;
     case EXIT_LAUNCH:
         launch_go();                    /* only comes back if nothing was loaded */
-        exit(0);
+        SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
         break;
     default:
         exit_to_loader();
