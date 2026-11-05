@@ -373,57 +373,97 @@ static bool lz_header(const uint8_t *h, uint32_t avail, uint8_t *type, uint32_t 
     return *size != 0;
 }
 
-static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t out_size,
-                      uint32_t pos, uint8_t *out)
+/* LZ_DONE: out_size bytes written; LZ_SHORT: the input ran out first; LZ_BAD: a copy reaches back
+ * before the start. *end_pos is where the input was left. */
+enum { LZ_BAD, LZ_DONE, LZ_SHORT };
+
+static int lz_run(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t out_size, uint32_t pos,
+                  uint8_t *out, uint32_t *end_pos)
 {
     uint32_t op = 0;
+    int r = LZ_DONE;
+#define LZ_NEED(k) do { if (pos + (k) > in_len) { r = LZ_SHORT; goto out; } } while (0)
     while (op < out_size) {
-        if (pos >= in_len) return false;
+        LZ_NEED(1);
         uint8_t flags = in[pos++];
         for (int i = 0; i < 8 && op < out_size; i++, flags <<= 1) {
             if (!(flags & 0x80)) {
-                if (pos >= in_len) return false;
+                LZ_NEED(1);
                 out[op++] = in[pos++];
                 continue;
             }
 
             uint32_t len, disp;
-            if (pos >= in_len) return false;
-            uint8_t b0 = in[pos++];
+            LZ_NEED(1);
+            uint8_t b0 = in[pos];
             if (type == 0x10) {
-                if (pos >= in_len) return false;
-                uint8_t b1 = in[pos++];
+                LZ_NEED(2);
+                uint8_t b1 = in[pos + 1];
+                pos += 2;
                 len = (b0 >> 4) + 3;
                 disp = (((b0 & 0xF) << 8) | b1) + 1;
             } else {
                 uint8_t ind = b0 >> 4;
                 if (ind == 0) {
-                    if (pos + 2 > in_len) return false;
-                    uint8_t b1 = in[pos], b2 = in[pos + 1];
-                    pos += 2;
+                    LZ_NEED(3);
+                    uint8_t b1 = in[pos + 1], b2 = in[pos + 2];
+                    pos += 3;
                     len = (((b0 & 0xF) << 4) | (b1 >> 4)) + 0x11;
                     disp = (((b1 & 0xF) << 8) | b2) + 1;
                 } else if (ind == 1) {
-                    if (pos + 3 > in_len) return false;
-                    uint8_t b1 = in[pos], b2 = in[pos + 1], b3 = in[pos + 2];
-                    pos += 3;
+                    LZ_NEED(4);
+                    uint8_t b1 = in[pos + 1], b2 = in[pos + 2], b3 = in[pos + 3];
+                    pos += 4;
                     len = (((b0 & 0xF) << 12) | (b1 << 4) | (b2 >> 4)) + 0x111;
                     disp = (((b2 & 0xF) << 8) | b3) + 1;
                 } else {
-                    if (pos >= in_len) return false;
-                    uint8_t b1 = in[pos++];
+                    LZ_NEED(2);
+                    uint8_t b1 = in[pos + 1];
+                    pos += 2;
                     len = ind + 1;
                     disp = (((b0 & 0xF) << 8) | b1) + 1;
                 }
             }
 
-            if (disp > op) return false;
+            if (disp > op) {
+                r = LZ_BAD;
+                goto out;
+            }
             for (uint32_t k = 0; k < len && op < out_size; k++, op++)
                 out[op] = out[op - disp];
         }
     }
+#undef LZ_NEED
+out:
+    if (end_pos) *end_pos = pos;
+    return r;
+}
 
-    return true;
+/* An LZ10 / LZ11 stream with no telling name or contents: decode what the first bytes give (up to
+ * 64 KiB out) and keep it only if no copy reaches back before the start, and, when the whole file
+ * was read, it ends where the stream does (word padding aside). Random data fails this early. */
+static bool lz_plausible(const uint8_t *h, uint32_t n, uint64_t size)
+{
+    uint8_t t;
+    uint32_t s, hl, end;
+    if (!lz_header(h, n, &t, &s, &hl) || s > ARC_MAX_DECOMPRESSED) return false;
+    if (size > (uint64_t)s + s / 8 + hl + 32) return false;      /* LZ never grows data by more than 1/8 */
+    if (s > 0x10000 && size < 64) return false;
+    uint32_t cap = s < 0x10000 ? s : 0x10000;
+    uint8_t *out = malloc(cap);
+    if (!out) return false;
+    int r = lz_run(h, n, t, cap, hl, out, &end);
+    free(out);
+    if (r == LZ_BAD) return false;
+    if (r == LZ_SHORT) return n < size && n >= 64;               /* ran past the bytes read: fine if more follow */
+    if (cap < s) return true;                                     /* 64 KiB decoded cleanly */
+    return size <= n ? size - end <= 32 : true;
+}
+
+static bool lz_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t out_size,
+                      uint32_t pos, uint8_t *out)
+{
+    return lz_run(in, in_len, type, out_size, pos, out, NULL) == LZ_DONE;
 }
 
 static bool read_whole(const src_t *file, uint8_t **out, uint32_t *len)
@@ -997,6 +1037,7 @@ static int pack_kind(const char *name, const uint8_t *h, uint32_t n, uint64_t si
         if (s >= 16 && s <= ARC_MAX_DECOMPRESSED && (uint64_t)s * 64 >= size &&
             cx_decode(h, n, t, hl, peek, sizeof(peek)) && known_magic(peek))
             return PK_CX;
+        if ((t == 0x10 || t == 0x11) && lz_plausible(h, n, size)) return PK_CX;
     }
     if (n >= 6 && ((h[0] == 0x1F && h[1] == 0x8B) || h[0] == 0x78) && zlib_header(h, n) && zlib_peek(h, n))
         return PK_ZLIB;
