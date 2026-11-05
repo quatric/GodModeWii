@@ -9,6 +9,7 @@
 #include "excite.h"
 #include "media.h"
 #include "tga.h"
+#include "bmp.h"
 
 #define M(s) (n >= sizeof(s) - 1 && !memcmp(h, s, sizeof(s) - 1))
 
@@ -120,6 +121,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (n >= 12 && M("RIFF") && !memcmp(h + 8, "WEBP", 4)) return FT_IMAGE;
         /* GameCube / Wii save banners */
         if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;
+        if (bmp_header_ok(h, n, size)) return FT_IMAGE;                               /* BMP */
 
         if (M("bres") || M("MDL0")) return FT_MODEL;
         if (M("HSFV037")) return FT_MODEL;                                            /* Mario Party HSF */

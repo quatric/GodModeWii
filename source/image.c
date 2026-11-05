@@ -7,7 +7,7 @@
  *   BRFNT font sheets, BREFT effect textures, J3D BMD / BDL (TEX1), a PLT0 on its own (as swatches),
  *   Camelot texture banks (as the TPL archive.c turns them into), Monster Games .tex / .art / .img /
  *   .tm0 (excite.c), and ActImagine AJPG (the Wii Message Board's photos; ajpg/odh_core.c)
- * TGA (tga.c), GIF (first frame; gif.c), plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
+ * TGA (tga.c), BMP (bmp.c), GIF (first frame; gif.c), plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
  * libwebp). View only: nothing is converted or written.
  *
  * Everything is read with explicit big-endian accessors and pixels stay byte
@@ -37,6 +37,7 @@
 #include "ajpg.h"
 #include "gif.h"
 #include "tga.h"
+#include "bmp.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_IMAGES 512
@@ -706,6 +707,13 @@ static void load_tga(set_t *s)
     add_rgba(s, w, h, px, "TGA");
 }
 
+static void load_bmp(set_t *s)
+{
+    int w, h;
+    u8 *px = bmp_decode(s->buf, s->len, &w, &h);
+    add_rgba(s, w, h, px, "BMP");
+}
+
 /* ---------------------------------------------------------------- loading */
 
 static u8 *load_file(const char *path, u32 *len)
@@ -901,6 +909,7 @@ static bool load_set(set_t *s, const char *path)
     }
     else if (!memcmp(b, "PLT0", 4)) parse_plt0(s);
     else if (!memcmp(b, "AJPG", 4)) load_ajpg(s);
+    else if (bmp_header_ok(b, s->len, s->len)) load_bmp(s);
     else if ((arc_name_has_ext(path, ".tga") || tga_has_footer(b, s->len)) && tga_header_ok(b, s->len, s->len))
         load_tga(s);
     else if (arc_name_has_ext(path, ".tm0") || arc_name_has_ext(path, ".tex") || arc_name_has_ext(path, ".art") ||
