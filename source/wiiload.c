@@ -115,8 +115,8 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
     ui_field(7, 1, cols - 2, "Apps    :  .zip / .7z / .rar install into apps/; a .dol / .elf can run.");
     ui_color(C_CYAN, true);
     ui_field(8, 1, cols - 2, "WADs can be installed here, to the NAND or to the SD card (wad2bin:");
-    ui_color(C_WHITE, false);
     ui_field(9, 1, cols - 2, "  a content.bin made with this Wii's keys, run from the SD card menu).");
+    ui_color(C_WHITE, false);
     ui_field(10, 1, cols - 2, "  A .wad, or an archive of WADs, asks which, one WAD at a time.");
 
     if (busy) {
