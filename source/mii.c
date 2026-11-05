@@ -36,9 +36,6 @@ static mii_t *miis;
 static int nmiis;
 static bool faces_off;                  /* the faces couldn't be fetched (or B skipped): not again */
 
-/* The favourite colours, as the Mii Channel shows them. */
-static const u32 MII_COLORS[12] = { 0xC1292E, 0xF5821F, 0xFCD20F, 0x7DC144, 0x15813A, 0x1D58AA,
-                                    0x3DB2E0, 0xF26BA8, 0x8A47A5, 0x7D5133, 0xF2F2F2, 0x262626 };
 static const char *const COLOR_NAMES[12] = { "Red",   "Orange", "Yellow", "Light green", "Green", "Blue",
                                              "Light blue", "Pink", "Purple", "Brown", "White", "Black" };
 static const char *const MONTHS[13] = { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -54,12 +51,12 @@ static int fav_color(const u8 *r)
 static int cell_x(int col) { return 16 + col * 8; }
 static int cell_y(int row) { return 16 + row * 16; }
 
-/* The face in a favourite-colour tile at a cell; "(no face)" text when there isn't one. */
+/* The face at a cell, on the screen's black; "(no face)" text when there isn't one. */
 static void draw_face(const u8 *rec, int row, int col, int scale)
 {
     const miiface_t *f = miiface_cached(rec);
     if (f && f->rgba) {
-        miiface_draw(f, cell_x(col), cell_y(row), scale, MII_COLORS[fav_color(rec)]);
+        miiface_draw(f, cell_x(col), cell_y(row), scale, 0x000000);
         return;
     }
     int side = MIIFACE_SIZE * scale;
