@@ -129,6 +129,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as colour swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP, GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat, **B** stop |
+| **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii's face, drawn online by Arian Kordi's Mii renderer (as PictoCard shows them), with its name, creator, gender, birthday, favourite colour, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** fetch the faces again, **B** back |
 | **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 
@@ -182,7 +183,10 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 **HOME menu**
 
 * **Export all saves** of every disc game, channel and WiiWare title to `GodModeWii/save-export/<date-time>/<title id> <game id>/`.
-* **Export Miis** as `/savemiis/<Name>.miigx`, the files SaveGame Manager GX writes and installs.
+* **Miis**: the Wii's Miis with their faces and details, exported as `/savemiis/<Name>.miigx`, the files SaveGame
+  Manager GX writes and installs. The faces need the internet: each Mii's 74-byte record (its name and its creator's
+  name included) goes to Arian Kordi's Mii renderer, `mii-unsecure.ariankordi.net`, over plain HTTP, and a picture of
+  its face comes back. B skips them; the list works without them.
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * Lock the NAND again, remount drives, credits, exit.
 * **Restart Wii**; on a Wii U it returns to the Wii U Menu.
@@ -376,7 +380,7 @@ like `v0.1.0` publishes a GitHub Release with that zip.
 Developed against devkitPPC / libogc and tested mostly in Dolphin.
 
 **Tried on a Wii U (vWii):** the SD card; FAT32, NTFS (read / write) and ext4 (read-only) USB drives; a Wii U USB drive read with
-GodModeU's saved keys; the FTP server; Export Miis.
+GodModeU's saved keys; the FTP server; exporting Miis (the Mii faces are tried in Dolphin only).
 
 **Not yet verified on real hardware** (please report what you see): multi-drive / multi-LUN USB and SD Gecko, the SEEPROM / OTP
 readers and the Console Keys drive, disc browsing, archives (zip / 7z / RAR, RVZ / WIA, Retro PAK), the model viewer, the
@@ -477,6 +481,9 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
 * **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
   nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
+* **Mii faces** — drawn by **Arian Kordi**'s Mii renderer (`mii-unsecure.ariankordi.net`), asked for the way
+  **PictoCard** ([pictocard.net](https://pictocard.net)) asks for them. The Mii record fields shown come from WiiBrew's Mii data
+  documentation.
 * **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.

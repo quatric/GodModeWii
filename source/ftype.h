@@ -26,6 +26,7 @@ typedef enum {
     FT_LAYOUT,          /* BRLYT */
     FT_ANIM,            /* BRLAN */
     FT_KMP,
+    FT_MII,             /* a Mii (.miigx / .mii / .rcd / .rsd), a Mii database (RFL_DB.dat) */
     FT_WAD,
     FT_PROGRAM,         /* DOL / PowerPC ELF */
 } ftype_t;
@@ -36,6 +37,6 @@ ftype_t ftype_sniff(const u8 *head, u32 n, u64 size, const char *name);
 ftype_t ftype_detect(const char *path);
 
 /* A type one of the viewers or players opens. */
-static inline bool ftype_is_media(ftype_t t) { return t >= FT_STREAM && t <= FT_KMP; }
+static inline bool ftype_is_media(ftype_t t) { return t >= FT_STREAM && t <= FT_MII; }
 
 #endif

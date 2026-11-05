@@ -706,7 +706,8 @@ static void show_credits(void)
         "RSEQ sequences: layouts from VGMTrans. WAV, AIFF, MP3 and FLAC: dr_libs (David Reid). zip, 7z and RAR 1.5 - 4: unarr (selmf, LZMA SDK by "
         "Igor Pavlov); RAR5 from the public format description.\n\n"
         "RVZ / WIA: written from Dolphin's format description, after the design of KakarottoCake's RiftWii; "
-        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.",
+        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.\n\n"
+        "Mii faces: drawn online by Arian Kordi's Mii renderer (mii-unsecure.ariankordi.net), as PictoCard shows them.",
     };
     ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 4);
 }
@@ -1135,7 +1136,7 @@ static bool system_menu(void)
         items[n] = "FTP install server (archives to SD)";  code[n++] = M_FTP_SD;
         items[n] = "FTP install server (archives to USB)"; code[n++] = M_FTP_USB;
         items[n] = "Wiiload (install apps over the network)"; code[n++] = M_WIILOAD;
-        items[n] = "Export Miis";                       code[n++] = M_MIIS;
+        items[n] = "Miis";                              code[n++] = M_MIIS;
         items[n] = "Export all saves";                  code[n++] = M_SAVES;
         items[n] = "About / credits";                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;

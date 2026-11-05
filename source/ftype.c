@@ -30,6 +30,10 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
     if (arc_name_has_ext(name, ".img") && size > 128 && size <= (4u << 20) + 128 &&
         (excite_head_ok(h, n) || !((size - 128) & (size - 129))))
         return FT_IMAGE;
+    /* a Mii: the 74-byte record (SaveGame Manager GX .miigx, .mii, .rcd), or with its CRC (.rsd) */
+    static const char *const mii[] = { ".miigx", ".mii", ".rcd", ".rsd", NULL };
+    if (ext_any(name, mii) && (size == 0x4A || size == 0x4C) && n >= 4)
+        return FT_MII;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
     static const char *const audio[] = { ".mp3", ".mp2", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };
@@ -114,6 +118,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (M("RLYT")) return FT_LAYOUT;
         if (M("RLAN")) return FT_ANIM;
         if (M("RKMD")) return FT_KMP;
+        if (M("RNOD") && size >= 4 + 100 * 0x4A) return FT_MII;                          /* RFL_DB.dat */
 
         /* WAD: header size 0x20, then "Is" (installable), "ib" (boot2) or "Bk" (backup) */
         if (n >= 8 && be32(h) == 0x20 &&

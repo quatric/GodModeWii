@@ -12,6 +12,7 @@
 #include "ui.h"
 #include "archive.h"
 #include "mc_player.h"
+#include "mii.h"
 
 bool media_open_type(const char *path, ftype_t t)
 {
@@ -35,6 +36,7 @@ bool media_open_type(const char *path, ftype_t t)
     case FT_LAYOUT:
     case FT_ANIM:   return lyt_view(path) || layout_view(path);
     case FT_KMP:    return kmp_view(path);
+    case FT_MII:    return mii_view(path);
     default:        return false;
     }
 }
