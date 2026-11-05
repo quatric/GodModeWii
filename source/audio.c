@@ -1269,7 +1269,10 @@ static bool seq_rd(void *ctx, uint64_t off, void *buf, uint32_t len)
     return true;
 }
 
-static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool full, int sel,
+enum { SEQ_LOOP, SEQ_REPEAT, SEQ_ONCE };
+static const char *const SEQ_MODE[] = { "(loop)", "(repeat)", "(once, then fade)" };
+
+static void draw_seq(seq_t *sq, const char *name, bool paused, int mode, bool full, int sel,
                      u32 muted)
 {
     int cols = ui_cols(), rows = ui_rows();
@@ -1289,8 +1292,7 @@ static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool
 
     char t1[16];
     fmt_time(t1, sizeof(t1), (u32)(seq_frames(sq) / SEQ_RATE), 1);
-    ui_field(6, 2, cols - 4, "%s  %s   %s", paused ? "PAUSED " : "PLAYING", t1,
-             repeat ? "(repeat)" : "");
+    ui_field(6, 2, cols - 4, "%s  %s   %s", paused ? "PAUSED " : "PLAYING", t1, SEQ_MODE[mode]);
 
     /* the tracks (the sequence's channels): one line each, turned on / off with A */
     int top = 8, n = SEQ_MAX_TRACKS;
@@ -1320,7 +1322,7 @@ static void draw_seq(seq_t *sq, const char *name, bool paused, bool repeat, bool
 
     ui_color(C_CYAN, true);
     ui_field(rows - 2, 1, cols - 2,
-             "Up/Down Track  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
+             "Up/Down Track  A On/Off  2 Solo  - All on  + Pause  1 Loop mode  B Stop");
     ui_reset();
 }
 
@@ -1364,11 +1366,12 @@ static bool play_seq(const char *path)
         return true;
     }
 
-    bool paused = false, repeat = false, ended = false;
+    bool paused = false, ended = false;
+    int mode = SEQ_LOOP;                            /* loops for ever, as in the game */
     int frame = 0, sel = 0;
     u32 muted = 0;
     const char *shown = vfs_basename(path);
-    draw_seq(sq, shown, paused, repeat, true, sel, muted);
+    draw_seq(sq, shown, paused, mode, true, sel, muted);
 
     for (;;) {
         if (!paused && !ended && oq_space()) {
@@ -1387,10 +1390,11 @@ static bool play_seq(const char *path)
             paused = !paused;
             oq_pause(paused);
         }
-        if (p & WPAD_BUTTON_1) {
-            repeat = !repeat;
-            seq_set_repeat(sq, repeat);
-            if (repeat) ended = false;              /* one that had finished starts again */
+        if (p & WPAD_BUTTON_1) {                    /* loop -> repeat -> once -> loop */
+            mode = (mode + 1) % 3;
+            seq_set_once(sq, mode == SEQ_ONCE);
+            seq_set_repeat(sq, mode == SEQ_REPEAT);
+            if (mode == SEQ_REPEAT) ended = false;  /* one that had finished starts again */
         }
         if (p & WPAD_BUTTON_UP) sel = (sel + SEQ_MAX_TRACKS - 1) % SEQ_MAX_TRACKS;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % SEQ_MAX_TRACKS;
@@ -1399,14 +1403,14 @@ static bool play_seq(const char *path)
             muted = muted == (0xFFFFu & ~(1u << sel)) ? 0 : 0xFFFFu & ~(1u << sel);
         if (p & WPAD_BUTTON_MINUS) muted = 0;
         if (p & (WPAD_BUTTON_A | WPAD_BUTTON_2 | WPAD_BUTTON_MINUS)) seq_set_muted(sq, muted);
-        if (p || ++frame % 6 == 0) draw_seq(sq, shown, paused, repeat, false, sel, muted);
+        if (p || ++frame % 6 == 0) draw_seq(sq, shown, paused, mode, false, sel, muted);
 #ifdef GMW_AUTOTEST
         /* test builds: a picture of the player after 5 s */
         if (frame == 300) {
             muted = 2;                              /* with track 1 turned off and track 2 picked */
             sel = 2;
             seq_set_muted(sq, muted);
-            draw_seq(sq, shown, paused, repeat, false, sel, muted);
+            draw_seq(sq, shown, paused, mode, false, sel, muted);
             if (ui_test_dump()) break;
         }
 #endif

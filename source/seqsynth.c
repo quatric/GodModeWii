@@ -156,7 +156,7 @@ struct seq {
     uint32_t sub;                       /* frames into the current millisecond */
     uint64_t frames;
     uint32_t age, rng;
-    bool repeat, ended;
+    bool repeat, once, ended;
     int loops;                          /* backward jumps of the loop track */
     int loop_track;
     float fade, fade_step;
@@ -764,7 +764,7 @@ static void jump(seq_t *s, int ti, uint32_t to)
     }
     if (to < t->pc) {                   /* backwards: a loop. The first track that loops counts. */
         if (s->loop_track < 0) s->loop_track = ti;
-        if (s->loop_track == ti && ++s->loops >= 2 && !s->repeat && s->fade_step == 0)
+        if (s->loop_track == ti && ++s->loops >= 2 && s->once && !s->repeat && s->fade_step == 0)
             s->fade_step = 1.0f / (4 * SEQ_RATE);
     }
     t->pc = to;
@@ -955,6 +955,15 @@ static void tick(seq_t *s)
 }
 
 /* ---------------------------------------------------------------- rendering */
+
+void seq_set_once(seq_t *s, bool once)
+{
+    s->once = once;
+    if (!once && !s->ended) {           /* a fade that had started stops */
+        s->fade_step = 0;
+        s->fade = 1;
+    }
+}
 
 void seq_set_repeat(seq_t *s, bool repeat)
 {

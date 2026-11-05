@@ -22,10 +22,12 @@ seq_t *seq_open(seq_read_fn rd, void *ctx, uint64_t size, const char *name, cons
 void seq_close(seq_t *s);
 
 /* Renders up to `frames` stereo frames into out (interleaved). Fewer, or 0, once the sequence
- * has finished. Without repeat a looping sequence plays its loop twice and then fades out; with
- * repeat it loops for ever, and one without a loop starts again from the top when it ends. */
+ * has finished. A looping sequence loops for ever, as the game plays it; with "once" it plays its
+ * loop twice and then fades out. With repeat, one without a loop starts again from the top when
+ * it ends (and a looping one loops for ever). */
 uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames);
 void seq_set_repeat(seq_t *s, bool repeat);
+void seq_set_once(seq_t *s, bool once);
 
 /* For the player screen. */
 const char *seq_bank_name(const seq_t *s);
