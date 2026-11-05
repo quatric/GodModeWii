@@ -347,6 +347,7 @@ typedef struct {
     void *ctx;
     int default_node;
     u8 tint[3];
+    bool env;                   /* no UVs: look the texture up by the normal (an environment map) */
 } emit_t;
 
 static void make_vert(emit_t *e, const pv_t *p, vert_t *v)
@@ -367,6 +368,10 @@ static void make_vert(emit_t *e, const pv_t *p, vert_t *v)
     if (e->uv && e->uv->base && p->uv < e->uv->count) {
         v->t[0] = comp(e->uv, p->uv, 0);
         if (e->uv->comps > 1) v->t[1] = comp(e->uv, p->uv, 1);
+    }
+    if (e->env) {                       /* sphere map: the normal's x and y across the texture */
+        v->t[0] = v->n[0] * 0.5f + 0.5f;
+        v->t[1] = 0.5f - v->n[1] * 0.5f;
     }
     v->c[0] = e->tint[0];
     v->c[1] = e->tint[1];
@@ -905,13 +910,14 @@ static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, co
 
         if (obj_mat && obj_mat[i] >= 0) {
             u32 mat = grp_item(&d, g_mat, obj_mat[i], 0x34);
-            if (uv.base) tex = mdl_material_texture(&d, m, mat);
+            tex = mdl_material_texture(&d, m, mat);
             pe = mdl_material_pe(&d, mat);
         }
 
         emit_t e = { m, &pos, &nrm, &uv, NULL, 0, 0, 0, mdl_matrix, &d, -1, { 0 } };
         if (tex >= 0) memset(e.tint, 255, 3);
         else memcpy(e.tint, PALETTE[i & 7], 3);
+        e.env = tex >= 0 && !uv.base;
 
         u32 ca = grp_item(&d, g_clr, (s16)be16(b + o + 0x4C), 0x20);
         if (ca) {
