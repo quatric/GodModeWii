@@ -123,13 +123,104 @@ static inline uint32_t pair_to_yuy2(int moflex, int y0, int y1, int u, int v)
            (clamp255(Y1) << 8)  |  clamp255(Cr);
 }
 
+static void draw_frame(MoFrame *f, uint32_t *dst);
+
+/* Moflex: a channel is clamp255(((Y + d - 16) * 273) >> 8), d coming from the chroma alone, so one table
+ * over Y + d (-256 .. 511) gives what to_rgb gives, bit for bit. */
+static uint8_t moflex_lut[768];
+static int moflex_lut_ready;
+
+static inline uint32_t moflex_pair(int y0, int y1, int dr, int dg, int db)
+{
+    const uint8_t *L = moflex_lut + 256;
+    int r0 = L[y0 + dr], g0 = L[y0 + dg], b0 = L[y0 + db];
+    int r1 = L[y1 + dr], g1 = L[y1 + dg], b1 = L[y1 + db];
+    uint32_t Y0 = (uint32_t)(77 * r0 + 150 * g0 + 29 * b0) >> 8;
+    uint32_t Y1 = (uint32_t)(77 * r1 + 150 * g1 + 29 * b1) >> 8;
+    int r = r0 + r1, g = g0 + g1, b = b0 + b1;
+    uint32_t Cb = (uint32_t)(((-43 * r - 85 * g + 128 * b) >> 9) + 128);
+    uint32_t Cr = (uint32_t)(((128 * r - 107 * g - 21 * b) >> 9) + 128);
+    return (Y0 << 24) | (Cb << 16) | (Y1 << 8) | Cr;
+}
+
+/* The framebuffers are mapped uncached, where every 4-byte store goes out to memory on its own:
+ * draw through the cached mirror instead, then write the cache back once. */
 void vid_draw_frame(MoFrame *f)
 {
-    uint32_t *dst = (uint32_t *)xfb[cur];
+    uint32_t *dst = (uint32_t *)MEM_K1_TO_K0(xfb[cur]);
+    draw_frame(f, dst);
+    DCStoreRange(dst, rmode->fbWidth * rmode->xfbHeight * VI_DISPLAY_PIX_SZ);
+}
+
+static void draw_frame(MoFrame *f, uint32_t *dst)
+{
     int SW = rmode->fbWidth;
     int SH = rmode->xfbHeight;
     uint8_t *Y = f->data[0], *U = f->data[1], *V = f->data[2];
     int ly = f->linesize[0], lc = f->linesize[1];
+
+    /* YCgCo frames that fit the screen: two rows at a time, sharing their chroma. While no R, G or B
+     * clips, pair_to_yuy2 reduces exactly (same bits) to
+     *   Y' = (256Y + 48U + 44V) >> 8,  Cb = ((-342U - 340V) >> 9) + 128,  Cr = ((298U - 428V) >> 9) + 128;
+     * a pixel whose RGB would clip takes the full conversion. */
+    if (!f->moflex && f->width <= SW && f->height <= SH) {
+        int w = f->width & ~1, h = f->height;
+        int ox = (SW - w) / 2, oy = (SH - h) / 2;
+        for (int y = 0; y < h; y += 2) {
+            const uint8_t *yr0 = Y + y * ly;
+            const uint8_t *yr1 = y + 1 < h ? yr0 + ly : NULL;
+            const uint8_t *ur = U + (y >> 1) * lc, *vr = V + (y >> 1) * lc;
+            uint32_t *d0 = dst + ((oy + y) * SW + ox) / 2;
+            uint32_t *d1 = d0 + SW / 2;
+            for (int c = 0; c < w / 2; c++) {
+                int u = ur[c] - 128, v = vr[c] - 128;
+                /* R = Y+u-v, G = Y+v, B = Y-u-v stay in 0..255 for Y in lo..hi */
+                int a = u - v, b = -u - v;
+                int mn = a < v ? a : v, mx = a > v ? a : v;
+                if (b < mn) mn = b;
+                if (b > mx) mx = b;
+                unsigned lo = (unsigned)-mn, span = (unsigned)(255 - mx + mn);
+                int dy = 48 * u + 44 * v;
+                uint32_t cbcr = ((uint32_t)(((-342 * u - 340 * v) >> 9) + 128) << 16) |
+                                (uint32_t)(((298 * u - 428 * v) >> 9) + 128);
+                int p0 = yr0[2 * c], p1 = yr0[2 * c + 1];
+                if (mx - mn <= 255 && (unsigned)(p0 - lo) <= span && (unsigned)(p1 - lo) <= span)
+                    d0[c] = ((uint32_t)(((p0 << 8) + dy) >> 8) << 24) | ((uint32_t)(((p1 << 8) + dy) >> 8) << 8) | cbcr;
+                else
+                    d0[c] = pair_to_yuy2(0, p0, p1, u, v);
+                if (!yr1) continue;
+                p0 = yr1[2 * c], p1 = yr1[2 * c + 1];
+                if (mx - mn <= 255 && (unsigned)(p0 - lo) <= span && (unsigned)(p1 - lo) <= span)
+                    d1[c] = ((uint32_t)(((p0 << 8) + dy) >> 8) << 24) | ((uint32_t)(((p1 << 8) + dy) >> 8) << 8) | cbcr;
+                else
+                    d1[c] = pair_to_yuy2(0, p0, p1, u, v);
+            }
+        }
+        return;
+    }
+
+    if (f->moflex && f->width <= SW && f->height <= SH) {
+        if (!moflex_lut_ready) {
+            for (int s = -256; s < 512; s++) moflex_lut[s + 256] = (uint8_t)clamp255(((s - 16) * 273) >> 8);
+            moflex_lut_ready = 1;
+        }
+        int w = f->width & ~1, h = f->height;
+        int ox = (SW - w) / 2, oy = (SH - h) / 2;
+        for (int y = 0; y < h; y += 2) {
+            const uint8_t *yr0 = Y + y * ly;
+            const uint8_t *yr1 = y + 1 < h ? yr0 + ly : NULL;
+            const uint8_t *ur = U + (y >> 1) * lc, *vr = V + (y >> 1) * lc;
+            uint32_t *d0 = dst + ((oy + y) * SW + ox) / 2;
+            uint32_t *d1 = d0 + SW / 2;
+            for (int c = 0; c < w / 2; c++) {
+                int u = ur[c] - 128, v = vr[c] - 128;
+                int dr = (363 * v) >> 8, dg = -((88 * u) >> 8) - ((183 * v) >> 8), db = (453 * u) >> 8;
+                d0[c] = moflex_pair(yr0[2 * c], yr0[2 * c + 1], dr, dg, db);
+                if (yr1) d1[c] = moflex_pair(yr1[2 * c], yr1[2 * c + 1], dr, dg, db);
+            }
+        }
+        return;
+    }
 
     /* Fast path: frame fits the screen -> 1:1 centered, no scaling/divides. */
     if (f->width <= SW && f->height <= SH) {
@@ -172,7 +263,7 @@ void vid_draw_frame(MoFrame *f)
 
 void vid_draw_rgb24(const uint8_t *rgb, int w, int h)
 {
-    uint32_t *dst = (uint32_t *)xfb[cur];
+    uint32_t *dst = (uint32_t *)MEM_K1_TO_K0(xfb[cur]);      /* cached, as in vid_draw_frame */
     int SW = rmode->fbWidth;
     int SH = rmode->xfbHeight;
 
@@ -204,4 +295,5 @@ void vid_draw_rgb24(const uint8_t *rgb, int w, int h)
                            (clamp255(Y1) << 8)  |  clamp255(Cr);
         }
     }
+    DCStoreRange(dst, SW * SH * VI_DISPLAY_PIX_SZ);
 }

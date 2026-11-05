@@ -10,6 +10,7 @@
  */
 #include <gccore.h>
 #include <wiiuse/wpad.h>
+#include <ogc/lwp_watchdog.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -136,6 +137,11 @@ static int play_pcm(MoDemux *mux, MobiDecoder *dec, MoAudio *audio_dec,
     long long start_retrace = vid_retraces();
     long display_index = 0;
     int head = 0, stop = 0, paused = 0;
+#ifdef GMW_AUTOTEST
+    /* test builds: time the first 300 frames, log it and stop */
+    u64 t_draw = 0, t_dec = 0;
+    int drops = 0;
+#endif
 
     while (queued > 0 && !stop) {
         while (paused && !stop) {
@@ -153,17 +159,40 @@ static int play_pcm(MoDemux *mux, MobiDecoder *dec, MoAudio *audio_dec,
         long long ideal = (display_index + 1) * (long long)period_us * hz / 1000000;
         long target = start_retrace + ideal;
         int drop = (int)(vid_retraces() - target) > vspf;
+#ifdef GMW_AUTOTEST
+        u64 t0 = gettime();
+        drops += drop;
+#endif
         if (!drop) {
             vid_draw_frame(frames[head]);
+#ifdef GMW_AUTOTEST
+            t_draw += gettime() - t0;
+#endif
             vid_flip();
         }
 
         /* Refill the slot only after its pixels have been copied to the XFB. */
         MoFrame *next = NULL;
+#ifdef GMW_AUTOTEST
+        u64 t1 = gettime();
+#endif
         if (read_pcm_frame(mux, dec, audio_dec, audio_buf, audio_cap, ch, &next))
             frames[head] = next;
         else
             queued--;
+#ifdef GMW_AUTOTEST
+        t_dec += gettime() - t1;
+        if (display_index + 1 == 300) {
+            FILE *lg = fopen("sd:/gmwtest.log", "a");
+            if (lg) {
+                fprintf(lg, "  mobiclip %dx%d: 300 frames, %d dropped, decode %.2f ms, draw %.2f ms a frame (budget %.2f ms)\n",
+                        mux->width, mux->height, drops, ticks_to_microsecs(t_dec) / 300000.0,
+                        ticks_to_microsecs(t_draw) / 300000.0, period_us / 1000.0);
+                fclose(lg);
+            }
+            stop = 1;
+        }
+#endif
         head = (head + 1) % PCM_PIPELINE_FRAMES;
         display_index++;
 
@@ -239,6 +268,10 @@ static void play_file(const char *path)
     long long start_retrace = vid_retraces();
     MoPacket pkt;
     int stop = 0, paused = 0;
+#ifdef GMW_AUTOTEST
+    u64 t_dec = 0, t_draw = 0, t_aud = 0;
+    int drops = 0, shown = 0;
+#endif
 
     while (!stop && mo_demux_read(&mux, &pkt) == 1) {
         if (audio_pending > 0) {
@@ -263,12 +296,41 @@ static void play_file(const char *path)
             long long ideal_retrace = (long long)mux.cur_frame * period_us * hz / 1000000;
             long target = start_retrace + ideal_retrace;
             MoFrame *fr = NULL;
+#ifdef GMW_AUTOTEST
+            u64 t0 = gettime();
+#endif
             if (mobi_decode(dec, pkt.data, pkt.size, &fr) == 0 && fr) {
+#ifdef GMW_AUTOTEST
+                u64 t1 = gettime();
+                t_dec += t1 - t0;
+#endif
                 int drop = (int)(vid_retraces() - target) > vspf;
                 if (!drop) {
                     vid_draw_frame(fr);
+#ifdef GMW_AUTOTEST
+                    t_draw += gettime() - t1;
+#endif
                     vid_flip();
                 }
+#ifdef GMW_AUTOTEST
+                drops += drop;
+                if (++shown == 300) {
+                    FILE *lg = fopen("sd:/gmwtest.log", "a");
+                    if (lg) {
+                        fprintf(lg, "  mobiclip %dx%d moflex %d audio %d: 300 frames, %d dropped, decode %.2f ms, draw %.2f ms, "
+                                "audio %.2f ms a frame (budget %.2f ms)\n", mux.width, mux.height, fr->moflex, mux.audio_type, drops,
+                                ticks_to_microsecs(t_dec) / 300000.0, ticks_to_microsecs(t_draw) / 300000.0,
+                                ticks_to_microsecs(t_aud) / 300000.0, period_us / 1000.0);
+                        fclose(lg);
+                    }
+                    FILE *sh = fopen("sd:/shot_0.yuv", "wb");      /* the frame drawn before this one */
+                    if (sh) {
+                        fwrite(vid_xfb(), 1, vid_screen_w() * vid_screen_h() * 2, sh);
+                        fclose(sh);
+                    }
+                    stop = 1;
+                }
+#endif
             }
             /* Hold this frame until its scheduled retrace. Absolute schedule
              * self-corrects: a slow frame simply waits less (or not at all). */
@@ -278,6 +340,9 @@ static void play_file(const char *path)
                 current_retrace = vid_retraces() - start_retrace;
             }
         } else if (has_audio && pkt.size > 0) {
+#ifdef GMW_AUTOTEST
+            u64 ta = gettime();
+#endif
             /*
              * Append this section behind any PCM the output ring has not yet
              * accepted. Compacting only moves bounded decoded PCM; compressed
@@ -303,6 +368,9 @@ static void play_file(const char *path)
                 audio_pending -= pushed;
                 if (audio_pending == 0) audio_pos = 0;
             }
+#ifdef GMW_AUTOTEST
+            t_aud += gettime() - ta;
+#endif
         }
 
         u32 b = poll_some();

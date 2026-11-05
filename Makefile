@@ -168,6 +168,10 @@ endif
 $(OUTPUT).dol: $(OUTPUT).elf
 $(OUTPUT).elf: $(OFILES)
 
+# The video decoders run at -O3, as in wii-mobiclip-player.
+MOBICLIP_O := $(patsubst %.c,%.o,$(notdir $(wildcard $(OUTPUT:$(TARGET)=)source/mobiclip/*.c)))
+$(MOBICLIP_O): CFLAGS += -O3
+
 launch.o: appboot_bin.h
 midisynth.o: gmsf2_bin.h
 
