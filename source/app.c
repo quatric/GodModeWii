@@ -23,6 +23,7 @@
 #include "media.h"
 #include "ftype.h"
 #include "wiiload.h"
+#include "usage.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -846,6 +847,7 @@ enum {
     A_RENAME,
     A_MKDIR,
     A_INFO,
+    A_USAGE,
     A_HEX,
     A_TEXT,
     A_EDIT_HEX,
@@ -988,6 +990,10 @@ static void actions_menu(void)
     en[n] = on_entry || nmarks;
     code[n++] = A_INFO;
 
+    items[n] = "Disk usage (ncdu)";
+    en[n] = cwd[0] != '\0';
+    code[n++] = A_USAGE;
+
     items[n] = "Text viewer";
     en[n] = on_entry && !nmarks && !ents[e].is_dir;
     code[n++] = A_TEXT;
@@ -1048,6 +1054,10 @@ static void actions_menu(void)
             show_info(tp, t);
             free_paths(tp, t);
         }
+        break;
+    case A_USAGE:
+        usage_browse(cwd);
+        reload_keep();
         break;
     case A_HEX:
         tp = targets(&t);
