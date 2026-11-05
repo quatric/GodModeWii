@@ -7,7 +7,7 @@
  *   BRFNT font sheets, BREFT effect textures, J3D BMD / BDL (TEX1), a PLT0 on its own (as swatches),
  *   Camelot texture banks (as the TPL archive.c turns them into), Monster Games .tex / .art / .img /
  *   .tm0 (excite.c), and ActImagine AJPG (the Wii Message Board's photos; ajpg/odh_core.c)
- * TGA (tga.c), BMP (bmp.c), GIF (first frame; gif.c), plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
+ * Paon .d4, TGA (tga.c), BMP (bmp.c), GIF (first frame; gif.c), plus PNG, JPEG and WebP through devkitPro's portlibs (libpng, libjpeg,
  * libwebp). View only: nothing is converted or written.
  *
  * Everything is read with explicit big-endian accessors and pixels stay byte
@@ -714,6 +714,18 @@ static void load_bmp(set_t *s)
     add_rgba(s, w, h, px, "BMP");
 }
 
+bool image_d4_ok(const u8 *h, u32 n, u64 size)
+{
+    if (n < 0x20) return false;
+    int fmt = be16(h), w = be16(h + 2), ht = be16(h + 4);
+    u32 at = be32(h + 8);
+    if (!((fmt >= 0 && fmt <= 6) || fmt == 14) || !w || !ht || w > 2048 || ht > 2048 || be16(h + 6)) return false;
+    if (at < 0x0C || at > 0x100 || (at & 3)) return false;
+    for (u32 i = 0x0C; i < at && i < n; i++)
+        if (h[i]) return false;
+    return (u64)at + image_gx_size(fmt, w, ht) <= size;
+}
+
 /* ---------------------------------------------------------------- loading */
 
 static u8 *load_file(const char *path, u32 *len)
@@ -910,6 +922,10 @@ static bool load_set(set_t *s, const char *path)
     else if (!memcmp(b, "PLT0", 4)) parse_plt0(s);
     else if (!memcmp(b, "AJPG", 4)) load_ajpg(s);
     else if (bmp_header_ok(b, s->len, s->len)) load_bmp(s);
+    else if (arc_name_has_ext(path, ".d4") && image_d4_ok(b, s->len, s->len)) {
+        s->kind = "D4";                                 /* Paon: GX texture behind a 0x20 byte header */
+        add(s, be16(b), be16(b + 2), be16(b + 4), be32(b + 8), vfs_basename(path));
+    }
     else if ((arc_name_has_ext(path, ".tga") || tga_has_footer(b, s->len)) && tga_header_ok(b, s->len, s->len))
         load_tga(s);
     else if (arc_name_has_ext(path, ".tm0") || arc_name_has_ext(path, ".tex") || arc_name_has_ext(path, ".art") ||

@@ -694,6 +694,14 @@ static bool cx_decode(const uint8_t *in, uint32_t in_len, uint8_t type, uint32_t
     return false;
 }
 
+/* The first outn bytes a bare CX stream (LZ10 / LZ11 / Huffman / RL / LZH8) at h decodes to. */
+bool arc_cx_peek(const uint8_t *h, uint32_t n, uint8_t *out, uint32_t outn)
+{
+    uint8_t t;
+    uint32_t s, hl;
+    return cx_header(h, n, &t, &s, &hl) && s >= outn && cx_decode(h, n, t, hl, out, outn);
+}
+
 /* In-memory decode of buf (starting at skip bytes in); NULL on error. */
 static uint8_t *lz_unpack(const uint8_t *buf, uint32_t len, uint32_t skip, uint32_t *out_size)
 {
@@ -846,7 +854,8 @@ static bool known_magic(const uint8_t *m)
                                         "bres", "RLYT", "RLAN", "RFNT", "RFNA", "RFNU", "REFF",
                                         "REFT", "RARC", "Yaz0", "Yay0", "MESG", "J3D2", "THP\0",
                                         "IMD5", "BNR1", "BNR2", "WIBN", "RKGD", "RKMD", "MsgS",
-                                        "GFAC", "ASH0", "CRAR", "SARC", "TPL\0", NULL };
+                                        "GFAC", "ASH0", "CRAR", "SARC", "TPL\0",
+                                        "OCN.", "FJG\0", NULL };   /* Paon (DK: Barrel Blast) */
     for (int i = 0; tags[i]; i++)
         if (!memcmp(m, tags[i], 4)) return true;
     return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
@@ -1415,6 +1424,7 @@ static const fmt_t formats[] = {
     { "ZFS",         arc_zfs_probe,        arc_zfs_open },
     { "BootMii NAND", arc_nand_probe,      arc_nand_open },
     { "HSD",         arc_hsd_probe,        arc_hsd_open },
+    { "FJG",         arc_fjg_probe,        arc_fjg_open },
     { "PDF",         arc_pdf_probe,        arc_pdf_open },
     { "partitions",  arc_disk_probe,       arc_disk_open },
 };

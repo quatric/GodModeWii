@@ -180,6 +180,10 @@ bool arc_disk_probe(const src_t *file, const char *name);      /* MBR / GPT / Ap
 archive_t *arc_disk_open(const src_t *file, const char *name);
 bool arc_hsd_probe(const src_t *file, const char *name);       /* HAL sysdolphin .dat */
 archive_t *arc_hsd_open(const src_t *file, const char *name);
+bool arc_fjg_probe(const src_t *file, const char *name);       /* Paon FJG: HSD archives back to back */
+archive_t *arc_fjg_open(const src_t *file, const char *name);
+/* The first outn bytes a bare CX stream (LZ10 / LZ11 ...) at h (n bytes) decodes to. */
+bool arc_cx_peek(const uint8_t *h, uint32_t n, uint8_t *out, uint32_t outn);
 bool arc_rst_probe(const src_t *file, const char *name);       /* Monster Games RST (+ .toc), QuickLZ */
 archive_t *arc_rst_open(const src_t *file, const char *name);
 bool arc_pdf_probe(const src_t *file, const char *name);       /* PDF: page text and embedded images */

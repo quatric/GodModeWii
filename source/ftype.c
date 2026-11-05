@@ -47,6 +47,8 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
             ro + nrel * 4 + (nroot + nref) * 8 <= size)
             return FT_MODEL;
     }
+    /* Paon .d4 (Donkey Kong: Barrel Blast): a GX texture behind a 0x20 byte header */
+    if (arc_name_has_ext(name, ".d4") && image_d4_ok(h, n, size)) return FT_IMAGE;
     /* Truevision TGA: no magic; the header has to describe an image the file is large enough for */
     if (arc_name_has_ext(name, ".tga") && tga_header_ok(h, n, size)) return FT_IMAGE;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
@@ -124,6 +126,15 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (bmp_header_ok(h, n, size)) return FT_IMAGE;                               /* BMP */
 
         if (M("bres") || M("MDL0")) return FT_MODEL;
+        /* Paon (Donkey Kong: Barrel Blast): OCN. models and FJG bundles of HSD archives, on their own or
+         * LZ10-compressed (chara/ *.dat); the model viewer passes a bundle with no model on to the browser */
+        if ((M("OCN.") && n >= 8 && be32(h + 4) == 0x18) || M("FJG\0")) return FT_MODEL;
+        if (h[0] == 0x10 || h[0] == 0x11) {
+            u8 peek[8];
+            if (arc_cx_peek(h, n, peek, sizeof(peek)) &&
+                ((!memcmp(peek, "OCN.", 4) && be32(peek + 4) == 0x18) || !memcmp(peek, "FJG\0", 4)))
+                return FT_MODEL;
+        }
         if (M("HSFV037")) return FT_MODEL;                                            /* Mario Party HSF */
         if (n >= 8 && (M("J3D2") || M("J3D1")) &&
             (!memcmp(h + 4, "bmd", 3) || !memcmp(h + 4, "bdl", 3))) return FT_MODEL;

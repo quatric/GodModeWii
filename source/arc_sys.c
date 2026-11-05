@@ -297,3 +297,84 @@ archive_t *arc_hsd_open(const src_t *file, const char *name)
     free(loc);
     return a;
 }
+
+/* ---------------------------------------------------------------- Paon FJG */
+
+/* Paon's FJG container (Donkey Kong: Barrel Blast gimmick / course / chara `*_mp*.dat`, after nintoolbox's
+ * lib-hsd.c): "FJG\0", u8 flags + u24 entry count at 4, then that many u32 offsets of complete HSD
+ * archives, zero-padded between them. Each one is listed as NNN.dat, as long as its own header says. */
+#define FJG_MAX 4096
+
+static bool fjg_head(const uint8_t *h, uint32_t n, uint64_t size, uint32_t *count)
+{
+    if (n < 12 || size < 0x40 || memcmp(h, "FJG", 4)) return false;
+    uint32_t c = be32(h + 4) & 0xFFFFFF, first = be32(h + 8);
+    if (!c || c > FJG_MAX || 8 + 4ull * c > size || first < 8 + 4 * c || first >= size) return false;
+    *count = c;
+    return true;
+}
+
+bool arc_fjg_probe(const src_t *file, const char *name)
+{
+    (void)name;
+    uint8_t h[16];
+    uint32_t c;
+    return file->size >= 0x40 && file->size <= ARC_MAX_DECOMPRESSED && src_read_full(file, 0, h, sizeof(h)) &&
+           fjg_head(h, sizeof(h), file->size, &c);
+}
+
+static int32_t fjg_read(archive_t *a, const tnode *nd, uint64_t off, void *buf, uint32_t len)
+{
+    if (off >= nd->size) return 0;
+    if (len > nd->size - off) len = (uint32_t)(nd->size - off);
+    return a->base.read(a->base.ctx, nd->a + off, buf, len);
+}
+
+archive_t *arc_fjg_open(const src_t *file, const char *name)
+{
+    uint8_t h[16];
+    uint32_t c;
+    if (file->size < 0x40 || !src_read_full(file, 0, h, sizeof(h)) || !fjg_head(h, sizeof(h), file->size, &c))
+        return NULL;
+    uint32_t *offs = malloc(4 * c);
+    if (!offs || !src_read_full(file, 8, offs, 4 * c)) {
+        free(offs);
+        return NULL;
+    }
+    archive_t *a = archive_alloc("FJG");
+    if (!a) {
+        free(offs);
+        return NULL;
+    }
+    a->read = fjg_read;
+    a->base = *file;
+    a->src = a->base;
+    const char *dot = name ? strrchr(name, '.') : NULL;
+    int stem = !name ? 0 : dot ? (int)(dot - name) : (int)strlen(name);
+    int added = 0;
+    for (uint32_t i = 0; i < c; i++) {
+        uint32_t o = be32((uint8_t *)&offs[i]);
+        uint8_t hh[0x40];
+        if (o < 8 + 4 * c || (uint64_t)o + 0x40 > file->size || !src_read_full(file, o, hh, sizeof(hh))) continue;
+        /* up to the next member; an HSD archive (motions, models) as long as its header says */
+        uint32_t nx = i + 1 < c ? be32((uint8_t *)&offs[i + 1]) : (uint32_t)file->size;
+        uint32_t sz = nx > o && nx <= file->size ? nx - o : (uint32_t)file->size - o, a1, a2, a3, a4;
+        const char *ext = ".bin";
+        if (be32(hh) == 0x0020AF30u) ext = ".tpl";
+        else if (!memcmp(hh, "FJG", 4)) ext = ".fjg";
+        else if (be32(hh) <= sz && hsd_header(hh, be32(hh), &a1, &a2, &a3, &a4)) {   /* reads only the header */
+            sz = be32(hh);
+            ext = ".dat";
+        }
+        char nm[96];
+        snprintf(nm, sizeof(nm), "%.*s_%03u%s", stem > 60 ? 60 : stem, name ? name : "fjg", (unsigned)i, ext);
+        if (tree_add(&a->tree, 0, nm, false, sz, o, 0, 0) >= 0) added++;
+    }
+    free(offs);
+    if (!added) {
+        tree_free(&a->tree);
+        free(a);
+        return NULL;
+    }
+    return a;
+}

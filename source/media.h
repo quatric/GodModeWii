@@ -20,6 +20,8 @@ bool image_view(const char *path);          /* false if there is no image in it 
 u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *pal, int palfmt,
                     int palcount);
 u32 image_gx_size(int fmt, int w, int h);
+/* Paon .d4 texture (Donkey Kong: Barrel Blast): u16 GX format, width, height, pad, u32 data offset (0x20). */
+bool image_d4_ok(const u8 *h, u32 n, u64 size);
 
 bool model_view(const char *path);
 unsigned model_brres_texture_palette(const unsigned char *b, unsigned len, const char *tex);  /* PLT0 offset, or 0 */          /* BRRES (MDL0) / BMD / BDL in 3D */

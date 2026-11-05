@@ -3300,6 +3300,297 @@ out:
     return ok;
 }
 
+/* ---------------------------------------------------------------- Paon OCN. */
+
+/* Paon's OCN. models (Donkey Kong: Barrel Blast chara/ *_1200 / _2500 / _4000.dat and props, LZ10
+ * compressed), after nintoolbox's lib-ocn.c. "OCN.", u32 0x18, then chunks from 0x20: a tag stored
+ * byte-reversed ("SXET" is TEXS), a u32 size not counting those 8 bytes, payload at +0x20; containers
+ * hold chunks and end with ENDE.
+ *   TEXS -> TEXT*    u16 index at +0x0C, u16 GX format / width / height at +0x20, pixels at +0x40
+ *   MDLS -> MDEL -> MATE* (u16 texture at +0x14), BONE* (u16 parent at +0x0A, quaternion xyzw at +0x10,
+ *                   scale +0x20, translation +0x30, f32), SHAP* (u16 owning bone at +0x14) ->
+ *                   ELEM* (u16 vertex count at +0x12; VERT / NORM f32 banks, TXCD u16 u,v 1/1024),
+ *                   MESH* (u16 material at +0x14) -> PRIM -> VIDL (display list of u16 pos / nrm / uv
+ *                   indices), WEIG (skinned vertex pool: per vertex u8 bone[4], k x {s16 xyz 1/512 or
+ *                   f32 xyz, weight}, k x {s16 normal 1/16384, pad}; then 4k unused bytes; to 0x20)
+ * Skinned vertices are blended into place with the bind pose; rigid shapes go through their bone. */
+#define OCN_HDR 0x20
+#define OCN_BONES 256
+
+typedef struct { int parent; float w[12]; } ocnb_t;
+typedef struct { float p[3], n[3]; } ocnv_t;
+
+static bool ocn_tag(const u8 *p, const char *t) { return p[0] == t[3] && p[1] == t[2] && p[2] == t[1] && p[3] == t[0]; }
+
+static u32 ocn_next(const u8 *d, u32 limit, u32 o)
+{
+    if ((u64)o + OCN_HDR > limit) return 0;
+    u64 n = (u64)o + be32(d + o + 4) + 8;
+    return n > o && n <= limit ? (u32)n : 0;
+}
+
+static u32 ocn_end(const u8 *d, u32 limit, u32 o)
+{
+    u64 e = (u64)o + be32(d + o + 4) + 8;
+    return e < limit ? (u32)e : limit;
+}
+
+static bool model_ocn_is(const u8 *b, u32 len) { return len >= 0x80 && !memcmp(b, "OCN.", 4) && be32(b + 4) == 0x18; }
+
+static void ocn_bone(ocnb_t *b, const ocnb_t *all, const float *q, const float *s, const float *t)
+{
+    float x = q[0], y = q[1], z = q[2], w = q[3], l = sqrtf(x * x + y * y + z * z + w * w);
+    if (l < 1e-12f) x = y = z = 0, w = l = 1;
+    x /= l, y /= l, z /= l, w /= l;
+    float r[9] = { 1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w),
+                   2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w),
+                   2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y) };
+    float L[12];
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) L[i * 4 + j] = r[i * 3 + j] * s[j];
+        L[i * 4 + 3] = t[i];
+    }
+    if (b->parent < 0) memcpy(b->w, L, sizeof(L));
+    else mul34(all[b->parent].w, L, b->w);
+}
+
+/* The WEIG layout: k influences per vertex (1 - 4) and s16 or f32 entries, from the chunk size and
+ * the first vertex's weights adding up to one. */
+static bool ocn_weig_layout(const u8 *w, u32 size, u32 count, u32 *rk, bool *rf)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        bool f = pass;
+        for (u32 k = 1; k <= 4; k++) {
+            u32 stride = 4 + (f ? 24 : 16) * k;
+            if (((u64)count * (stride + 4 * k) + 31) / 32 * 32 != size) continue;
+            float sum = 0;
+            for (u32 i = 0; i < k; i++) sum += f ? bef(w + 4 + 16 * i + 12) : be16(w + 4 + 8 * i + 6) / 1024.0f;
+            if (fabsf(sum - 1) < 0.02f) {
+                *rk = k;
+                *rf = f;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static ocnv_t *ocn_weig(const ocnb_t *bones, int nb, const u8 *d, u32 len, u32 c, u32 *count)
+{
+    u32 end = ocn_end(d, len, c), size = end - c - OCN_HDR, n = be16(d + c + 0x0C), k;
+    bool f;
+    const u8 *w = d + c + OCN_HDR;
+    *count = 0;
+    if (!n || end < c + OCN_HDR || !ocn_weig_layout(w, size, n, &k, &f)) return NULL;
+    u32 es = f ? 16 : 8, stride = 4 + (es + 8) * k;
+    if ((u64)n * stride > size) return NULL;
+    ocnv_t *o = calloc(n, sizeof(*o));
+    if (!o) return NULL;
+    for (u32 v = 0; v < n; v++) {
+        const u8 *r = w + v * stride, *nr = r + 4 + es * k;
+        float tot = 0, wt[4] = { 0 };
+        for (u32 i = 0; i < k; i++) {
+            const u8 *pe = r + 4 + es * i;
+            wt[i] = f ? bef(pe + 12) : (float)be16(pe + 6);
+            if (!(wt[i] > 0) || r[i] >= nb) wt[i] = 0;
+            tot += wt[i];
+        }
+        if (tot <= 0) continue;
+        for (u32 i = 0; i < k; i++) {
+            if (!wt[i]) continue;
+            const u8 *pe = r + 4 + es * i;
+            float p[3], nn[3], tp[3], tn[3], a = wt[i] / tot;
+            for (int j = 0; j < 3; j++) {
+                p[j] = f ? bef(pe + 4 * j) : (s16)be16(pe + 2 * j) / 512.0f;
+                nn[j] = (s16)be16(nr + 8 * i + 2 * j) / 16384.0f;
+            }
+            const float *M = bones[r[i]].w;
+            xform(M, p, tp);
+            for (int j = 0; j < 3; j++) tn[j] = M[j * 4] * nn[0] + M[j * 4 + 1] * nn[1] + M[j * 4 + 2] * nn[2];
+            for (int j = 0; j < 3; j++) {
+                o[v].p[j] += a * tp[j];
+                o[v].n[j] += a * tn[j];
+            }
+        }
+        float l = sqrtf(o[v].n[0] * o[v].n[0] + o[v].n[1] * o[v].n[1] + o[v].n[2] * o[v].n[2]);
+        if (l > 1e-6f) for (int j = 0; j < 3; j++) o[v].n[j] /= l;
+    }
+    *count = n;
+    return o;
+}
+
+static void ocn_put(model_t *m, const ocnv_t *pool, u32 np, const u8 *txcd, u32 nt, const u8 *ix)
+{
+    u32 pi = be16(ix), ti = be16(ix + 4);
+    vert_t v;
+    memset(&v, 0, sizeof(v));
+    const ocnv_t *s = &pool[pi < np ? pi : 0];
+    memcpy(v.p, s->p, 12);
+    memcpy(v.n, s->n, 12);
+    if (txcd && ti < nt) {
+        v.t[0] = be16(txcd + 4 * ti) / 1024.0f;
+        v.t[1] = be16(txcd + 4 * ti + 2) / 1024.0f;
+    }
+    v.c[0] = v.c[1] = v.c[2] = v.c[3] = 255;
+    v.node = -1;
+    push(m, &v);
+}
+
+static void ocn_tri(model_t *m, const ocnv_t *pool, u32 np, const u8 *txcd, u32 nt, const u8 *a, const u8 *b,
+                    const u8 *c)
+{
+    if (be16(a) == be16(b) || be16(b) == be16(c) || be16(a) == be16(c)) return;   /* strip stitches */
+    ocn_put(m, pool, np, txcd, nt, a);
+    ocn_put(m, pool, np, txcd, nt, b);
+    ocn_put(m, pool, np, txcd, nt, c);
+}
+
+/* One VIDL display list: 3 u16 indices (position, normal, texture coordinate) per vertex. */
+static void ocn_dl(model_t *m, const u8 *dl, u32 size, const ocnv_t *pool, u32 np, const u8 *txcd, u32 nt)
+{
+    for (u32 o = 0; o + 3 <= size && dl[o];) {
+        u32 op = dl[o] & 0xF8, cnt = be16(dl + o + 1);
+        o += 3;
+        if ((u64)o + 6ull * cnt > size) break;
+        const u8 *v = dl + o;
+        o += 6 * cnt;
+        if (op == 0x98)
+            for (u32 i = 0; i + 2 < cnt; i++)
+                if (i & 1) ocn_tri(m, pool, np, txcd, nt, v + 6 * (i + 1), v + 6 * i, v + 6 * (i + 2));
+                else ocn_tri(m, pool, np, txcd, nt, v + 6 * i, v + 6 * (i + 1), v + 6 * (i + 2));
+        else if (op == 0x90)
+            for (u32 i = 0; i + 2 < cnt; i += 3) ocn_tri(m, pool, np, txcd, nt, v + 6 * i, v + 6 * (i + 1), v + 6 * (i + 2));
+        else if (op == 0xA0)
+            for (u32 i = 1; i + 1 < cnt; i++) ocn_tri(m, pool, np, txcd, nt, v, v + 6 * i, v + 6 * (i + 1));
+        else if (op == 0x80)
+            for (u32 i = 0; i + 3 < cnt; i += 4) {
+                ocn_tri(m, pool, np, txcd, nt, v + 6 * i, v + 6 * (i + 1), v + 6 * (i + 2));
+                ocn_tri(m, pool, np, txcd, nt, v + 6 * i, v + 6 * (i + 2), v + 6 * (i + 3));
+            }
+        else
+            break;
+    }
+}
+
+static bool load_ocn(model_t *m, const u8 *d, u32 len, const char *name)
+{
+    if (!model_ocn_is(d, len)) return false;
+    u32 texs = 0, mdls = 0;
+    for (u32 o = OCN_HDR, n; o && o < len; o = n) {
+        n = ocn_next(d, len, o);
+        if (!n) break;
+        if (ocn_tag(d + o, "TEXS")) texs = o;
+        else if (ocn_tag(d + o, "MDLS")) mdls = o;
+    }
+    if (!mdls || (u64)mdls + 2 * OCN_HDR > len || !ocn_tag(d + mdls + OCN_HDR, "MDEL")) return false;
+
+    /* textures, by their index */
+    static int texmap[1024];
+    for (int i = 0; i < 1024; i++) texmap[i] = -1;
+    if (texs) {
+        u32 end = ocn_end(d, len, texs);
+        for (u32 c = texs + OCN_HDR, n; c && c < end; c = n) {
+            n = ocn_next(d, end, c);
+            if (!n || ocn_tag(d + c, "ENDE")) break;
+            if (!ocn_tag(d + c, "TEXT") || n < c + 0x40) continue;
+            u32 idx = be16(d + c + 0x0C);
+            if (idx < 1024)
+                texmap[idx] = add_texture(m, d, n, c + 0x40, be16(d + c + 0x20), be16(d + c + 0x22), be16(d + c + 0x24),
+                                          NULL, 0, 0, GX_REPEAT, GX_REPEAT, 0);
+        }
+    }
+
+    u32 mdel = mdls + OCN_HDR, mend = ocn_end(d, len, mdel);
+    ocnb_t *bones = calloc(OCN_BONES, sizeof(*bones));
+    static int mate[1024];
+    int nb = 0, nmate = 0;
+    if (!bones) return false;
+    for (u32 c = mdel + OCN_HDR, n; c && c < mend; c = n) {
+        n = ocn_next(d, mend, c);
+        if (!n) break;
+        if (ocn_tag(d + c, "MATE") && nmate < 1024) {
+            u32 t = be16(d + c + 0x14);
+            mate[nmate++] = t < 1024 ? texmap[t] : -1;
+        } else if (ocn_tag(d + c, "BONE") && nb < OCN_BONES && n >= c + 0x80) {
+            float q[4], s[3], t[3];
+            for (int i = 0; i < 4; i++) q[i] = bef(d + c + 0x10 + 4 * i);
+            for (int i = 0; i < 3; i++) s[i] = bef(d + c + 0x20 + 4 * i), t[i] = bef(d + c + 0x30 + 4 * i);
+            u32 p = be16(d + c + 0x0A);
+            bones[nb].parent = p == 0xFFFF || (int)p >= nb ? -1 : (int)p;
+            ocn_bone(&bones[nb], bones, q, s, t);
+            nb++;
+        }
+    }
+
+    for (u32 c = mdel + OCN_HDR, n; c && c < mend; c = n) {
+        n = ocn_next(d, mend, c);
+        if (!n) break;
+        if (!ocn_tag(d + c, "SHAP")) continue;
+        const u8 *txcd[64], *vert[64], *norm[64];
+        u32 ntx[64], nv[64], nelem = 0, nmesh = 0, owner = be16(d + c + 0x14);
+        for (u32 e = c + OCN_HDR, en; e && e < n; e = en) {
+            en = ocn_next(d, n, e);
+            if (!en) break;
+            if (ocn_tag(d + e, "ELEM") && nelem < 64) {
+                txcd[nelem] = vert[nelem] = norm[nelem] = NULL;
+                ntx[nelem] = 0;
+                nv[nelem] = be16(d + e + 0x12);
+                for (u32 t = e + OCN_HDR, tn; t && t < en; t = tn) {
+                    tn = ocn_next(d, en, t);
+                    if (!tn || ocn_tag(d + t, "ENDE")) break;
+                    if (ocn_tag(d + t, "VERT") && tn - t >= OCN_HDR + 12ull * nv[nelem]) vert[nelem] = d + t + OCN_HDR;
+                    else if (ocn_tag(d + t, "NORM") && tn - t >= OCN_HDR + 12ull * nv[nelem]) norm[nelem] = d + t + OCN_HDR;
+                    else if (ocn_tag(d + t, "TXCD")) {
+                        txcd[nelem] = d + t + OCN_HDR;
+                        ntx[nelem] = (tn - t - OCN_HDR) / 4;
+                    }
+                }
+                nelem++;
+            } else if (ocn_tag(d + e, "MESH") && en >= e + 2 * OCN_HDR) {
+                u32 mi = nmesh++, mt = be16(d + e + 0x14), prim = e + OCN_HDR;
+                if (!ocn_tag(d + prim, "PRIM")) continue;
+                u32 pend = ocn_end(d, en, prim), vidl = 0, weig = 0;
+                for (u32 p = prim + OCN_HDR, pn; p && p < pend; p = pn) {
+                    pn = ocn_next(d, pend, p);
+                    if (!pn) break;
+                    if (ocn_tag(d + p, "VIDL")) vidl = p;
+                    else if (ocn_tag(d + p, "WEIG")) weig = p;
+                }
+                if (!vidl) continue;
+                u32 np = 0;
+                ocnv_t *pool = NULL;
+                if (weig) pool = ocn_weig(bones, nb, d, len, weig, &np);
+                else if (mi < nelem && vert[mi] && (int)owner < nb && nv[mi]) {
+                    np = nv[mi];                    /* rigid: f32 vertices local to the owning bone */
+                    pool = calloc(np, sizeof(*pool));
+                    for (u32 v = 0; pool && v < np; v++) {
+                        float p[3], nn[3] = { 0, 0, 0 };
+                        for (int j = 0; j < 3; j++) {
+                            p[j] = bef(vert[mi] + 12 * v + 4 * j);
+                            if (norm[mi]) nn[j] = bef(norm[mi] + 12 * v + 4 * j);
+                        }
+                        xform(bones[owner].w, p, pool[v].p);
+                        xform_n(bones[owner].w, nn, pool[v].n);
+                    }
+                }
+                if (!pool) continue;
+                u32 start = m->n;
+                u32 vend = ocn_end(d, pend, vidl);
+                ocn_dl(m, d + vidl + OCN_HDR, vend - vidl - OCN_HDR, pool, np, mi < nelem ? txcd[mi] : NULL,
+                       mi < nelem ? ntx[mi] : 0);
+                free(pool);
+                add_mesh(m, start, mt < (u32)nmate ? mate[mt] : -1, 0);
+                m->meshes++;
+            }
+        }
+    }
+    free(bones);
+    m->bones = nb;
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "OCN";
+    return m->n > 0;
+}
+
 /* ---------------------------------------------------------------- GX drawing */
 
 /* Static, so it stays in MEM1: a GPU fed its commands from MEM2 stalls at random on a real Wii
@@ -3527,7 +3818,10 @@ static u8 *load_file(const char *path, u32 *len)
         return NULL;
     }
 
-    if (b && arc_lz_name(vfs_basename(path), NULL, 0)) {     /* "x.brres.lz": the file inside */
+    u8 peek[8];                                 /* an LZ10 .dat holding a Paon OCN. model or FJG bundle */
+    bool paon = b && n > 8 && (b[0] == 0x10 || b[0] == 0x11) && arc_cx_peek(b, n, peek, sizeof(peek)) &&
+                (!memcmp(peek, "OCN.", 4) || !memcmp(peek, "FJG", 4));
+    if (b && (paon || arc_lz_name(vfs_basename(path), NULL, 0))) {     /* "x.brres.lz": the file inside */
         u32 un;
         u8 *u = arc_lz_unwrap(vfs_basename(path), b, n, &un);
         free(b);
@@ -3554,6 +3848,12 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
         return load_mdl0(m, b, len, off, sz, name);
     }
     if (!memcmp(b, "HSFV037", 7)) return load_hsf(m, b, len, name);
+    if (model_ocn_is(b, len)) return load_ocn(m, b, len, name);
+    if (!memcmp(b, "FJG", 4)) {                 /* one HSD archive of a Paon FJG bundle */
+        u32 sz = off + 0x40 <= len ? be32(b + off) : 0;
+        if (sz < 0x40 || sz > len - off) return false;
+        return model_hsd_is(b + off, sz) && load_hsd(m, b + off, sz, name);
+    }
     if (model_hsd_is(b, len)) return load_hsd(m, b, len, name);
     if (memcmp(b, "J3D", 3) && mod_is(b, len)) return load_mod(m, b, len, name);
     return load_j3d(m, b, len, name);
@@ -3603,8 +3903,17 @@ bool model_view(const char *path)
     int count;
 
     bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4) || !memcmp(b, "HSFV037", 7) || model_hsd_is(b, len) ||
-               (arc_name_has_ext(path, ".mod") && mod_is(b, len));
-    if (j3d) {
+               (arc_name_has_ext(path, ".mod") && mod_is(b, len)) || model_ocn_is(b, len);
+    if (!memcmp(b, "FJG", 4) && len >= 12) {    /* Paon FJG: every HSD archive in it that is a model */
+        u32 nfjg = be32(b + 4) & 0xFFFFFF;
+        count = 0;
+        for (u32 i = 0; i < nfjg && 12 + 4 * i <= len && count < MAX_MODELS; i++) {
+            u32 o = be32(b + 8 + 4 * i), sz = (u64)o + 0x40 <= len ? be32(b + o) : 0;
+            if (sz < 0x40 || sz > len - o || !model_hsd_is(b + o, sz)) continue;
+            offs[count] = o;
+            snprintf(names[count++], 64, "%.50s #%u", vfs_basename(path), (unsigned)i);
+        }
+    } else if (j3d) {
         count = 1;
         offs[0] = 0;
         snprintf(names[0], 64, "%s", vfs_basename(path));
