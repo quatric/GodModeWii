@@ -527,7 +527,7 @@ static void summary(const char *verb, bool ok)
     u64 el = (now_ms() - X.start_ms) / 1000;
 
     if (X.cancelled)
-        snprintf(msg, sizeof(msg), "Cancelled after %u file(s).", (unsigned)X.files_done);
+        snprintf(msg, sizeof(msg), "Canceled after %u file(s).", (unsigned)X.files_done);
     else if (X.fails) {
         char sz[32];
         ui_fmt_size(sz, sizeof(sz), X.done_bytes);
@@ -563,7 +563,7 @@ static void summary(const char *verb, bool ok)
         summary_pages("FINISHED WITH ERRORS", msg);
         ui_alert_window(false);
     } else if (!ok || X.cancelled || X.fails)
-        ui_message(X.cancelled ? "CANCELLED" : "FINISHED WITH ERRORS", C_YELLOW, msg);
+        ui_message(X.cancelled ? "CANCELED" : "FINISHED WITH ERRORS", C_YELLOW, msg);
     else
         ui_message("DONE", C_GREEN, msg);
 }

@@ -55,7 +55,7 @@ static u64 chain(u8 f, u32 w, u32 h, u32 levels)
     return t;
 }
 
-/* image_decode_gx keeps a transparent CMPR texel's averaged colour; the scores here (and nintoolbox's)
+/* image_decode_gx keeps a transparent CMPR texel's averaged color; the scores here (and nintoolbox's)
  * count it as black, which is what tells a stencil half apart */
 static u8 *dec(u8 f, u32 w, u32 h, const u8 *d, u32 n)
 {
@@ -319,7 +319,7 @@ u8 *excite_art(const u8 *d, u32 n, int *w, int *h)
     for (u32 i = n - 128; i < n; i++)
         if (d[i]) return NULL;
     px = classify(d, n, false, w, h);
-    if (px && *h == 2 * *w && looks_like_mask(px, (u32)*w, (u32)*h)) {       /* colour over stencil */
+    if (px && *h == 2 * *w && looks_like_mask(px, (u32)*w, (u32)*h)) {       /* color over stencil */
         u32 W = (u32)*w, hh = (u32)*h / 2;
         for (u32 y = 0; y < hh; y++)
             for (u32 x = 0; x < W; x++) {

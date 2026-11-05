@@ -118,9 +118,9 @@ static uint32_t gx_size(uint32_t fmt, uint32_t w, uint32_t hh)
 }
 
 /* a TPL around one image: header, table, image header (0x14), palette header (0x38), pixels at 0x60
- * and the palette's colours after them.
+ * and the palette's colors after them.
  * Texture nodes: a = pixels, b = palette offset << 32 | width << 16 | height,
- * c = 0x100 | format | palette format << 12 | colour count << 16. */
+ * c = 0x100 | format | palette format << 12 | color count << 16. */
 #define TPL_HDR 0x60
 
 static int32_t hsd_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)

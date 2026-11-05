@@ -7,7 +7,7 @@
 #include "unarr-imp.h"
 
 /* A small RAR5 reader (the unarr library only reads RAR 1.5 - 4.x).
- * Single volume, no encryption, no symlinks. Modelled on the public format
+ * Single volume, no encryption, no symlinks. Modeled on the public format
  * description in libarchive / the RAR 5.0 technote. */
 
 typedef struct rar5 rar5_t;

@@ -39,7 +39,7 @@ static bool game_id(const char *lo, char out[5])
     return true;
 }
 
-/* Lets the user pick the SD card or a USB drive. -1 if cancelled / none. */
+/* Lets the user pick the SD card or a USB drive. -1 if canceled / none. */
 static int pick_target(void)
 {
     const char *items[1 + USB_SLOTS];

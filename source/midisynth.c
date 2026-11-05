@@ -1,4 +1,4 @@
-/* TinySoundFont and TinyMidiLoader (Bernhard Schelling, MIT licence: see source/tsf/LICENSE) for
+/* TinySoundFont and TinyMidiLoader (Bernhard Schelling, MIT license: see source/tsf/LICENSE) for
  * the MIDI player in audio.c, and the General MIDI soundbank it plays with when a MIDI file has
  * no soundfont of its own: Gervill's emergency soundbank (OpenJDK, GPL-2 with the Classpath
  * exception), kept zlib-packed in res/gmsf2.bin ("GMSF", u32 size, zlib). */

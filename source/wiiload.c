@@ -158,7 +158,7 @@ typedef struct {
     int dev;
 } conn_t;
 
-/* Exactly n bytes, or false (closed, timed out, cancelled). */
+/* Exactly n bytes, or false (closed, timed out, canceled). */
 static bool recv_all(conn_t *c, void *buf, u32 n, const char *what, u64 done, u64 total)
 {
     u8 *p = buf;
@@ -267,7 +267,7 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
     while (ok && got < sent) {
         u32 want = sent - got > CHUNK ? CHUNK : sent - got;
         if (!recv_all(c, in, want, "Receiving...", got, sent)) {
-            wl_log("Connection lost or cancelled");
+            wl_log("Connection lost or canceled");
             ok = false;
             break;
         }

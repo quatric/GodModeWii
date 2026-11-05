@@ -1,7 +1,7 @@
 /*
  * Console keys, laid out the way xyzzy-mod (DarkMatterCore) writes them so
  * its output and wad2bin's keys.txt format are understood as they are.
- * OTP / SEEPROM readers are re-implemented here; the SD key is recognised in
+ * OTP / SEEPROM readers are re-implemented here; the SD key is recognized in
  * IOS memory by hash, like xyzzy-mod does. SD IV, MD5 blanker and the MAC
  * address (which need the System Menu binary / network) are not included.
  */
@@ -84,7 +84,7 @@ static void add_key(char *txt, size_t txt_sz, const char *name, const void *data
     strncat(txt, line, txt_sz - strlen(txt) - 1);
 }
 
-/* The SD key lives in the loaded IOS image; recognise it by its hashes. */
+/* The SD key lives in the loaded IOS image; recognize it by its hashes. */
 static bool find_sd_key(u8 out[16])
 {
     static const u8 sha[20] = { 0x10, 0x37, 0xD8, 0x80, 0x10, 0x2F, 0xF0, 0x21, 0xC2, 0x2B,

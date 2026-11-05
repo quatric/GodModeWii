@@ -4,11 +4,11 @@
  * The layout's panes are drawn in file order (a parent before its children), each with its world
  * matrix (parent x translate x rotate x scale) and its material set up on the GPU as the file
  * describes it: texture maps (TPLs named by txl1, looked up in the archive's timg folder), texture
- * SRTs and coordinate generators, TEV colour / konst registers, swap tables, TEV stages, alpha
+ * SRTs and coordinate generators, TEV color / konst registers, swap tables, TEV stages, alpha
  * compare and blend mode. Materials without TEV stages get NW4R's default: the texture mapped
- * between the black (C0) and white (C1) colours, times the vertex colour.
- * Animations: RLPA (position, rotation, scale, size), RLVC (vertex colours, pane alpha), RLVI
- * (visibility), RLMC (material / TEV colours), RLTS (texture SRT) and RLTP (texture pattern), with
+ * between the black (C0) and white (C1) colors, times the vertex color.
+ * Animations: RLPA (position, rotation, scale, size), RLVC (vertex colors, pane alpha), RLVI
+ * (visibility), RLMC (material / TEV colors), RLTS (texture SRT) and RLTP (texture pattern), with
  * hermite and step curves. A layout opens with its "_Start" animation, which leads into "_Loop" as
  * on the Wii Menu; a BRLAN opens with its layout. Animations play once and stop on their last
  * frame unless looping is switched on. Only the canvas shows (+/- zoom in and out of
@@ -51,9 +51,9 @@ typedef struct {
 
 typedef struct {
     char name[24];
-    s16 c[3][4];                /* TEV colour registers 0..2 */
-    u8 k[4][4];                 /* konst colours */
-    u8 mc[4];                   /* material colour */
+    s16 c[3][4];                /* TEV color registers 0..2 */
+    u8 k[4][4];                 /* konst colors */
+    u8 mc[4];                   /* material color */
     u8 ntm;
     struct {
         u16 tex;
@@ -360,7 +360,7 @@ static bool parse_mat(mat_t *m, const u8 *b, u32 end)
     return true;
 }
 
-/* 4 vertex colours, material, texcoord sets (the first is used) at p */
+/* 4 vertex colors, material, texcoord sets (the first is used) at p */
 static u32 parse_quad(pane_t *pn, const u8 *b, u32 p, u32 end)
 {
     if (p + 20 > end) return end;
@@ -694,7 +694,7 @@ static void bind_material(lyt_t *L, const mat_t *m)
             GX_LoadTexObj(&white_obj, GX_TEXMAP0 + i);
     }
 
-    /* texture SRTs -> texture matrices (about the texture's centre) */
+    /* texture SRTs -> texture matrices (about the texture's center) */
     for (int i = 0; i < m->nsrt && i < 10; i++) {
         const srt_t *s = &m->srt[i];
         float r = s->r * (float)M_PI / 180, c = cosf(r), n = sinf(r);
@@ -771,7 +771,7 @@ static void bind_material(lyt_t *L, const mat_t *m)
             GX_SetTevDirect(GX_TEVSTAGE0 + s);
         }
     } else if (m->ntm) {
-        /* the texture between the black (C0) and white (C1) colours, times the vertex colour */
+        /* the texture between the black (C0) and white (C1) colors, times the vertex color */
         nst = 2;
 
         GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLORNULL);
@@ -791,7 +791,7 @@ static void bind_material(lyt_t *L, const mat_t *m)
         GX_SetTevDirect(GX_TEVSTAGE0);
         GX_SetTevDirect(GX_TEVSTAGE1);
     } else {
-        /* no texture: the white colour (C1) times the vertex colour */
+        /* no texture: the white color (C1) times the vertex color */
         nst = 1;
 
         GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
@@ -811,7 +811,7 @@ static void bind_material(lyt_t *L, const mat_t *m)
     else GX_SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
 }
 
-/* A quad: x0, y0 its top left corner (y up), corner colours with the alpha applied, texcoords. */
+/* A quad: x0, y0 its top left corner (y up), corner colors with the alpha applied, texcoords. */
 static void quad(float x0, float y0, float w, float h, const u8 vc[4][4], u8 alpha,
                  const float tc[4][2])
 {
@@ -827,7 +827,7 @@ static void quad(float x0, float y0, float w, float h, const u8 vc[4][4], u8 alp
     GX_End();
 }
 
-/* the pane's rectangle, by its origin (0..8: left / centre / right, top / centre / bottom) */
+/* the pane's rectangle, by its origin (0..8: left / center / right, top / center / bottom) */
 static void pane_rect(const pane_t *p, float *x0, float *y0)
 {
     int ox = p->origin % 3, oy = p->origin / 3;

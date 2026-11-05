@@ -797,7 +797,7 @@ static void parse_txtr(set_t *s)
     if (im && pc) set_pal(s, im, pf, pc, po);
 }
 
-/* A PLT0 on its own: its colours as 16 x 16 swatches, 16 to a row. */
+/* A PLT0 on its own: its colors as 16 x 16 swatches, 16 to a row. */
 static void parse_plt0(set_t *s)
 {
     u32 doff = be32(s->buf + 0x10), fmt = be32(s->buf + 0x18), cnt = be16(s->buf + 0x1C);
@@ -1234,7 +1234,7 @@ static bool view(const char *start_path)
 
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && rgba &&
             (im->w * ZOOMS[zoom]) / 256 <= fw_all && (im->h * ZOOMS[zoom]) / 256 <= fh_all - 80)
-            /* back to all of it on screen: centre it again */
+            /* back to all of it on screen: center it again */
             panx = pany = 0;
 
         if ((p & WPAD_BUTTON_A) && !ptr_drag_owns_a(&drag)) {

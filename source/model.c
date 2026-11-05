@@ -282,7 +282,7 @@ static void get_vec(const arr_t *a, u32 i, float *o)
     for (int k = 0; k < a->comps && k < 3; k++) o[k] = comp(a, i, k);
 }
 
-/* CLR0 / J3D colour formats: 0 RGB565, 1 RGB8, 2 RGBX8, 3 RGBA4, 4 RGBA6, 5 RGBA8 */
+/* CLR0 / J3D color formats: 0 RGB565, 1 RGB8, 2 RGBX8, 3 RGBA4, 4 RGBA6, 5 RGBA8 */
 static void get_color(const u8 *base, u32 count, u32 stride, int fmt, u32 i, u8 *o)
 {
     if (!base || i >= count) return;
@@ -861,7 +861,7 @@ static int brres_models(const u8 *b, u32 len, u32 *offs, char names[][64], int m
  * { offset, count } entries; positions, normals, UVs and primitives (index 4 - 7) are arrays of
  * 12-byte { name, count, data offset } headers, one per mesh part. Each primitive names its
  * material (2), whose attribute symbols (19 -> 3) pick a bitmap (9) and its palette (10); untextured
- * materials are drawn in their diffuse colour. */
+ * materials are drawn in their diffuse color. */
 typedef struct { u32 name, count, off; } hsfh_t;
 
 static bool hsf_hdrs(const u8 *b, u32 len, u32 off, u32 cnt, hsfh_t *o)
@@ -888,7 +888,7 @@ typedef struct {
     float ss, st, ts, tt;               /* UV scale and translation of the texture */
 } hsf_mat_t;
 
-/* Bitmap ti as a GX texture: formats 0 - 6 are GX's own, 7 is CMPR, 9 - 11 are colour-indexed (4 or
+/* Bitmap ti as a GX texture: formats 0 - 6 are GX's own, 7 is CMPR, 9 - 11 are color-indexed (4 or
  * 8 bits per pixel) with an RGB565, RGB5A3 or IA8 palette, as Mario Party's loader sets its TLUT. */
 static int hsf_texture(model_t *m, const u8 *b, u32 len, const u32 *eo, const u32 *ec, u32 ti, int ws, int wt)
 {
@@ -915,7 +915,7 @@ static int hsf_texture(model_t *m, const u8 *b, u32 len, const u32 *eo, const u3
     return add_texture(m, b, len, (u32)at, gx, w, h, pal, palfmt, palcount, ws, wt, 0);
 }
 
-/* Each material's first texture (through its attribute symbols) and diffuse colour. */
+/* Each material's first texture (through its attribute symbols) and diffuse color. */
 static void hsf_materials(model_t *m, const u8 *b, u32 len, const u32 *eo, const u32 *ec, u32 strs,
                           hsf_mat_t *mat, u32 nmat)
 {
@@ -1063,7 +1063,7 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
                         u32 uv = uidx[g] >= 0 && (u32)uidx[g] < ucnt ? (u32)uidx[g] : 0;
                         v[q].t[0] = bef(b + udata + (u64)uv * 8); v[q].t[1] = bef(b + udata + (u64)uv * 8 + 4);
                     }
-                    if (mt && mt->tex >= 0) {   /* the texture's own colours */
+                    if (mt && mt->tex >= 0) {   /* the texture's own colors */
                         v[q].t[0] = v[q].t[0] * mt->ss + mt->ts;
                         v[q].t[1] = v[q].t[1] * mt->st + mt->tt;
                         memset(v[q].c, 255, 3);
@@ -1093,7 +1093,7 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
  * draw calls carry index tuples whose width isn't stored, so it is found by trying each one and
  * keeping the one that reads the whole list as well-formed commands with sane positions. A file may
  * start with an entry table (count, offset; 16-byte entries whose +12 is a chunk); without one every
- * chunk in the file is taken. Geometry only: each chunk gets a flat colour. */
+ * chunk in the file is taken. Geometry only: each chunk gets a flat color. */
 #define MOD_PRIMS 4096
 
 typedef struct { u8 kind; u16 cnt; u32 off; } modprim_t;
@@ -1793,7 +1793,7 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
  * Channel, ...), after nintoolbox's lib-hsd.c and Ploaj's HSDLib: a 0x20 byte header, the data, a
  * relocation table (every pointer in the data is listed there), then root / reference tables and
  * their names. A root is a joint (JObj) tree, or "scene_data" listing several. Each joint has a
- * list of DObjs, each a material (MObj: colour, TObj textures) and polygons (PObj: GX vertex
+ * list of DObjs, each a material (MObj: color, TObj textures) and polygons (PObj: GX vertex
  * attributes and display lists), bound to their joint, another one, or weighted envelopes. */
 #define HSD_BASE   0x20
 #define HSD_JOINTS 2048
@@ -2368,7 +2368,7 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     r = sqrtf(r);
     if (r < 1e-4f) r = 1;
 
-    /* the camera sits dist * r from the centre: keep all of the model between the clipping
+    /* the camera sits dist * r from the center: keep all of the model between the clipping
      * planes */
     Mtx44 proj;
     float zfar = (dist + 1.5f) * r, znear = dist > 1.2f ? (dist - 1.1f) * r : zfar / 1000;

@@ -1,7 +1,7 @@
 /*
  * PDF, read-only, opened like an archive: each page's text ("page_001.txt"), all of it in one file
  * ("text.txt", with the title and author when the document has them), and every embedded image
- * ("page_001_img01.jpg" for JPEG data as stored, ".png" for the rest, converted to 8-bit RGB / grey).
+ * ("page_001_img01.jpg" for JPEG data as stored, ".png" for the rest, converted to 8-bit RGB / gray).
  * Pages are not rendered: the text comes out in the order it is drawn, with line breaks where the
  * text position moves down, which reads well for most documents but not for multi-column layouts.
  *
@@ -1128,7 +1128,7 @@ static void png_chunk(buf_t *o, const char *type, const uint8_t *data, uint32_t 
     bput(o, h, 4);
 }
 
-/* 8-bit grey (ch 1) or RGB (ch 3) pixels as a PNG */
+/* 8-bit gray (ch 1) or RGB (ch 3) pixels as a PNG */
 static bool png_write(buf_t *o, const uint8_t *px, uint32_t w, uint32_t h, int ch)
 {
     uint64_t raw = (uint64_t)(w * ch + 1) * h;
@@ -1169,7 +1169,7 @@ static uint32_t sample(const uint8_t *row, uint32_t i, int bpc)
     return (row[bit >> 3] >> (8 - bpc - (bit & 7))) & ((1u << bpc) - 1);
 }
 
-/* The colour space's component count and, for Indexed, its base count and lookup table. */
+/* The color space's component count and, for Indexed, its base count and lookup table. */
 static int cs_info(pdf_t *d, pv *cs, int *base, buf_t *lut, uint32_t *hival)
 {
     cs = res(d, cs);

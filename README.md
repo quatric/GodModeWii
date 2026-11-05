@@ -124,23 +124,23 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 
 | Viewer | Formats | Buttons |
 | --- | --- | --- |
-| **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, Mario Party `.hsf` (HSFV037, with each material's texture, or its colour), HAL sysdolphin `.dat` / `.usd` (HSD: Super Smash Bros. Melee, Kirby Air Ride; posed by their joints and envelopes, with each material's texture, palette ones included, or its colour), and Monster Games `.mod` (Excite Truck / Excitebots; textured from the `.tex` files in their archive, the region's base track and the shared `HobbySet.res` / `race.res` / `common.res`); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
+| **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, Mario Party `.hsf` (HSFV037, with each material's texture, or its color), HAL sysdolphin `.dat` / `.usd` (HSD: Super Smash Bros. Melee, Kirby Air Ride; posed by their joints and envelopes, with each material's texture, palette ones included, or its color), and Monster Games `.mod` (Excite Truck / Excitebots; textured from the `.tex` files in their archive, the region's base track and the shared `HobbySet.res` / `race.res` / `common.res`); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
 | **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
-| **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as colour swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP, GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
+| **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as color swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP, GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences (a sequence with a loop loops for ever, as in the game) | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat (sequences: loop / repeat / play the loop twice and fade), **B** stop |
-| **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii's face, drawn online by Arian Kordi's Mii renderer (as PictoCard shows them), with its name, creator, gender, birthday, favourite colour, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** fetch the faces again, **B** back |
+| **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii's face, drawn online by Arian Kordi's Mii renderer (as PictoCard shows them), with its name, creator, gender, birthday, favorite color, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** fetch the faces again, **B** back |
 | **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 
-* **Images** open pixel for pixel (1:1) in their real colours. A `.stpl` is unpacked first and shown as the TPL it holds.
+* **Images** open pixel for pixel (1:1) in their real colors. A `.stpl` is unpacked first and shown as the TPL it holds.
 * **Monster Games textures** don't store their pixel format, so `.tex` / `.art` / `.img` are decoded in every format that fits and
   the one whose mip levels agree (or whose GX tiles join up) is shown, as nintoolbox and ExciteExtract do: best effort, a few
   percent of files come out in the wrong format. `.tm0` and Excitebots' headed files are exact.
 * **Text files** (`.txt`, such as a PDF's pages or an EPUB's chapters) open in the text viewer straight away.
 * **A bare MDL0** (opened on its own, not inside its BRRES) gets its textures too: each one is looked up as `<name>.tex0` (with its
   `.plt0`) next to the model, or inside any `.brres` in the same folder. A model opened from inside a BRRES uses that BRRES.
-* **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colours,
+* **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colors,
   alpha compare and blending. A banner plays its Start animation into its Loop one, as on the Wii Menu, and opening a BRLAN
   plays it on its layout. Other animations play once and stop on their last frame (**A** starts them again). Text boxes are not
   drawn, and a layout the viewer can't draw falls back to the text view.
@@ -271,7 +271,7 @@ the drive, then deleted:
 | Only `.wad` files | `wad/` |
 | The drive layout (`apps/…`, `wad/…`, `private/…`), with or without a wrapper folder | The drive root (wrapper dropped, top-level docs skipped) |
 
-A failed or cancelled install (hold **B**) keeps the archive. Big 7z / RAR dictionaries need RAM, so an archive can be refused
+A failed or canceled install (hold **B**) keeps the archive. Big 7z / RAR dictionaries need RAM, so an archive can be refused
 on low memory.
 
 ### Wiiload
@@ -306,7 +306,7 @@ It installs to the SD card, or to USB after pressing **1**. What happens depends
 * Extra folders around the app don't matter: `MyApp-v1.2/apps/myapp/boot.dol` still ends up in `apps/myapp/`.
 * Files outside the program folder (readmes …) are left out, a zip with several apps installs each one, and a program at the
   top of the zip goes into `apps/<zip name>/`.
-* Files are recognised by their contents, not their names. Uploads are unpacked as they arrive (up to 512 MiB, or the drive's
+* Files are recognized by their contents, not their names. Uploads are unpacked as they arrive (up to 512 MiB, or the drive's
   free space). Hold **B** to cancel.
 
 ## Console keys
@@ -416,13 +416,13 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   `otp.bin` next to the dump, not this console) the folders can be browsed but file contents can't be read. No ECC or HMAC checks.
 * **HSD / HSF:** HSD archives show roots and every GX texture, palette ones with their palette (TV no Tomo's palette textures
   hang off the channel's own compact texture records and aren't listed). HSD models show each material's first texture (with
-  its UV scale and offset) or its colour, in the bind pose, without animation; a `.dat` with no model in it (a fighter's
+  its UV scale and offset) or its color, in the bind pose, without animation; a `.dat` with no model in it (a fighter's
   `Pl*.dat`, TV no Tomo's 2D scenes) opens as an archive. HSF models show each material's
-  first texture (with its UV scale and offset) or its diffuse colour, without multi-texture blending, skinning or animation.
+  first texture (with its UV scale and offset) or its diffuse color, without multi-texture blending, skinning or animation.
 * **PDF:** pages aren't drawn, only their text and images come out. Text is in drawing order with a line break wherever it moves
   to another line, which reads well for most documents but not for multi-column layouts. Read: FlateDecode (with predictors), LZW,
   ASCIIHex, ASCII85 and RunLength streams, object streams, ToUnicode maps, WinAnsi / MacRoman encodings and glyph-name
-  differences; images in grey, RGB, CMYK, ICC-based and indexed colour at 1 – 16 bits. Not read: encrypted documents, JPEG 2000,
+  differences; images in gray, RGB, CMYK, ICC-based and indexed color at 1 – 16 bits. Not read: encrypted documents, JPEG 2000,
   JBIG2 and CCITT images, and text in a composite font without a ToUnicode map (marked in the text). Up to 32 MiB per PDF.
 * **EPUB:** the book isn't laid out, only its text comes out: a line break at each block, a blank line after each paragraph and
   heading, list items bulleted, and `[image: name]` where a picture was (find it under `images/`). Books with DRM (an
@@ -493,12 +493,12 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
-* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib licence) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
+* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib license) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
 * **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
 * **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder match nintoolbox's.
 * **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
   Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
-  OTP and SEEPROM access sequences used here. The hashes used to recognise the SD key come from it too.
+  OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
@@ -509,7 +509,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 
 ### Inspiration
 
-* **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modelled on.
+* **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modeled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
 * **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.
 * **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.

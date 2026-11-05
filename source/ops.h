@@ -5,7 +5,7 @@
 #include <gccore.h>
 
 /* Copy / move / delete trees with a progress screen. Each returns true if
- * the operation ran to completion without being cancelled or failing. */
+ * the operation ran to completion without being canceled or failing. */
 bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir);
 bool ops_delete(char **srcs, int n);
 /* Copies srcs[i] into the existing folder dst_dirs[i] (same name), all in one

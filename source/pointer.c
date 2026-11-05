@@ -80,7 +80,7 @@ void ptr_show(void)
                 hit = true;
             }
 
-            if (hit) w = (w & 0xFF00FF00u) | 0x00800080u;      /* grey: no colour in the pair */
+            if (hit) w = (w & 0xFF00FF00u) | 0x00800080u;      /* gray: no color in the pair */
             row[k] = w;
         }
     }

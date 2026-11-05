@@ -517,7 +517,7 @@ static bool wsink(void *ud, const u8 *p, size_t n)
     }
     *w->done += n;
     if (w->cb && !w->cb(w->rel, *w->done, w->total)) {
-        set_err(w->err, w->errsz, "Cancelled");
+        set_err(w->err, w->errsz, "Canceled");
         w->ok = false;
         return false;
     }
@@ -703,7 +703,7 @@ static int install_any(const char *arc_path, int dev, bool apps_only, install_cb
         }
         if (!ok) {
             vfs_remove(dest, false);
-            if (err && errsz && !err[0]) set_err(err, errsz, "Cancelled");
+            if (err && errsz && !err[0]) set_err(err, errsz, "Canceled");
             goto done;
         }
         written++;

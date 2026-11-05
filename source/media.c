@@ -438,7 +438,7 @@ bool layout_view(const char *path)
 
         if (!memcmp(m, "lyt1", 4) && sz >= 0x14)
             putf(&s, "Layout %.0f x %.0f%s\n\n", bef(m + 0x0C), bef(m + 0x10),
-                 m[8] ? ", centred" : "");
+                 m[8] ? ", centered" : "");
         else if (!memcmp(m, "txl1", 4)) {
             name_list(&s, b, len, pos, "Textures");
             put(&s, "\n", 1);

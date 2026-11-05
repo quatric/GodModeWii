@@ -77,7 +77,7 @@ int ui_rows(void) { return g_rows; }
 void ui_goto(int row, int col) { printf("\x1b[%d;%dH", row + 1, col + 1); }
 
 /* The "0" in "\x1b[30;0m" clears every attribute including the background,
- * so the current background is tracked and re-applied after each colour. */
+ * so the current background is tracked and re-applied after each color. */
 static int cur_bg = -1;
 
 void ui_clear(void)
@@ -274,7 +274,7 @@ static int wrap_lines(const char *text, int width, char lines[][BOX_W_MAX + 2], 
     return n;
 }
 
-/* Dialogs are drawn as solid colour windows (no ASCII frames): a coloured
+/* Dialogs are drawn as solid color windows (no ASCII frames): a colored
  * title bar, a blue body and a dark button strip at the bottom. */
 #define WIN_BG C_BLUE
 
@@ -578,7 +578,7 @@ void ui_splash(const char *status)
     };
     for (int i = 0; i < 5; i++) {
         ui_goto(r + i, (g_cols - 61) / 2);
-        ui_color(C_CYAN, true);          /* one solid colour for the whole logo */
+        ui_color(C_CYAN, true);          /* one solid color for the whole logo */
         fputs(art[i], stdout);
     }
     ui_reset();

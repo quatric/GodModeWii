@@ -65,7 +65,7 @@ static void draw_face(const u8 *rec, int row, int col, int scale)
     ui_reset();
 }
 
-/* Name, creator, birthday, colour, height and weight, a line each from (row, col). */
+/* Name, creator, birthday, color, height and weight, a line each from (row, col). */
 static void draw_details(const u8 *r, const char *name, const char *creator, int row, int col, int width)
 {
     unsigned f = r[0] << 8 | r[1];
@@ -79,7 +79,7 @@ static void draw_details(const u8 *r, const char *name, const char *creator, int
     ui_field(row + 1, col, width, "by %s", creator[0] ? creator : "(no creator)");
     ui_field(row + 2, col, width, "Gender    %s", f >> 14 & 1 ? "Female" : "Male");
     ui_field(row + 3, col, width, "Birthday  %s", bday);
-    ui_field(row + 4, col, width, "Colour    %s", COLOR_NAMES[fav_color(r)]);
+    ui_field(row + 4, col, width, "Color     %s", COLOR_NAMES[fav_color(r)]);
     ui_field(row + 5, col, width, "Height    %u / 127", r[0x16] & 0x7F);
     ui_field(row + 6, col, width, "Weight    %u / 127", r[0x17] & 0x7F);
     ui_field(row + 7, col, width, "Favorite  %s", f & 1 ? "Yes" : "No");

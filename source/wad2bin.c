@@ -277,7 +277,7 @@ static bool copy_content(const wad_t *w, int i, uint64_t off, const uint8_t key[
         o_put(o, buf, n, true);
         *done += n;
         if (io->progress && !io->progress(io->ctx, "Converting", *done, total)) {
-            err(r, "Cancelled");
+            err(r, "Canceled");
             return false;
         }
         if (!o->ok) {

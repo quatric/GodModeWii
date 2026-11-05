@@ -5,7 +5,7 @@
  * The BRSAR tables (sounds, banks, files, groups), the RSEQ command set, the RBNK region tables
  * and the envelope tables match VGMTrans' RSAR reader (src/main/formats/RSARScanner.cpp,
  * RSARSeq.cpp, RSARInstrSet.cpp; Copyright (c) 2002-2015 Mike, VGMTrans Team; zlib/libpng
- * licence), rewritten in C here and extended into a player: this is an altered version, not
+ * license), rewritten in C here and extended into a player: this is an altered version, not
  * the original. The sequencer's variable and compare commands use the same command set as
  * NITRO / NW4R sequence data (BrawlLib's RSEQ.cs lists the codes).
  *

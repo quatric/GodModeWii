@@ -16,7 +16,7 @@ void risk_lock(void);
 bool risk_ensure_unlocked(void);
 
 /* Gate for any modifying operation on `path`: asks for the Konami code when
- * needed. Returns false if the user cancelled. */
+ * needed. Returns false if the user canceled. */
 bool risk_authorize(const char *path, const char *what);
 
 /* Startup-only helpers (see main.c). */

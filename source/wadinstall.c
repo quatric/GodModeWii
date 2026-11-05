@@ -548,7 +548,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
                      "save data, but without a backup there is nothing to fall back on.\n\nInstall anyway?",
                      name, backup_device() < 0 ? " (no writable SD card or USB drive)" : "");
             if (!ui_confirm("NO SAVE BACKUP", C_YELLOW, q)) {
-                snprintf(msg, msz, "Cancelled: the save data could not be backed up.");
+                snprintf(msg, msz, "Canceled: the save data could not be backed up.");
                 ret = -998;
                 goto out;
             }
