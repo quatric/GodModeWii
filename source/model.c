@@ -2601,12 +2601,11 @@ bool model_view(const char *path)
         } else
             free(o);
     }
-    /* where a bare MDL0 looks for textures that are not in its own BRRES: the folder of the file */
+    /* textures missing from the BRRES are looked for in the folder holding it, which may be inside
+     * a disc image or archive too */
     {
         char whole[VFS_PATH_MAX], dir[VFS_PATH_MAX];
-        snprintf(whole, sizeof(whole), "%s", path);
-        char *first = strstr(whole, "|/");
-        if (first) *first = 0;
+        snprintf(whole, sizeof(whole), "%.*s", want ? (int)(bar - path) : VFS_PATH_MAX, path);
         ext_reset(vfs_parent(whole, dir, sizeof(dir)) ? dir : NULL);
         if (arc_name_has_ext(path, ".mod")) mod_dirs_set(path);
     }
