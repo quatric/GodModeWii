@@ -825,8 +825,9 @@ static int brres_models(const u8 *b, u32 len, u32 *offs, char names[][64], int m
 
 /* HAL Laboratory "HSFV037" (Mario Party 4-8 models, after nintoolbox's lib-hsf.c): a table of 20
  * { offset, count } entries; positions, normals, UVs and primitives (index 4 - 7) are arrays of
- * 12-byte { name, count, data offset } headers, one per mesh part. Geometry only; materials are
- * shown in a flat colour per part. */
+ * 12-byte { name, count, data offset } headers, one per mesh part. Each primitive names its
+ * material (2), whose attribute symbols (19 -> 3) pick a bitmap (9) and its palette (10); untextured
+ * materials are drawn in their diffuse colour. */
 typedef struct { u32 name, count, off; } hsfh_t;
 
 static bool hsf_hdrs(const u8 *b, u32 len, u32 off, u32 cnt, hsfh_t *o)
@@ -844,6 +845,77 @@ static const char *hsf_str(const u8 *b, u32 len, u32 strs, u32 rel)
 {
     u64 at = (u64)strs + rel;
     return at < len && memchr(b + at, 0, len - at) ? (const char *)b + at : "";
+}
+
+#define HSF_MAT_MAX 512
+typedef struct {
+    int tex;                            /* index into m->tex, or -1 */
+    u8 rgb[3];                          /* diffuse */
+    float ss, st, ts, tt;               /* UV scale and translation of the texture */
+} hsf_mat_t;
+
+/* Bitmap ti as a GX texture: formats 0 - 6 are GX's own, 7 is CMPR, 9 - 11 are colour-indexed (4 or
+ * 8 bits per pixel) with an RGB565, RGB5A3 or IA8 palette, as Mario Party's loader sets its TLUT. */
+static int hsf_texture(model_t *m, const u8 *b, u32 len, const u32 *eo, const u32 *ec, u32 ti, int ws, int wt)
+{
+    u64 o = (u64)eo[9] + (u64)ti * 32;
+    if (ti >= ec[9] || o + 32 > len) return -1;
+    const u8 *r = b + o;
+    int fmt = r[8], bpp = r[9], w = be16(r + 10), h = be16(r + 12), gx = fmt;
+    const u8 *pal = NULL;
+    int palfmt = 0, palcount = 0;
+    if (fmt == 7) gx = GX_TF_CMPR;
+    else if (fmt >= 9 && fmt <= 11) {
+        gx = bpp == 4 ? GX_TF_CI4 : GX_TF_CI8;
+        palfmt = fmt == 9 ? 1 : fmt == 10 ? 2 : 0;          /* GX_TL_RGB565 / RGB5A3 / IA8 */
+        s32 pi = (s32)be32(r + 20);
+        u64 po = (u64)eo[10] + (u64)pi * 16;
+        if (pi < 0 || (u32)pi >= ec[10] || po + 16 > len) return -1;
+        palcount = (int)be32(b + po + 8);
+        u64 pd = (u64)eo[10] + (u64)ec[10] * 16 + be32(b + po + 12);
+        if (palcount <= 0 || palcount > 256 || pd + (u64)palcount * 2 > len) return -1;
+        pal = b + pd;
+    } else if (fmt > 6) return -1;
+    u64 at = (u64)eo[9] + (u64)ec[9] * 32 + be32(r + 28);
+    if (at >= len) return -1;
+    return add_texture(m, b, len, (u32)at, gx, w, h, pal, palfmt, palcount, ws, wt, 0);
+}
+
+/* Each material's first texture (through its attribute symbols) and diffuse colour. */
+static void hsf_materials(model_t *m, const u8 *b, u32 len, const u32 *eo, const u32 *ec, u32 strs,
+                          hsf_mat_t *mat, u32 nmat)
+{
+    u32 nsym = eo[19] && strs > eo[19] ? (strs - eo[19]) / 4 : 0;
+    for (u32 i = 0; i < nmat; i++) {
+        hsf_mat_t *t = &mat[i];
+        u64 o = (u64)eo[2] + (u64)i * 60;
+        t->tex = -1;
+        t->ss = t->st = 1;
+        t->ts = t->tt = 0;
+        memcpy(t->rgb, PALETTE[i & 7], 3);
+        if (o + 60 > len) continue;
+        memcpy(t->rgb, b + o + 0x0E, 3);
+        u32 nt = be32(b + o + 52), first = be32(b + o + 56);
+        for (u32 j = 0; j < nt && j < 8 && t->tex < 0; j++) {
+            u64 so = (u64)eo[19] + (u64)(first + j) * 4;
+            if (first + j >= nsym || so + 4 > len) break;
+            u32 ai = be32(b + so);
+            u64 ao = (u64)eo[3] + (u64)ai * 132;
+            if (ai >= ec[3] || ao + 132 > len) continue;
+            s32 ti = (s32)be32(b + ao + 128);
+            if (ti < 0) continue;
+            t->tex = hsf_texture(m, b, len, eo, ec, (u32)ti, (int)be32(b + ao + 100), (int)be32(b + ao + 104));
+            if (t->tex < 0) continue;
+            t->ss = bef(b + ao + 0x28);
+            t->st = bef(b + ao + 0x2C);
+            t->ts = bef(b + ao + 0x30);
+            t->tt = bef(b + ao + 0x34);
+            if (!(t->ss > -1e4f && t->ss < 1e4f) || !t->ss) t->ss = 1;     /* NaN or nonsense */
+            if (!(t->st > -1e4f && t->st < 1e4f) || !t->st) t->st = 1;
+            if (!(t->ts > -1e4f && t->ts < 1e4f)) t->ts = 0;
+            if (!(t->tt > -1e4f && t->tt < 1e4f)) t->tt = 0;
+        }
+    }
 }
 
 static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
@@ -872,6 +944,11 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
     u32 nstride = packed ? 3 : 12;
     m->bones = 0;
 
+    u32 nmat = ec[2] <= HSF_MAT_MAX ? ec[2] : 0;
+    hsf_mat_t *mat = nmat ? malloc(nmat * sizeof(*mat)) : NULL;
+    if (!mat) nmat = 0;
+    hsf_materials(m, b, len, eo, ec, strs, mat, nmat);
+
     for (u32 mi = 0; mi < nf; mi++) {
         const char *mname = hsf_str(b, len, strs, fh[mi].name);
         bool dup = false;
@@ -895,10 +972,21 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
         if (!nprim || fdata + (u64)nprim * 48 > len) continue;
 
         u32 start = m->n;
+        int run = -2;                   /* the material of the triangles since start */
         const u8 *rp = b + fdata;
         for (u32 i = 0; i < nprim; i++, rp += 48) {
             s16 type = (s16)be16(rp);
             if (type < 2 || type > 4) continue;
+            u32 mn = be16(rp + 2) & 0xFFF;
+            const hsf_mat_t *mt = mn < nmat ? &mat[mn] : NULL;
+            int mkey = mt ? (int)mn : -1;
+            if (mkey != run) {          /* one mesh per material */
+                if (run != -2) {
+                    add_mesh(m, start, run >= 0 ? mat[run].tex : -1, 0);
+                    start = m->n;
+                }
+                run = mkey;
+            }
             s16 pidx[64], nidx[64], uidx[64];
             int ng = type == 4 ? 3 : 4, tot = ng;
             const u8 *gp = rp + 4;
@@ -941,15 +1029,23 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
                         u32 uv = uidx[g] >= 0 && (u32)uidx[g] < ucnt ? (u32)uidx[g] : 0;
                         v[q].t[0] = bef(b + udata + (u64)uv * 8); v[q].t[1] = bef(b + udata + (u64)uv * 8 + 4);
                     }
-                    memcpy(v[q].c, PALETTE[mi & 7], 3);
+                    if (mt && mt->tex >= 0) {   /* the texture's own colours */
+                        v[q].t[0] = v[q].t[0] * mt->ss + mt->ts;
+                        v[q].t[1] = v[q].t[1] * mt->st + mt->tt;
+                        memset(v[q].c, 255, 3);
+                    } else if (mt)
+                        memcpy(v[q].c, mt->rgb, 3);
+                    else
+                        memcpy(v[q].c, PALETTE[mi & 7], 3);
                     v[q].c[3] = 255;
                 }
                 if (!push(m, &v[0]) || !push(m, &v[1]) || !push(m, &v[2])) break;
             }
         }
-        add_mesh(m, start, -1, 0);
+        add_mesh(m, start, run >= 0 ? mat[run].tex : -1, 0);
         m->meshes++;
     }
+    free(mat);
     snprintf(m->name, sizeof(m->name), "%s", name);
     m->kind = "HSF";
     return m->n > 0;
