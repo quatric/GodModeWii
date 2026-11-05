@@ -1,7 +1,7 @@
 /*
  * Miis drawn by MiiKit. See miiface.h.
  *
- * Each Mii is drawn whole and standing (mii_capture), copied out of the GPU as RGBA, and kept as
+ * Each Mii is drawn as a portrait (mii_capture_bust), copied out of the GPU as RGBA, and kept as
  * YUY2, so putting it on the console's framebuffer is a plain copy.
  */
 #include <stdio.h>
@@ -139,7 +139,7 @@ static u32 *render(const u8 *rec, int expression)
     u32 *yuy2 = NULL;
     u8 *tex = memalign(32, size);
     if (tex && (!model.faces_pending || mii_model_make_faces(&model, &res, black) == MII_OK) &&
-        mii_capture(&model, &pose, MIIFACE_WIDTH, MIIFACE_HEIGHT, 0.05f, 1, black, tex) == MII_OK) {
+        mii_capture_bust(&model, &pose, MIIFACE_WIDTH, MIIFACE_HEIGHT, black, tex) == MII_OK) {
         GX_DrawDone();
         DCInvalidateRange(tex, size);
         if (drawn(tex)) yuy2 = tiles_to_yuy2(tex);

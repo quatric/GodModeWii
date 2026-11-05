@@ -1,6 +1,6 @@
 /*
  * Miis: the Wii's Mii database (or an RFL_DB.dat opened from a drive) as a list, and single Mii
- * files (.miigx / .mii / .rcd / .rsd). Each Mii is drawn whole on the Wii by MiiKit (miiface.c)
+ * files (.miigx / .mii / .rcd / .rsd). Each Mii is drawn on the Wii by MiiKit (miiface.c)
  * and shown with its details; 2 changes the expression. Marked Miis are saved to the SD card or a
  * USB drive as /savemiis/<Name>.miigx, the raw 74-byte record in SaveGame Manager GX's layout, so
  * it can import them again. The database itself is only read.
