@@ -50,6 +50,7 @@ typedef struct {
     int tex;
     u32 pe;
     s16 mat;                    /* MDL0 material index, for animation (0 elsewhere) */
+    int btex;                   /* its texture before a PAT0 changed it */
 } mesh_t;
 #define PE_XLU   0x80000000u
 #define PE_BLEND 0x00000001u
@@ -84,6 +85,8 @@ typedef struct {
     int nanim;
     char (*mat)[40];            /* MDL0 material names */
     int nmat;
+    bool amb_set;               /* a scene animation (SCN0) sets the ambient light */
+    u8 amb[3];
 } model_t;
 static void anim_free(model_t *m);
 
@@ -804,28 +807,19 @@ static void ext_palette(const char *pname, u32 plen, const char *name, u32 nlen,
     free(list);
 }
 
-/* Texture layer 0 of an MDL0 material -> m->tex index, or -1. */
-static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
+/* The texture called nm (its palette pn, for CI textures) from the BRRES in f, or another BRRES the
+ * folder has -> m->tex index, or -1. */
+static int tex_by_name(model_t *m, const u8 *f, u32 flen, const char *nm, u32 nlen, const char *pn, u32 plen,
+                       int wrap_s, int wrap_t)
 {
-    const u8 *f = d->file;
-    if (!mat || mat + 0x34 > d->len) return -1;
-    u32 count = be32(d->b + mat + 0x2C);
-    s32 refs = (s32)be32(d->b + mat + 0x30);
-    if (!count || count > 8 || refs <= 0 || mat + refs + 0x34 > d->len) return -1;
-    const u8 *ref = d->b + mat + refs;
-    u32 nlen, plen;
-    const char *nm = mdl_ref_name(d, ref, 0, &nlen);   /* the texture's name */
-    if (!nm) return -1;
-    const char *pn = mdl_ref_name(d, ref, 4, &plen);   /* its palette's, for CI4 / CI8 / CI14x2 */
-
     const u8 *tf = f;                           /* the buffer the texture is in */
-    u32 tflen = d->flen, tex = brres_find(f, d->flen, "Textures(NW4R)", nm, nlen);
+    u32 tflen = flen, tex = brres_find(f, flen, "Textures(NW4R)", nm, nlen);
     int id = 0;
     const u8 *pal = NULL; int palfmt = 0, palcount = 0;
     const u8 *palbuf = NULL; u32 pallen = 0;
     if (tex && !memcmp(f + tex, "TEX0", 4)) {
-        u32 pl = brres_palette(f, d->flen, pn, plen, nm, nlen);
-        if (pl) { palbuf = f + pl; pallen = d->flen - pl; }
+        u32 pl = brres_palette(f, flen, pn, plen, nm, nlen);
+        if (pl) { palbuf = f + pl; pallen = flen - pl; }
         else ext_palette(pn, plen, nm, nlen, &palbuf, &pallen);
     } else if (!ext_texture(nm, nlen, pn, plen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
         return -1;
@@ -838,9 +832,23 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
         else palcount = 0;
     }
     /* the textures of a model are told apart by where they are; another file gets its own range */
-    int idx = add_texture(m, tf, tflen, tex + be32(t + 0x10), fmt, w, h, pal, palfmt, palcount,
-                          (int)be32(ref + 0x18), (int)be32(ref + 0x1C), (u32)id << 26);
-    return idx;
+    return add_texture(m, tf, tflen, tex + be32(t + 0x10), fmt, w, h, pal, palfmt, palcount,
+                       wrap_s, wrap_t, (u32)id << 26);
+}
+
+/* Texture layer 0 of an MDL0 material -> m->tex index, or -1. */
+static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
+{
+    if (!mat || mat + 0x34 > d->len) return -1;
+    u32 count = be32(d->b + mat + 0x2C);
+    s32 refs = (s32)be32(d->b + mat + 0x30);
+    if (!count || count > 8 || refs <= 0 || mat + refs + 0x34 > d->len) return -1;
+    const u8 *ref = d->b + mat + refs;
+    u32 nlen, plen;
+    const char *nm = mdl_ref_name(d, ref, 0, &nlen);   /* the texture's name */
+    if (!nm) return -1;
+    const char *pn = mdl_ref_name(d, ref, 4, &plen);   /* its palette's, for CI4 / CI8 / CI14x2 */
+    return tex_by_name(m, d->file, d->flen, nm, nlen, pn, plen, (int)be32(ref + 0x18), (int)be32(ref + 0x1C));
 }
 
 /* An MDL0 material's blend mode, from the pixel-engine part of its display list
@@ -899,6 +907,11 @@ typedef struct { int mat; trk_t t[5]; } asrt_t;
 /* CLR0: a material's color per frame (words 0xRRGGBBAA; the bytes of `fixed` are left alone) */
 typedef struct { int mat; const u8 *words; u32 n; u32 fixed; u32 constant; bool is_const; } aclr_t;
 
+/* PAT0: a material's texture swapped by frame: key i from frame fr[i] shows m->tex[tex[i]] */
+typedef struct { int mat; int nk; float *fr; int *tex; } apat_t;
+/* SCN0: the scene's ambient light color, one color or one per frame (words 0xRRGGBBAA) */
+typedef struct { bool on, is_const; u32 constant; const u8 *words; u32 n; } ascn_t;
+
 typedef struct anim_s {
     char name[48];
     int frames;                 /* last frame number */
@@ -911,6 +924,10 @@ typedef struct anim_s {
     int nsrt, sframes;
     aclr_t *clr;                /* CLR0 */
     int nclr, cframes;
+    apat_t *pat;                /* PAT0 */
+    int npat, pframes;
+    ascn_t scn;                 /* SCN0 */
+    int zframes;
 } anim_t;
 
 static void anim_free(model_t *m)
@@ -920,6 +937,11 @@ static void anim_free(model_t *m)
         free(m->anim[i].vis);
         free(m->anim[i].srt);
         free(m->anim[i].clr);
+        for (int k = 0; k < m->anim[i].npat; k++) {
+            free(m->anim[i].pat[k].fr);
+            free(m->anim[i].pat[k].tex);
+        }
+        free(m->anim[i].pat);
     }
     free(m->anim);
     free(m->skel);
@@ -1389,7 +1411,100 @@ static bool clr_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *
     return true;
 }
 
-/* Every animation folder of the BRRES: CHR0 (needs bones), VIS0, SRT0, CLR0. */
+/* PAT0 (v4): per material, the layer-0 texture by frame. Header: frames u16 at 0x30, texture names
+ * table at 0x14 (offsets from the table), palette names table at 0x18; an entry is name, flags, the
+ * offset of its node (0: the texture is fixed, nothing to play); a node is u16 key count, pad, frame
+ * scale, then keys of float frame, u16 texture, u16 palette. */
+static bool pat_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
+{
+    if ((u64)at + 0x3C > flen || memcmp(f + at, "PAT0", 4) || be32(f + at + 8) != 4) return false;
+    s32 doff = (s32)be32(f + at + 0x10);
+    int nframes = be16(f + at + 0x30), ntex = be16(f + at + 0x34), nplt = be16(f + at + 0x36);
+    u32 data = at + doff, ttab = at + be32(f + at + 0x14), ptab = at + be32(f + at + 0x18);
+    if (doff <= 0 || (u64)data + 8 > flen || ntex <= 0 || ntex > 64 || (u64)ttab + ntex * 4 > flen) return false;
+    u32 cnt = be32(f + data + 4);
+    if (cnt > 256 || (u64)data + 8 + (cnt + 1) * 16 > flen) return false;
+    apat_t *pt = calloc(cnt ? cnt : 1, sizeof(*pt));
+    if (!pt) return false;
+    int np = 0;
+    for (u32 k = 1; k <= cnt; k++) {
+        const u8 *ge = f + data + 8 + k * 16;
+        u32 no = data + be32(ge + 8), e = data + be32(ge + 12);
+        if (no >= flen || e + 12 > flen) continue;
+        u32 node = be32(f + e + 8);
+        int mi = mat_find(m, f, no);
+        if (mi < 0 || !node || e + node + 8 > flen) continue;
+        u32 n = e + node;
+        int nk = be16(f + n);
+        if (nk <= 0 || nk > 4096 || (u64)n + 8 + nk * 8 > flen) continue;
+        apat_t *p = &pt[np];
+        p->fr = malloc(nk * sizeof(float));
+        p->tex = malloc(nk * sizeof(int));
+        if (!p->fr || !p->tex) { free(p->fr); free(p->tex); continue; }
+        p->mat = mi;
+        p->nk = nk;
+        for (int q = 0; q < nk; q++) {
+            const u8 *kk = f + n + 8 + q * 8;
+            u32 ti = be16(kk + 4), pi = be16(kk + 6);
+            p->fr[q] = bef(kk);
+            p->tex[q] = -1;
+            if (ti >= (u32)ntex) continue;
+            u32 tno = ttab + be32(f + ttab + ti * 4), pno = 0;
+            if (nplt > 0 && pi < (u32)nplt && (u64)ptab + nplt * 4 <= flen) pno = ptab + be32(f + ptab + pi * 4);
+            if (tno >= flen || pno >= flen) continue;
+            const char *tn = (const char *)f + tno, *pn = pno ? (const char *)f + pno : NULL;
+            p->tex[q] = tex_by_name(m, f, flen, tn, (u32)strnlen(tn, flen - tno), pn,
+                                    pn ? (u32)strnlen(pn, flen - pno) : 0, 0, 0);
+        }
+        np++;
+    }
+    anim_t *a = np ? anim_get(m, name) : NULL;
+    if (!a) {
+        for (int i = 0; i < np; i++) { free(pt[i].fr); free(pt[i].tex); }
+        free(pt);
+        return false;
+    }
+    for (int i = 0; i < a->npat; i++) { free(a->pat[i].fr); free(a->pat[i].tex); }
+    free(a->pat);
+    a->pat = pt;
+    a->npat = np;
+    a->pframes = nframes;
+    if (nframes > a->frames) a->frames = nframes;
+    return true;
+}
+
+/* SCN0 (v4 / v5): the ambient light's color. The header has the frame count at 0x34, the ambient
+ * lights' offset at 0x18 and their number at 0x3E; an ambient light is length, back offset, name, node,
+ * pad, flags (bit 0 color used, bit 1 constant), color (a constant, or an offset from itself to one
+ * color per frame). Lights, fog and cameras are not read. */
+static bool scn_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
+{
+    if ((u64)at + 0x48 > flen || memcmp(f + at, "SCN0", 4)) return false;
+    u32 ver = be32(f + at + 8), n = be16(f + at + 0x3E), p = at + be32(f + at + 0x18);
+    int nframes = be16(f + at + 0x34);
+    if ((ver != 4 && ver != 5) || !n || (u64)p + 0x20 > flen) return false;
+    u32 fl = be32(f + p + 0x14), w = p + 0x18, val = be32(f + w);
+    ascn_t sc = { 0 };
+    if (!(fl & 1)) return false;
+    if (fl & 2) {
+        sc.is_const = true;
+        sc.constant = val;
+    } else {
+        u32 d = w + val;
+        if ((u64)d + (u64)(nframes + 1) * 4 > flen) return false;
+        sc.words = f + d;
+        sc.n = (u32)nframes + 1;
+    }
+    sc.on = true;
+    anim_t *a = anim_get(m, name);
+    if (!a) return false;
+    a->scn = sc;
+    a->zframes = nframes;
+    if (nframes > a->frames) a->frames = nframes;
+    return true;
+}
+
+/* Every animation folder of the BRRES: CHR0 (needs bones), VIS0, SRT0, CLR0, PAT0, SCN0. */
 static void chr_load(model_t *m, const u8 *f, u32 flen)
 {
     if (flen < 0x10 || memcmp(f, "bres", 4)) return;
@@ -1398,6 +1513,7 @@ static void chr_load(model_t *m, const u8 *f, u32 flen)
     static const struct { const char *folder; bool (*load)(model_t *, const u8 *, u32, u32, const char *); } kinds[] = {
         { "AnmChr(NW4R)", chr_load_one }, { "AnmVis(NW4R)", vis_load_one },
         { "AnmTexSrt(NW4R)", srt_load_one }, { "AnmClr(NW4R)", clr_load_one },
+        { "AnmTexPat(NW4R)", pat_load_one }, { "AnmScn(NW4R)", scn_load_one },
     };
     u32 g = root + 8, n = be32(f + g + 4);
     for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= flen; i++) {
@@ -1419,8 +1535,10 @@ static void chr_load(model_t *m, const u8 *f, u32 flen)
     }
     if (m->nanim) {                                 /* keep the bind pose to pose from */
         m->bindv = malloc((m->n ? m->n : 1) * sizeof(vert_t));
-        if (m->bindv) memcpy(m->bindv, m->v, m->n * sizeof(vert_t));
-        else anim_free(m);
+        if (m->bindv) {
+            memcpy(m->bindv, m->v, m->n * sizeof(vert_t));
+            for (int i = 0; i < m->nmesh; i++) m->mesh[i].btex = m->mesh[i].tex;
+        } else anim_free(m);
     }
 }
 
@@ -1528,9 +1646,27 @@ static void model_pose(model_t *m, int ai, float frame)
         }
     }
 
+    m->amb_set = false;
+    for (int k = 0; k < m->nmesh; k++) m->mesh[k].tex = m->mesh[k].btex;
     if (!an) return;
+    if (an->scn.on) {
+        float cf = an->zframes > 0 ? fmodf(frame, (float)an->zframes + 1) : 0;
+        u32 w = an->scn.is_const ? an->scn.constant : be32(an->scn.words + 4 * ((u32)cf % an->scn.n));
+        for (int c = 0; c < 3; c++) m->amb[c] = (u8)(w >> (24 - c * 8));
+        m->amb_set = true;
+    }
     for (int k = 0; k < m->nmesh; k++) {
-        const mesh_t *ms = &m->mesh[k];
+        mesh_t *ms = &m->mesh[k];
+        for (int q = 0; q < an->npat; q++) {
+            const apat_t *pt = &an->pat[q];
+            if (pt->mat != ms->mat) continue;
+            float cf = an->pframes > 0 ? fmodf(frame, (float)an->pframes) : 0;
+            int cur = -1;
+            for (int i = 0; i < pt->nk; i++)
+                if (pt->fr[i] <= cf + 0.001f) cur = pt->tex[i];
+            if (cur >= 0) ms->tex = cur;
+            break;
+        }
         for (int q = 0; q < an->nsrt; q++) {
             const asrt_t *sr = &an->srt[q];
             if (sr->mat != ms->mat) continue;
@@ -3271,6 +3407,7 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     guVector lp = { -dist * r, dist * r, dist * r };
     GX_InitLightPos(&light, lp.x, lp.y, lp.z);
     GXColor white = { 255, 255, 255, 255 }, amb = { 70, 70, 70, 255 };
+    if (m->amb_set) { amb.r = m->amb[0]; amb.g = m->amb[1]; amb.b = m->amb[2]; }
     GX_InitLightColor(&light, white);
     GX_LoadLightObj(&light, GX_LIGHT0);
     GX_SetChanAmbColor(GX_COLOR0A0, amb);
