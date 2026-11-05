@@ -3258,6 +3258,25 @@ int mii_capture(const mii_model *model, const mii_pose *pose, int w, int h, floa
 				   (GXColor) { 0, 0, 0, 0 }, clear, dst);
 }
 
+int mii_capture_bust(const mii_model *model, const mii_pose *pose, int w, int h, GXColor clear, void *dst) {
+	static const mii_pose still = { 0 };
+	/* 104 units tall through a narrow lens: the head about two thirds of the width, the hair's
+	 * top (about 71 over head_y) a little under the top edge, the shoulders below. */
+	const float fovy = 12, tall = 104;
+	float top, half, d = tall / 2 / tanf(fovy * (float) M_PI / 360);
+	guVector eye, target;
+
+	if (!model || w <= 0 || h <= 0)
+		return MII_E_ARG;
+	if (!pose)
+		pose = &still;
+	mii_model_bounds(model, 0, &top, &half);
+	target = (guVector) { 0, top - tall * 0.38f, 0 };
+	eye = target;
+	eye.z = d;
+	return capture(model, pose, NULL, w, h, fovy, eye, target, 1, (GXColor) { 0, 0, 0, 0 }, clear, dst);
+}
+
 int mii_icon(const mii_model *model, int expression, int size, GXColor background, void *dst) {
 	return mii_icon_fx(model, expression, NULL, size, background, dst);
 }

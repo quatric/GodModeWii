@@ -862,6 +862,10 @@ float mii_pixels_tall(const mii_model *model, Mtx view, Mtx place, Mtx44 proj, f
 int mii_capture(const mii_model *model, const mii_pose *pose, int w, int h, float margin,
 				float stretch_x, GXColor clear, void *dst);
 
+/* A portrait: the head and shoulders, w x h, the head about two thirds of the height, with
+ * alpha as mii_capture's. Same rules as mii_capture. */
+int mii_capture_bust(const mii_model *model, const mii_pose *pose, int w, int h, GXColor clear, void *dst);
+
 /* A head icon, as the Wii Menu's: size x size, the head framed as RFL frames
  * it, on `background` (alpha 0 for none). Same rules as mii_capture; the
  * corner is cleared to opaque black after. */
