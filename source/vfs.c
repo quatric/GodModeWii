@@ -1369,9 +1369,13 @@ s32 vfs_read(vfs_file *f, void *buf, u32 len)
     if (f->dev == DEV_NAND)
         return ISFS_Read(f->fd, buf, len);
     size_t n = fread(buf, 1, len, f->fp);
-    /* A short read can carry the error; failing now keeps errno from the read that failed. */
-    if (ferror(f->fp))
+    /* A short read can carry the error; failing now keeps errno from the read that failed. The
+     * error flag is cleared, as stdio would otherwise fail every later read too, even after a seek:
+     * a looping stream would go silent after one bad read near the end of the file. */
+    if (ferror(f->fp)) {
+        clearerr(f->fp);
         return -1;
+    }
     return (s32)n;
 }
 
@@ -1397,6 +1401,7 @@ bool vfs_seek(vfs_file *f, u64 off)
         return virt_seek(f, off);
     if (f->dev == DEV_NAND)
         return ISFS_Seek(f->fd, (s32)off, 0) >= 0;
+    clearerr(f->fp);
     return fseek(f->fp, (long)off, SEEK_SET) == 0;
 }
 

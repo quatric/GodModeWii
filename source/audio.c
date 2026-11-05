@@ -72,7 +72,7 @@ static u32 rd32(const snd_t *s, const u8 *p)
     return s->le ? (u32)(p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24) : be32(p);
 }
 
-static bool read_at(vfs_file *f, u64 off, void *buf, u32 len)
+static bool read_at_once(vfs_file *f, u64 off, void *buf, u32 len)
 {
     if (!vfs_seek(f, off)) return false;
     u8 *p = buf;
@@ -83,6 +83,14 @@ static bool read_at(vfs_file *f, u64 off, void *buf, u32 len)
         len -= r;
     }
     return true;
+}
+
+/* A drive can fail one read (a USB or disc drive waking up, say): try again before giving up. */
+static bool read_at(vfs_file *f, u64 off, void *buf, u32 len)
+{
+    for (int i = 0; i < 3; i++)
+        if (read_at_once(f, off, buf, len)) return true;
+    return false;
 }
 
 /* Reads [off, off+len) of the file into a fresh aligned buffer. */
