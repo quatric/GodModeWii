@@ -97,10 +97,13 @@ CPPFILES	:=
 sFILES		:=
 SFILES		:=
 BINFILES	:=	appboot.bin gmsf2.bin
+# MiiKit (source/miikit) builds under its own names: its mii.c would land on mii.o beside ours.
+MIIKIT		:=	mii miidraw miibody miifx miinand
+export MIIKIT_DIR	:=	$(CURDIR)/source/miikit
 
 export LD	:=	$(CC)
 export OFILES	:=	$(addsuffix .o,$(BINFILES)) \
-					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) \
+					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(MIIKIT:%=miikit_%.o) \
 					$(sFILES:.s=.o) $(SFILES:.S=.o)
 export INCLUDE	:=	$(foreach dir,$(INCLUDES), -iquote $(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -171,6 +174,10 @@ $(OUTPUT).elf: $(OFILES)
 # The video decoders run at -O3, as in wii-mobiclip-player.
 MOBICLIP_O := $(patsubst %.c,%.o,$(notdir $(wildcard $(OUTPUT:$(TARGET)=)source/mobiclip/*.c)))
 $(MOBICLIP_O): CFLAGS += -O3
+
+miikit_%.o: $(MIIKIT_DIR)/%.c
+	$(SILENTMSG) miikit/$(notdir $<)
+	$(SILENTCMD)$(CC) -MMD -MP -MF $(DEPSDIR)/miikit_$*.d $(CPPFLAGS) $(CFLAGS) -c $< -o $@ $(ERROR_FILTER)
 
 launch.o: appboot_bin.h
 midisynth.o: gmsf2_bin.h
