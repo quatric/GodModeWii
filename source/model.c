@@ -49,6 +49,7 @@ typedef struct {
     u32 start, count;
     int tex;
     u32 pe;
+    s16 mat;                    /* MDL0 material index, for animation (0 elsewhere) */
 } mesh_t;
 #define PE_XLU   0x80000000u
 #define PE_BLEND 0x00000001u
@@ -81,6 +82,8 @@ typedef struct {
     vert_t *bindv;              /* the vertices as loaded (the bind pose) */
     struct anim_s *anim;
     int nanim;
+    char (*mat)[40];            /* MDL0 material names */
+    int nmat;
 } model_t;
 static void anim_free(model_t *m);
 
@@ -888,19 +891,41 @@ typedef struct {
     trk_t t[9];                 /* scale xyz, rotation xyz, translation xyz */
 } anode_t;
 
+/* VIS0: a bone shown or hidden, by frame */
+typedef struct { int bone; u8 constant, value; const u8 *bits; } avis_t;
+/* SRT0: a material's texture coordinates scaled, turned and moved: u scale, v scale, rotation,
+ * u move, v move */
+typedef struct { int mat; trk_t t[5]; } asrt_t;
+/* CLR0: a material's color per frame (words 0xRRGGBBAA; the bytes of `fixed` are left alone) */
+typedef struct { int mat; const u8 *words; u32 n; u32 fixed; u32 constant; bool is_const; } aclr_t;
+
 typedef struct anim_s {
     char name[48];
     int frames;                 /* last frame number */
     int rule;                   /* scaling rule: 0 standard, 1 Maya, 2 Softimage (scale doesn't reach children) */
-    anode_t *n;
+    anode_t *n;                 /* CHR0: bones */
     int nn;
+    avis_t *vis;                /* VIS0 */
+    int nvis, vframes;
+    asrt_t *srt;                /* SRT0 */
+    int nsrt, sframes;
+    aclr_t *clr;                /* CLR0 */
+    int nclr, cframes;
 } anim_t;
 
 static void anim_free(model_t *m)
 {
-    for (int i = 0; i < m->nanim; i++) free(m->anim[i].n);
+    for (int i = 0; i < m->nanim; i++) {
+        free(m->anim[i].n);
+        free(m->anim[i].vis);
+        free(m->anim[i].srt);
+        free(m->anim[i].clr);
+    }
     free(m->anim);
     free(m->skel);
+    free(m->mat);
+    m->mat = NULL;
+    m->nmat = 0;
     free(m->node2bone);
     free(m->bindv);
     m->anim = NULL;
@@ -1070,6 +1095,27 @@ static void chr_track(trk_t *t, const u8 *f, u32 flen, u32 e, u32 w, bool fixed,
     }
 }
 
+/* The animation called `name` (the CHR0, VIS0, SRT0, CLR0 of one name play together), made if new. */
+static anim_t *anim_get(model_t *m, const char *name)
+{
+    for (int i = 0; i < m->nanim; i++)
+        if (!strcmp(m->anim[i].name, name)) return &m->anim[i];
+    anim_t *na = realloc(m->anim, (m->nanim + 1) * sizeof(anim_t));
+    if (!na) return NULL;
+    m->anim = na;
+    anim_t *a = &m->anim[m->nanim++];
+    memset(a, 0, sizeof(*a));
+    snprintf(a->name, sizeof(a->name), "%s", name);
+    return a;
+}
+
+static int mat_find(const model_t *m, const u8 *f, u32 no)
+{
+    for (int j = 0; j < m->nmat; j++)
+        if (!strcmp(m->mat[j], (const char *)f + no)) return j;
+    return -1;
+}
+
 static bool chr_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
 {
     if ((u64)at + 0x30 > flen || memcmp(f + at, "CHR0", 4)) return false;
@@ -1139,42 +1185,236 @@ static bool chr_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *
         free(nodes);
         return false;
     }
-    anim_t *na = realloc(m->anim, (m->nanim + 1) * sizeof(anim_t));
-    if (!na) {
+    anim_t *a = anim_get(m, name);
+    if (!a) {
         free(nodes);
         return false;
     }
-    m->anim = na;
-    anim_t *a = &m->anim[m->nanim++];
-    memset(a, 0, sizeof(*a));
-    snprintf(a->name, sizeof(a->name), "%s", name);
-    a->frames = nframes;
+    free(a->n);
+    if (nframes > a->frames) a->frames = nframes;
     a->rule = (int)be32(f + at + (ver == 5 ? 0x28 : 0x24));
     a->n = nodes;
     a->nn = nn;
     return true;
 }
 
-/* Every CHR0 of the BRRES that has a node for one of this model's bones. */
+/* VIS0: per bone a constant, or one bit per frame (most significant bit first) */
+static bool vis_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
+{
+    if ((u64)at + 0x30 > flen || memcmp(f + at, "VIS0", 4)) return false;
+    s32 doff = (s32)be32(f + at + 0x10);
+    int nframes = be16(f + at + 0x20);
+    u32 data = at + doff;
+    if (doff <= 0 || (u64)data + 8 > flen) return false;
+    u32 cnt = be32(f + data + 4);
+    if (cnt > 1024 || (u64)data + 8 + (cnt + 1) * 16 > flen) return false;
+    avis_t *v = calloc(cnt ? cnt : 1, sizeof(*v));
+    if (!v) return false;
+    int nv = 0;
+    for (u32 k = 1; k <= cnt; k++) {
+        const u8 *ge = f + data + 8 + k * 16;
+        u32 no = data + be32(ge + 8), e = data + be32(ge + 12);
+        if (no >= flen || e + 8 > flen) continue;
+        int bi = -1;
+        for (int j = 0; j < m->nskel; j++)
+            if (!strcmp(m->skel[j].name, (const char *)f + no)) bi = j;
+        if (bi < 0) continue;
+        u32 fl = be32(f + e + 4);
+        v[nv].bone = bi;
+        v[nv].constant = (fl & 2) != 0;
+        v[nv].value = (fl & 1) != 0;
+        if (!v[nv].constant) {
+            if ((u64)e + 8 + (((u32)nframes + 32) / 32) * 4 > flen) continue;
+            v[nv].bits = f + e + 8;
+        }
+        nv++;
+    }
+    anim_t *a = nv ? anim_get(m, name) : NULL;
+    if (!a) {
+        free(v);
+        return false;
+    }
+    free(a->vis);
+    a->vis = v;
+    a->nvis = nv;
+    a->vframes = nframes;
+    if (nframes > a->frames) a->frames = nframes;
+    return true;
+}
+
+/* one SRT0 channel: the word at `w` is the constant, or the offset (from the word) of an
+ * "interpolated 12 byte" track */
+static void srt_track(trk_t *t, const u8 *f, u32 flen, u32 w, bool fixed, float rest)
+{
+    memset(t, 0, sizeof(*t));
+    t->fixed = rest;
+    if (w + 4 > flen) return;
+    if (fixed) {
+        t->fixed = bef(f + w);
+        return;
+    }
+    u32 a = w + be32(f + w);
+    if ((u64)a + 8 > flen) return;
+    u32 n = be16(f + a);
+    if (!n || (u64)a + 8 + (u64)n * 12 > flen) return;
+    t->kind = TK_I12;
+    t->n = n;
+    t->d = f + a + 8;
+}
+
+static bool srt_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
+{
+    if ((u64)at + 0x30 > flen || memcmp(f + at, "SRT0", 4)) return false;
+    s32 doff = (s32)be32(f + at + 0x10);
+    int nframes = be16(f + at + 0x20);
+    u32 data = at + doff;
+    if (doff <= 0 || (u64)data + 8 > flen) return false;
+    u32 cnt = be32(f + data + 4);
+    if (cnt > 1024 || (u64)data + 8 + (cnt + 1) * 16 > flen) return false;
+    asrt_t *sr = calloc(cnt * 8 + 1, sizeof(*sr));
+    if (!sr) return false;
+    int ns = 0;
+    for (u32 k = 1; k <= cnt; k++) {
+        const u8 *ge = f + data + 8 + k * 16;
+        u32 no = data + be32(ge + 8), e = data + be32(ge + 12);
+        if (no >= flen || e + 12 > flen) continue;
+        int mi = mat_find(m, f, no);
+        if (mi < 0) continue;
+        u32 mask = be32(f + e + 4), pos = e + 12;
+        for (int tx = 0; tx < 8; tx++) {
+            if (!(mask >> tx & 1)) continue;
+            if (pos + 4 > flen) break;
+            u32 n = e + be32(f + pos);
+            pos += 4;
+            if (tx != 0 || (u64)n + 4 > flen) continue;         /* texture 0 is what is drawn */
+            u32 fl = be32(f + n), w = n + 4;
+            asrt_t *a = &sr[ns];
+            a->mat = mi;
+            srt_track(&a->t[0], f, flen, 0, true, 1);
+            srt_track(&a->t[1], f, flen, 0, true, 1);
+            srt_track(&a->t[2], f, flen, 0, true, 0);
+            srt_track(&a->t[3], f, flen, 0, true, 0);
+            srt_track(&a->t[4], f, flen, 0, true, 0);
+            a->t[0].fixed = a->t[1].fixed = 1;
+            a->t[2].fixed = a->t[3].fixed = a->t[4].fixed = 0;
+            if (!(fl & 2)) {
+                srt_track(&a->t[0], f, flen, w, (fl >> 5) & 1, 1);
+                w += 4;
+                if (!(fl & 0x10)) {
+                    srt_track(&a->t[1], f, flen, w, (fl >> 6) & 1, 1);
+                    w += 4;
+                } else {
+                    a->t[1] = a->t[0];
+                }
+            }
+            if (!(fl & 4)) {
+                srt_track(&a->t[2], f, flen, w, (fl >> 7) & 1, 0);
+                w += 4;
+            }
+            if (!(fl & 8)) {
+                srt_track(&a->t[3], f, flen, w, (fl >> 8) & 1, 0);
+                w += 4;
+                srt_track(&a->t[4], f, flen, w, (fl >> 9) & 1, 0);
+            }
+            ns++;
+        }
+    }
+    anim_t *a = ns ? anim_get(m, name) : NULL;
+    if (!a) {
+        free(sr);
+        return false;
+    }
+    free(a->srt);
+    a->srt = sr;
+    a->nsrt = ns;
+    a->sframes = nframes;
+    if (nframes > a->frames) a->frames = nframes;
+    return true;
+}
+
+/* CLR0: per material, for each color it moves (flag pairs: used, constant): a mask of the channels
+ * that stay as they are (0xFF bytes) and a color per frame, or one constant color. The first color
+ * with animated red / green / blue tints the material's meshes. */
+static bool clr_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *name)
+{
+    if ((u64)at + 0x30 > flen || memcmp(f + at, "CLR0", 4)) return false;
+    s32 doff = (s32)be32(f + at + 0x10);
+    int nframes = be16(f + at + 0x20);
+    u32 data = at + doff;
+    if (doff <= 0 || (u64)data + 8 > flen) return false;
+    u32 cnt = be32(f + data + 4);
+    if (cnt > 1024 || (u64)data + 8 + (cnt + 1) * 16 > flen) return false;
+    aclr_t *cl = calloc(cnt ? cnt : 1, sizeof(*cl));
+    if (!cl) return false;
+    int nc = 0;
+    for (u32 k = 1; k <= cnt; k++) {
+        const u8 *ge = f + data + 8 + k * 16;
+        u32 no = data + be32(ge + 8), e = data + be32(ge + 12);
+        if (no >= flen || e + 8 > flen) continue;
+        int mi = mat_find(m, f, no);
+        if (mi < 0) continue;
+        u32 fl = be32(f + e + 4), pos = e + 8;
+        for (int t = 0; t < 16; t++) {
+            if (!(fl >> (t * 2) & 1)) continue;
+            if (pos + 8 > flen) break;
+            u32 mask = be32(f + pos), w = pos + 4, val = be32(f + w);
+            pos += 8;
+            if ((mask & 0xFFFFFF00u) == 0xFFFFFF00u) continue;     /* nothing in red, green, blue moves */
+            aclr_t *c = &cl[nc];
+            c->mat = mi;
+            c->fixed = mask;
+            if (fl >> (t * 2 + 1) & 1) {
+                c->is_const = true;
+                c->constant = val;
+            } else {
+                u32 a = w + val;
+                if ((u64)a + (u64)(nframes + 1) * 4 > flen) continue;
+                c->words = f + a;
+                c->n = (u32)nframes + 1;
+            }
+            nc++;
+            break;                                                 /* the first one tints */
+        }
+    }
+    anim_t *a = nc ? anim_get(m, name) : NULL;
+    if (!a) {
+        free(cl);
+        return false;
+    }
+    free(a->clr);
+    a->clr = cl;
+    a->nclr = nc;
+    a->cframes = nframes;
+    if (nframes > a->frames) a->frames = nframes;
+    return true;
+}
+
+/* Every animation folder of the BRRES: CHR0 (needs bones), VIS0, SRT0, CLR0. */
 static void chr_load(model_t *m, const u8 *f, u32 flen)
 {
-    if (!m->nskel || flen < 0x10 || memcmp(f, "bres", 4)) return;
+    if (flen < 0x10 || memcmp(f, "bres", 4)) return;
     u32 root = be16(f + 0x0C);
     if (root + 16 > flen || memcmp(f + root, "root", 4)) return;
+    static const struct { const char *folder; bool (*load)(model_t *, const u8 *, u32, u32, const char *); } kinds[] = {
+        { "AnmChr(NW4R)", chr_load_one }, { "AnmVis(NW4R)", vis_load_one },
+        { "AnmTexSrt(NW4R)", srt_load_one }, { "AnmClr(NW4R)", clr_load_one },
+    };
     u32 g = root + 8, n = be32(f + g + 4);
     for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= flen; i++) {
         const u8 *e = f + g + 8 + i * 16;
         u32 fn = g + be32(e + 8), sub = g + be32(e + 12);
-        if (fn >= flen || sub + 8 > flen || strncmp((const char *)f + fn, "AnmChr(NW4R)", flen - fn))
-            continue;
-        u32 sn = be32(f + sub + 4);
-        for (u32 k = 1; k <= sn && sub + 8 + (k + 1) * 16 <= flen; k++) {
-            const u8 *se = f + sub + 8 + k * 16;
-            u32 no = sub + be32(se + 8), at = sub + be32(se + 12);
-            if (no >= flen) continue;
-            char nm[48];
-            snprintf(nm, sizeof(nm), "%.*s", (int)(flen - no < 47 ? flen - no : 47), (const char *)f + no);
-            chr_load_one(m, f, flen, at, nm);
+        if (fn >= flen || sub + 8 > flen) continue;
+        for (unsigned kd = 0; kd < sizeof(kinds) / sizeof(kinds[0]); kd++) {
+            if (strncmp((const char *)f + fn, kinds[kd].folder, flen - fn)) continue;
+            u32 sn = be32(f + sub + 4);
+            for (u32 k = 1; k <= sn && sub + 8 + (k + 1) * 16 <= flen; k++) {
+                const u8 *se = f + sub + 8 + k * 16;
+                u32 no = sub + be32(se + 8), at = sub + be32(se + 12);
+                if (no >= flen) continue;
+                char nm[48];
+                snprintf(nm, sizeof(nm), "%.*s", (int)(flen - no < 47 ? flen - no : 47), (const char *)f + no);
+                kinds[kd].load(m, f, flen, at, nm);
+            }
         }
     }
     if (m->nanim) {                                 /* keep the bind pose to pose from */
@@ -1212,47 +1452,114 @@ static void pose_world(const model_t *m, int i, int depth)
         for (int c = 0; c < 3; c++) g_world[i][r * 4 + c] *= g_scl[i][c];
 }
 
-/* Moves the vertices to animation `ai` at `frame` (ai < 0: the bind pose). */
+/* How long a preview of an animation lasts, in frames: a few-frame animation is a palette (the
+ * balloon colors), shown a color at a time for half a second each. */
+static float anim_loop(const anim_t *a)
+{
+    return a->frames <= 16 ? (float)(a->frames + 1) * 15.0f : (float)a->frames;
+}
+
+/* Moves the vertices to animation `ai` at `frame` (ai < 0: the bind pose): bones from the CHR0,
+ * hidden bones from the VIS0, texture coordinates from the SRT0, colors from the CLR0. */
 static void model_pose(model_t *m, int ai, float frame)
 {
-    if (!m->bindv || !m->nskel || m->nskel > POSE_BONES) return;
-    for (int i = 0; i < m->nskel; i++) {
-        float s[3], r[3], t[3];
-        memcpy(s, m->skel[i].s, 12);
-        memcpy(r, m->skel[i].r, 12);
-        memcpy(t, m->skel[i].t, 12);
-        if (ai >= 0 && ai < m->nanim) {
-            const anim_t *a = &m->anim[ai];
-            for (int k = 0; k < a->nn; k++)
-                if (a->n[k].bone == i) {
-                    for (int c = 0; c < 3; c++) {
-                        s[c] = trk_eval(&a->n[k].t[c], frame);
-                        r[c] = trk_eval(&a->n[k].t[3 + c], frame);
-                        t[c] = trk_eval(&a->n[k].t[6 + c], frame);
+    if (!m->bindv) return;
+    const anim_t *an = ai >= 0 && ai < m->nanim ? &m->anim[ai] : NULL;
+    bool bones = m->nskel && m->nskel <= POSE_BONES;
+    static u8 hidden[POSE_BONES];
+
+    if (bones) {
+        for (int i = 0; i < m->nskel; i++) {
+            float s[3], r[3], t[3];
+            memcpy(s, m->skel[i].s, 12);
+            memcpy(r, m->skel[i].r, 12);
+            memcpy(t, m->skel[i].t, 12);
+            if (an) {
+                float cf = an->frames > 0 ? fmodf(frame, (float)an->frames) : 0;
+                for (int k = 0; k < an->nn; k++)
+                    if (an->n[k].bone == i) {
+                        for (int c = 0; c < 3; c++) {
+                            s[c] = trk_eval(&an->n[k].t[c], cf);
+                            r[c] = trk_eval(&an->n[k].t[3 + c], cf);
+                            t[c] = trk_eval(&an->n[k].t[6 + c], cf);
+                        }
+                        break;
                     }
-                    break;
-                }
+            }
+            mat_srt(s, r, t, g_loc[i]);
+            const float one[3] = { 1, 1, 1 };
+            mat_srt(one, r, t, g_tr[i]);
+            memcpy(g_scl[i], s, 12);
+            g_done[i] = 0;
+            hidden[i] = 0;
         }
-        mat_srt(s, r, t, g_loc[i]);
-        const float one[3] = { 1, 1, 1 };
-        mat_srt(one, r, t, g_tr[i]);
-        memcpy(g_scl[i], s, 12);
-        g_done[i] = 0;
+        g_rule = an ? an->rule : 0;
+        for (int i = 0; i < m->nskel; i++) pose_world(m, i, 0);
+        for (int i = 0; i < m->nskel; i++) mul34(g_world[i], m->skel[i].inv, g_skin[i]);
+        if (an)
+            for (int k = 0; k < an->nvis; k++) {
+                const avis_t *v = &an->vis[k];
+                int fr = an->vframes > 0 ? (int)fmodf(frame, (float)an->vframes + 1) : 0;
+                bool on = v->constant ? v->value
+                                      : ((be32(v->bits + (fr >> 5) * 4) >> (31 - (fr & 31))) & 1) != 0;
+                hidden[v->bone] = !on;
+            }
     }
-    g_rule = ai >= 0 && ai < m->nanim ? m->anim[ai].rule : 0;
-    for (int i = 0; i < m->nskel; i++) pose_world(m, i, 0);
-    for (int i = 0; i < m->nskel; i++) mul34(g_world[i], m->skel[i].inv, g_skin[i]);
 
     for (u32 i = 0; i < m->n; i++) {
         const vert_t *b = &m->bindv[i];
         vert_t *v = &m->v[i];
-        int bi = b->node >= 0 && b->node < m->nnode ? m->node2bone[b->node] : -1;
+        memcpy(v->c, b->c, 4);
+        v->t[0] = b->t[0];
+        v->t[1] = b->t[1];
+        int bi = bones && b->node >= 0 && b->node < m->nnode ? m->node2bone[b->node] : -1;
         if (bi < 0) continue;
+        if (hidden[bi]) {                           /* all of its vertices on one point: nothing is drawn */
+            v->p[0] = g_world[bi][3];
+            v->p[1] = g_world[bi][7];
+            v->p[2] = g_world[bi][11];
+            continue;
+        }
         xform(g_skin[bi], b->p, v->p);
         xform_n(g_skin[bi], b->n, v->n);
         if (b->env) {
             v->t[0] = v->n[0] * 0.5f + 0.5f;
             v->t[1] = 0.5f - v->n[1] * 0.5f;
+        }
+    }
+
+    if (!an) return;
+    for (int k = 0; k < m->nmesh; k++) {
+        const mesh_t *ms = &m->mesh[k];
+        for (int q = 0; q < an->nsrt; q++) {
+            const asrt_t *sr = &an->srt[q];
+            if (sr->mat != ms->mat) continue;
+            float cf = an->sframes > 0 ? fmodf(frame, (float)an->sframes) : 0;
+            float su = trk_eval(&sr->t[0], cf), sv = trk_eval(&sr->t[1], cf),
+                  rot = trk_eval(&sr->t[2], cf) * 0.017453292f, tu = trk_eval(&sr->t[3], cf),
+                  tv = trk_eval(&sr->t[4], cf), cr = cosf(rot), sn = sinf(rot);
+            for (u32 i = ms->start; i < ms->start + ms->count && i < m->n; i++) {
+                if (m->bindv[i].env) continue;
+                float x = m->bindv[i].t[0] * su, y = m->bindv[i].t[1] * sv;
+                m->v[i].t[0] = x * cr - y * sn + tu;
+                m->v[i].t[1] = x * sn + y * cr + tv;
+            }
+            break;
+        }
+        for (int q = 0; q < an->nclr; q++) {
+            const aclr_t *cl = &an->clr[q];
+            if (cl->mat != ms->mat) continue;
+            u32 w = cl->constant;
+            if (!cl->is_const) {
+                /* a handful of frames is a palette (balloon colors): step it twice a second */
+                u32 idx = an->cframes <= 16 ? (u32)(frame / 15.0f) : (u32)frame;
+                w = be32(cl->words + 4 * (idx % cl->n));
+            }
+            for (u32 i = ms->start; i < ms->start + ms->count && i < m->n; i++)
+                for (int c = 0; c < 3; c++)
+                    if (((cl->fixed >> (24 - c * 8)) & 0xFF) != 0xFF)
+                        m->v[i].c[c] = (u8)(w >> (24 - c * 8));
+            break;
         }
     }
 }
@@ -1350,10 +1657,25 @@ static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, co
         u32 start = m->n;
         mdl_object(&d, &e, o);
         add_mesh(m, start, tex, pe);
+        if (m->nmesh && m->mesh[m->nmesh - 1].start == start)
+            m->mesh[m->nmesh - 1].mat = obj_mat ? (s16)obj_mat[i] : -1;
         m->meshes++;
     }
 
     free(obj_bone);
+    {   /* material names (in the BRRES's string table), which the animations point at */
+        int nmat = g_mat ? (int)be32(b + g_mat + 4) : 0;
+        if (nmat > 0 && nmat <= 1024) m->mat = calloc(nmat, 40);
+        if (m->mat) {
+            m->nmat = nmat;
+            for (int i = 0; i < nmat; i++) {
+                s32 no = (s32)be32(b + g_mat + 8 + (i + 1) * 16 + 8);
+                s64 at = (s64)(b - file) + g_mat + no;
+                if (no > 0 && at > 0 && at < (s64)flen)
+                    snprintf(m->mat[i], 40, "%.*s", (int)(flen - at < 39 ? flen - at : 39), (const char *)file + at);
+            }
+        }
+    }
     mdl_skeleton(&d, m, g_bone, nb);
     free(d.mtx);
     free(d.has);
@@ -3195,7 +3517,7 @@ bool model_view(const char *path)
 #endif
     if (ai >= 0) {
 #ifdef GMW_AUTOTEST
-        anim_frame = m.anim[ai].frames > 0 ? fmodf(test_frame, (float)m.anim[ai].frames) : 0;
+        anim_frame = fmodf(test_frame, anim_loop(&m.anim[ai]));
 #endif
         model_pose(&m, ai, anim_frame);
     }
@@ -3206,9 +3528,9 @@ bool model_view(const char *path)
 
     for (;;) {
 #ifndef GMW_AUTOTEST
-        if (ai >= 0 && ai < m.nanim && m.anim[ai].frames > 0) {
+        if (ai >= 0 && ai < m.nanim) {
             float fr = fmodf((float)ticks_to_millisecs(gettime() - anim_t0) * 0.03f,
-                             (float)m.anim[ai].frames);
+                             anim_loop(&m.anim[ai]));
             if (fr != anim_frame) {
                 anim_frame = fr;
                 model_pose(&m, ai, fr);
@@ -3235,7 +3557,7 @@ bool model_view(const char *path)
             if (info && m.nanim) {
                 if (ai >= 0 && ai < m.nanim)
                     ui_field(2, 0, ui_cols() - 1, " animation %d/%d  %s  frame %d/%d", ai + 1,
-                             m.nanim, m.anim[ai].name, (int)anim_frame, m.anim[ai].frames);
+                             m.nanim, m.anim[ai].name, (int)anim_frame, (int)anim_loop(&m.anim[ai]));
                 else
                     ui_field(2, 0, ui_cols() - 1, " animation off (%d available)", m.nanim);
             }
