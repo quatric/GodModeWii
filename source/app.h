@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#define GMW_VERSION "0.10.1"
+#define GMW_VERSION "0.10.2"
 
 enum { EXIT_LOADER, EXIT_MENU, EXIT_POWEROFF, EXIT_RESTART, EXIT_LAUNCH };
 
