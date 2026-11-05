@@ -96,6 +96,8 @@ bool vfs_is_virtual(int dev);           /* not FAT / NAND: SEEPROM, disc, memory
 bool vfs_is_card(int dev);
 bool vfs_is_readonly(const char *path);
 bool vfs_is_archive(const char *path);  /* inside an archive: "sd:/a.wad|/x" */
+/* The path as the user sees it: "sd:/a.wad|/x" -> "sd:/a.wad/x" (the '|' only marks an archive). */
+void vfs_shown_path(const char *path, char *out, size_t n);
 const char *vfs_dev_root(int dev);      /* "sd:/" */
 bool vfs_is_root(const char *path);     /* "sd:/" */
 bool vfs_parent(const char *path, char *out, size_t outsz);

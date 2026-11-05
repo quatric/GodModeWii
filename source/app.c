@@ -216,11 +216,14 @@ static void draw_browser(void)
     draw_header();
 
     ui_color(C_CYAN, true);
-    int pl = strlen(cwd);
+    /* the path as folders: "a.bin|/x" (the '|' marks where an archive is entered) shows as "a.bin/x" */
+    char shown[VFS_PATH_MAX];
+    vfs_shown_path(cwd, shown, sizeof(shown));
+    int pl = strlen(shown);
     if (pl > cols - 3)
-        ui_field(1, 1, cols - 2, "...%s", cwd + pl - (cols - 6));
+        ui_field(1, 1, cols - 2, "...%s", shown + pl - (cols - 6));
     else
-        ui_field(1, 1, cols - 2, "%s", cwd);
+        ui_field(1, 1, cols - 2, "%s", shown);
     ui_reset();
     ui_color(C_WHITE, false);
     ui_fill(2, 0, cols - 1, '-');

@@ -72,6 +72,15 @@ bool vfs_is_card(int dev)
     return dev == DEV_MCA || dev == DEV_MCB;
 }
 
+void vfs_shown_path(const char *path, char *out, size_t n)
+{
+    size_t k = 0;
+    if (!n) return;
+    for (const char *q = path; *q && k + 1 < n; q++)
+        if (!(q[0] == '|' && q[1] == '/')) out[k++] = *q;
+    out[k] = '\0';
+}
+
 bool vfs_is_archive(const char *path)
 {
     return arcfs_is_path(path);

@@ -88,9 +88,13 @@ static void prog_paint(bool full)
     }
     char a[32], b[32], line[96];
     ui_color(C_WHITE, false);
-    ui_field(2, 8, cols - 10, "%s", X.src);
-    if (X.dst[0])
-        ui_field(3, 8, cols - 10, "%s", X.dst);
+    char shown[sizeof(X.src) > sizeof(X.dst) ? sizeof(X.src) : sizeof(X.dst)];
+    vfs_shown_path(X.src, shown, sizeof(shown));
+    ui_field(2, 8, cols - 10, "%s", shown);
+    if (X.dst[0]) {
+        vfs_shown_path(X.dst, shown, sizeof(shown));
+        ui_field(3, 8, cols - 10, "%s", shown);
+    }
 
     int fp = X.file_total ? (int)(X.file_done * 100 / X.file_total) : 100;
     ui_bar(6, 1, w - 8, fp, C_CYAN);
