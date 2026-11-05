@@ -5,8 +5,9 @@
  * table, the root / reference table and its string table. The archive shows
  *   roots/<name>.bin    the data each root node points to (up to the next object)
  *   refs/<name>.bin     the same for the external references
- *   textures/tex_<offset>.tpl   every plain GX image (an HSD_Image found through the relocation table), each
- *                       wrapped in a one-image TPL so the image viewer opens it
+ *   textures/tex_<offset>.tpl   every GX image (an HSD_Image found through the relocation table), each
+ *                       wrapped in a one-image TPL so the image viewer opens it; CI4 / CI8 images with the
+ *                       palette (HSD_Tlut) their texture object (TObj +0x4C image, +0x50 palette) gives them
  * and the whole data section as data.bin.
  */
 #include <stdio.h>
@@ -62,6 +63,32 @@ static int cmp_u32(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
+typedef struct { uint32_t loc, dst; } reloc_t;
+static int cmp_loc(const void *a, const void *b) { return cmp_u32(&((const reloc_t *)a)->loc, &((const reloc_t *)b)->loc); }
+static int cmp_dst(const void *a, const void *b) { return cmp_u32(&((const reloc_t *)a)->dst, &((const reloc_t *)b)->dst); }
+
+/* where the pointer stored at `l` points (rl sorted by location), or 0 */
+static uint32_t reloc_at(const reloc_t *rl, uint32_t n, uint32_t l)
+{
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        uint32_t mid = (lo + hi) / 2;
+        if (rl[mid].loc < l) lo = mid + 1; else hi = mid;
+    }
+    return lo < n && rl[lo].loc == l ? rl[lo].dst : 0;
+}
+
+/* the first entry pointing at `t` (byd sorted by destination) */
+static uint32_t find_dst(const reloc_t *byd, uint32_t n, uint32_t t)
+{
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        uint32_t mid = (lo + hi) / 2;
+        if (byd[mid].dst < t) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+}
+
 /* bytes from `off` to the next relocation target (or the relocation table) */
 static uint32_t blob_size(const hsd *h, uint32_t off)
 {
@@ -82,13 +109,19 @@ static uint32_t gx_size(uint32_t fmt, uint32_t w, uint32_t hh)
     case 1: case 2: bw = 8; bh = 4; bpp = 8; break;
     case 3: case 4: case 5: bw = 4; bh = 4; bpp = 16; break;
     case 6: bw = 4; bh = 4; bpp = 32; break;
+    case 8: bw = 8; bh = 8; bpp = 4; break;
+    case 9: bw = 8; bh = 4; bpp = 8; break;
+    case 10: bw = 4; bh = 4; bpp = 16; break;
     default: return 0;
     }
     return ((w + bw - 1) / bw) * ((hh + bh - 1) / bh) * bw * bh * bpp / 8;
 }
 
-/* a TPL around one image: header, table, image header (0x14) and pixels at 0x40 */
-#define TPL_HDR 0x40
+/* a TPL around one image: header, table, image header (0x14), palette header (0x38), pixels at 0x60
+ * and the palette's colours after them.
+ * Texture nodes: a = pixels, b = palette offset << 32 | width << 16 | height,
+ * c = 0x100 | format | palette format << 12 | colour count << 16. */
+#define TPL_HDR 0x60
 
 static int32_t hsd_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)
 {
@@ -103,22 +136,37 @@ static int32_t hsd_read(archive_t *a, const tnode *n, uint64_t off, void *buf, u
         tpl[7] = 1;                                              /* one image */
         tpl[11] = 0x0C;                                          /* image table at 0x0C */
         tpl[15] = 0x14;                                          /* image header at 0x14 */
-        uint32_t w = (uint32_t)(n->b >> 16), hh = (uint32_t)(n->b & 0xFFFF), fmt = n->c & 0xFF;
+        uint32_t w = (uint32_t)(n->b >> 16 & 0xFFFF), hh = (uint32_t)(n->b & 0xFFFF), fmt = n->c & 0xFF;
         tpl[0x14] = (uint8_t)(hh >> 8); tpl[0x15] = (uint8_t)hh;
         tpl[0x16] = (uint8_t)(w >> 8); tpl[0x17] = (uint8_t)w;
         tpl[0x1B] = (uint8_t)fmt;
         tpl[0x1F] = TPL_HDR;                                     /* data offset */
         tpl[0x23] = 1; tpl[0x27] = 1;                            /* wrap: repeat */
-        uint32_t done = 0;
-        if (off < TPL_HDR) {
-            uint32_t take = TPL_HDR - (uint32_t)off;
-            if (take > len) take = len;
-            memcpy(out, tpl + off, take);
-            done = take;
+        uint32_t ncol = n->c >> 16, pix = gx_size(fmt, w, hh), palat = (uint32_t)(n->b >> 32);
+        if (ncol) {
+            tpl[0x13] = 0x38;                                    /* palette header */
+            tpl[0x38] = (uint8_t)(ncol >> 8); tpl[0x39] = (uint8_t)ncol;
+            tpl[0x3F] = (uint8_t)(n->c >> 12 & 3);
+            uint32_t pd = TPL_HDR + pix;
+            tpl[0x40] = (uint8_t)(pd >> 24); tpl[0x41] = (uint8_t)(pd >> 16);
+            tpl[0x42] = (uint8_t)(pd >> 8); tpl[0x43] = (uint8_t)pd;
         }
-        if (done < len) {
-            uint64_t at = n->a + (off + done - TPL_HDR);
-            memcpy(out + done, h->data + at, len - done);
+        for (uint32_t done = 0; done < len;) {
+            uint64_t at = off + done;
+            uint32_t take;
+            if (at < TPL_HDR) {
+                take = TPL_HDR - (uint32_t)at;
+                if (take > len - done) take = len - done;
+                memcpy(out + done, tpl + at, take);
+            } else if (at < TPL_HDR + pix) {
+                take = TPL_HDR + pix - (uint32_t)at;
+                if (take > len - done) take = len - done;
+                memcpy(out + done, h->data + n->a + (at - TPL_HDR), take);
+            } else {
+                take = len - done;
+                memcpy(out + done, h->data + palat + (at - TPL_HDR - pix), take);
+            }
+            done += take;
         }
         return (int32_t)len;
     }
@@ -202,22 +250,48 @@ archive_t *arc_hsd_open(const src_t *file, const char *name)
         bool is_root = i < h->n_root;
         add_blob(a, is_root ? roots : refs, h, is_root ? "root" : "ref", i, nm, off);
     }
-    /* HSD_Image: { pixel pointer, u16 width, u16 height, u32 format, u32 mipmaps, f32, f32 } at a relocated location */
+    /* HSD_Image: { pixel pointer, u16 width, u16 height, u32 format, u32 mipmaps, f32, f32 } at a relocated
+     * location. TV no Tomo packs the format into the high byte, with the mipmap count after it. */
+    reloc_t *rl = malloc((nrel ? nrel : 1) * sizeof(*rl)), *byd = malloc((nrel ? nrel : 1) * sizeof(*byd));
+    for (uint32_t i = 0; rl && byd && i < nrel; i++) rl[i] = byd[i] = (reloc_t){ loc[i], dest[i] };
+    if (rl && byd) {
+        qsort(rl, nrel, sizeof(*rl), cmp_loc);
+        qsort(byd, nrel, sizeof(*byd), cmp_dst);
+    }
     int texdir = -1, ntex = 0;
-    for (uint32_t i = 0; i < nrel && ntex < MAX_ITEMS; i++) {
+    for (uint32_t i = 0; rl && byd && i < nrel && ntex < MAX_ITEMS; i++) {
         uint32_t l = loc[i], pix = dest[i];
         if (l + 0x14 > h->reloc_off) continue;
         uint32_t w = be16(d + l + 4), hh = be16(d + l + 6), fmt = be32(d + l + 8), mips = be32(d + l + 12);
-        if (!w || !hh || w > 1024 || hh > 1024 || fmt > 14 || mips > 16) continue;
+        if (fmt > 14) {
+            if (d[l + 8] > 14 || (fmt & 0xFFFF)) continue;
+            fmt = d[l + 8];
+        } else if (mips > 16)
+            continue;
+        if (!w || !hh || w > 1024 || hh > 1024) continue;
         uint32_t need = gx_size(fmt, w, hh);
         if (!need || pix + need > h->reloc_off) continue;
+        uint32_t palat = 0, ncol = 0, pf = 0;
+        if (fmt >= 8 && fmt <= 10) {
+            /* a TObj pointing at this image (+0x4C) and at a palette right after it (+0x50) */
+            for (uint32_t k = find_dst(byd, nrel, l); k < nrel && byd[k].dst == l && !ncol; k++) {
+                uint32_t tl = reloc_at(rl, nrel, byd[k].loc + 4), pd = tl && tl + 0x0E <= h->reloc_off ? reloc_at(rl, nrel, tl) : 0;
+                if (!pd) continue;
+                uint32_t f = be32(d + tl + 4), c = be16(d + tl + 0x0C);
+                if (f <= 2 && c && c <= 16384 && (uint64_t)pd + 2 * c <= h->reloc_off) palat = pd, ncol = c, pf = f;
+            }
+            if (!ncol) continue;                             /* no palette: can't be shown */
+        }
         if (texdir < 0) texdir = tree_add(&a->tree, 0, "textures", true, 0, 0, 0, 0);
         char nm[40];
         snprintf(nm, sizeof(nm), "tex_%06X.tpl", (unsigned)pix);
         if (tree_find_child(&a->tree, texdir, nm) >= 0) continue;
-        tree_add(&a->tree, texdir, nm, false, TPL_HDR + need, pix, (uint64_t)w << 16 | hh, 0x100 | fmt);
+        tree_add(&a->tree, texdir, nm, false, TPL_HDR + need + 2 * ncol, pix, (uint64_t)palat << 32 | w << 16 | hh,
+                 0x100 | fmt | pf << 12 | ncol << 16);
         ntex++;
     }
+    free(rl);
+    free(byd);
     tree_add(&a->tree, 0, "data.bin", false, h->reloc_off - HSD_BASE, HSD_BASE, 0, 0);
     free(dest);
     free(loc);
