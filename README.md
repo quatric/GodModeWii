@@ -129,7 +129,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as color swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP, GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences (a sequence with a loop loops for ever, as in the game) | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat (sequences: loop / repeat / play the loop twice and fade), **B** stop |
-| **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii's face, drawn online by Arian Kordi's Mii renderer (as PictoCard shows them), with its name, creator, gender, birthday, favorite color, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** fetch the faces again, **B** back |
+| **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii, head and body, drawn on the Wii by MiiKit, with its name, creator, gender, birthday, favorite color, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** change the expression, **B** back |
 | **Text** | BMG, MSBT, BREFF (emitters), BRLYT (pane tree and texts), BRLAN (what it animates), Mario Kart Wii KMP | |
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 
@@ -183,10 +183,10 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 **HOME menu**
 
 * **Export all saves** of every disc game, channel and WiiWare title to `GodModeWii/save-export/<date-time>/<title id> <game id>/`.
-* **Miis**: the Wii's Miis with their faces and details, exported as `/savemiis/<Name>.miigx`, the files SaveGame
-  Manager GX writes and installs. The faces need the internet: each Mii's 74-byte record (its name and its creator's
-  name included) goes to Arian Kordi's Mii renderer, `mii-unsecure.ariankordi.net`, over plain HTTP, and a picture of
-  its face comes back. B skips them; the list works without them.
+* **Miis**: the Wii's Miis, each drawn whole with its details, exported as `/savemiis/<Name>.miigx`, the files
+  SaveGame Manager GX writes and installs. The Miis are drawn on the Wii by MiiKit, from the Wii Menu's face models and
+  the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;
+  **2** changes their expression. In Dolphin, they need Graphics > Hacks > "Store EFB Copies to Texture Only" turned off.
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * Lock the NAND again, remount drives, credits, exit.
 * **Restart Wii**; on a Wii U it returns to the Wii U Menu.
@@ -487,9 +487,9 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
 * **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
   nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
-* **Mii faces** — drawn by **Arian Kordi**'s Mii renderer (`mii-unsecure.ariankordi.net`), asked for the way
-  **PictoCard** ([pictocard.net](https://pictocard.net)) asks for them. The Mii record fields shown come from WiiBrew's Mii data
-  documentation.
+* **Miis** — drawn by **[MiiKit](https://github.com/cmyksoda/MiiKit)** (public domain, CC0, in `source/miikit`), which
+  started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader. The Mii record fields shown come from WiiBrew's
+  Mii data documentation.
 * **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.

@@ -1,33 +1,34 @@
 #ifndef MIIFACE_H
 #define MIIFACE_H
 
-/* Mii faces, rendered online by Arian Kordi's Mii renderer (mii-unsecure.ariankordi.net), the one
- * PictoCard's Mii faces come from: each 74-byte Mii record is sent and a PNG of its face comes
- * back. Faces are kept for the session, so a Mii is only sent once. */
+/* Miis drawn on the Wii itself by MiiKit (source/miikit), head and body, from the Wii Menu's face
+ * models and the Mii Channel's bodies (read from the NAND, or from sd:/mii/ when the NAND can't be
+ * read). */
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <gccore.h>
 
-#define MIIFACE_SIZE 192                /* pixels, square */
-#define MIIFACE_HOST "mii-unsecure.ariankordi.net"
+#define MIIFACE_WIDTH 160               /* pixels; both multiples of 4 */
+#define MIIFACE_HEIGHT 224
+#define MIIFACE_EXPRESSIONS 7
 
-typedef struct {
-    u8 *rgba;                           /* MIIFACE_SIZE x MIIFACE_SIZE, or NULL: not drawn */
-} miiface_t;
+/* Loads the face models and bodies. False with err set when there are no face models; the Miis
+ * then go without pictures. Call miiface_close after, either way. */
+bool miiface_open(char *err, size_t errsz);
+void miiface_close(void);
 
-/* Faces for n Mii records (74 bytes each, recs[i]). Brings the network up first (B leaves).
- * progress (may be NULL) is told how many are done; returning false from it stops. The faces
- * stay owned by the cache: don't free them. False with err set when nothing could be fetched;
- * Miis the server couldn't draw just get no face. */
-bool miiface_fetch(const u8 *const *recs, int n, const miiface_t **faces,
-                   bool (*progress)(void *ctx, int done, int total), void *ctx, char *err, size_t errsz);
+/* Draws a 74-byte Mii record's Mii, standing, in an expression (0 to MIIFACE_EXPRESSIONS - 1),
+ * at framebuffer pixel (x, y) on black. Pictures are kept until miiface_close, so a Mii is drawn
+ * by the GPU only once an expression. False when there's nothing to show: the area is left
+ * black. */
+bool miiface_draw(const u8 *rec, int expression, int x, int y);
 
-/* A face already in the cache (NULL if it wasn't fetched). */
-const miiface_t *miiface_cached(const u8 *rec);
+/* "Normal", "Smile", ... */
+const char *miiface_expression_name(int expression);
 
-/* Draws a face onto the screen at framebuffer pixel (x, y), each pixel scale x scale, over bg_rgb
- * (0xRRGGBB). */
-void miiface_draw(const miiface_t *f, int x, int y, int scale, u32 bg_rgb);
+/* True once a picture came back empty in Dolphin, whose GPU keeps its copies to itself unless
+ * "Store EFB Copies to Texture Only" is off. */
+bool miiface_dolphin_blank(void);
 
 #endif

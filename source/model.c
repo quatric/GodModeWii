@@ -2299,7 +2299,18 @@ out:
 
 /* ---------------------------------------------------------------- GX drawing */
 
+/* Static, so it stays in MEM1: a GPU fed its commands from MEM2 stalls at random on a real Wii
+ * (MiiKit's README). */
+static u8 gx_fifo_mem[256 * 1024] ATTRIBUTE_ALIGN(32);
 static void *gx_fifo;
+
+void model_gx_init(void)
+{
+    if (!gx_fifo) {
+        gx_fifo = gx_fifo_mem;
+        GX_Init(gx_fifo, sizeof(gx_fifo_mem));
+    }
+}
 
 void model_gx_setup(void)
 {
@@ -2307,11 +2318,7 @@ void model_gx_setup(void)
     void *xfb = ui_framebuffer(&fw, &fh);
     (void)xfb;
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
-    if (!gx_fifo) {
-        gx_fifo = memalign(32, 256 * 1024);
-        memset(gx_fifo, 0, 256 * 1024);
-        GX_Init(gx_fifo, 256 * 1024);
-    }
+    model_gx_init();
     GXColor bg = { 24, 28, 40, 255 };
     GX_SetCopyClear(bg, GX_MAX_Z24);
     GX_SetViewport(0, 0, rm->fbWidth, rm->efbHeight, 0, 1);

@@ -707,7 +707,7 @@ static void show_credits(void)
         "Igor Pavlov); RAR5 from the public format description.\n\n"
         "RVZ / WIA: written from Dolphin's format description, after the design of KakarottoCake's RiftWii; "
         "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.\n\n"
-        "Mii faces: drawn online by Arian Kordi's Mii renderer (mii-unsecure.ariankordi.net), as PictoCard shows them.",
+        "Miis: drawn on the Wii by MiiKit (github.com/cmyksoda/MiiKit), from hbc-reborn's sdk/mii.",
     };
     ui_message_pages("ABOUT / CREDITS", C_CYAN, pages, 4);
 }

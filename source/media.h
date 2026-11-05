@@ -33,6 +33,8 @@ bool layout_view(const char *path);
 bool lyt_view(const char *path);
 /* model.c: starts GX (once) and sets it up to draw into the console framebuffer. */
 void model_gx_setup(void);
+/* model.c: starts GX (once) and nothing else, for drawing off screen (the Mii faces). */
+void model_gx_init(void);
 bool kmp_view(const char *path);            /* Mario Kart Wii KMP: sections and counts */
 
 /* Opens the viewer for a file of type t (ftype.h). False when it couldn't show it (the caller
