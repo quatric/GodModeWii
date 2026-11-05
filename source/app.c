@@ -642,6 +642,7 @@ void text_show(const char *title, u8 *buf, u32 got, u64 total, bool truncated)
             ui_field(rows - 2, 1, cols - 2, "U/D Line  L/R Page  +/- x10 pages  B Close");
             ui_reset();
             redraw = false;
+            UI_TEST_SHOT();
         }
 
         u32 p = input_pressed();

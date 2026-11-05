@@ -109,9 +109,50 @@ static void put_cp(sbuf *s, u32 c)
     }
 }
 
-/* "MESGbmg1": INF1 (entry table) + DAT1 (strings); encoding at 0x10:
+/* "MESGbmg1": INF1 (entry table: string offset + attribute bytes), DAT1 (strings), MID1 (message
+ * ids), FLW1 / FLI1 (flow: which message follows, branches, events); encoding at 0x10:
  * 1 = CP1252, 2 = UTF-16BE, 3 = Shift-JIS (shown as raw bytes), 4 = UTF-8.
- * Control codes (0x1A) are shown as {..}. */
+ * A control code is 0x1A, its total size in bytes, a group byte, a 16-bit type and parameters:
+ * shown as {group.type params}; parameters that are UTF-16 text (ruby, plural choices) as "text". */
+static void bmg_escape(sbuf *s, const u8 *e, u32 size, bool utf16)
+{
+    char line[64];
+    u32 hdr = utf16 ? 2 : 1;                         /* the 0x1A itself */
+    if (size < hdr + 4) {
+        put(s, "{?}", 3);
+        return;
+    }
+    const u8 *q = e + hdr + 1;                       /* after the size byte */
+    snprintf(line, sizeof(line), "{%u.%u", (unsigned)q[0], (unsigned)be16(q + 1));
+    put(s, line, strlen(line));
+    q += 3;
+    u32 plen = size - (hdr + 4);
+    if (plen) {
+        /* text if every UTF-16 unit after the first byte is printable or a NUL separator */
+        bool text = utf16 && plen >= 4 && (plen & 1) == 0;
+        for (u32 i = 1; text && i + 1 < plen; i += 2) {
+            u32 c = be16(q + i);
+            if (c && (c < 0x20 || c > 0xFFEF)) text = false;
+        }
+        if (text) {
+            snprintf(line, sizeof(line), " %u \"", (unsigned)q[0]);
+            put(s, line, strlen(line));
+            for (u32 i = 1; i + 1 < plen; i += 2) {
+                u32 c = be16(q + i);
+                if (!c) put(s, "|", 1);
+                else put_cp(s, c);
+            }
+            put(s, "\"", 1);
+        } else {
+            for (u32 i = 0; i < plen; i++) {
+                snprintf(line, sizeof(line), " %02X", q[i]);
+                put(s, line, 3);
+            }
+        }
+    }
+    put(s, "}", 1);
+}
+
 bool bmg_view(const char *path)
 {
     u32 len;
@@ -123,12 +164,20 @@ bool bmg_view(const char *path)
     }
 
     int enc = b[0x10] ? b[0x10] : 1;
-    u32 nsec = be32(b + 0x0C), pos = 0x20, inf = 0, dat = 0;
+    u32 nsec = be32(b + 0x0C), pos = 0x20, inf = 0, dat = 0, mid = 0, flw = 0, fli = 0;
+    char names[48] = "";
     for (u32 i = 0; i < nsec && pos + 8 <= len; i++) {
         u32 sz = be32(b + pos + 4);
         if (!memcmp(b + pos, "INF1", 4)) inf = pos;
         if (!memcmp(b + pos, "DAT1", 4)) dat = pos;
-        if (sz < 8) break;
+        if (!memcmp(b + pos, "MID1", 4)) mid = pos;
+        if (!memcmp(b + pos, "FLW1", 4)) flw = pos;
+        if (!memcmp(b + pos, "FLI1", 4)) fli = pos;
+        if (strlen(names) + 6 < sizeof(names)) {
+            strncat(names, (const char *)b + pos, 4);
+            strcat(names, " ");
+        }
+        if (sz < 8 || pos + sz > len) break;
         pos += sz;
     }
     if (!inf || !dat) {
@@ -137,20 +186,39 @@ bool bmg_view(const char *path)
     }
 
     u32 count = be16(b + inf + 8), esz = be16(b + inf + 10);
+    u32 nids = 0;
+    if (mid && mid + 16 <= len) nids = be16(b + mid + 8);
     sbuf s = { 0 };
-    char line[96];
-    snprintf(line, sizeof(line), "%u messages, %s\n\n", (unsigned)count,
-             enc == 2 ? "UTF-16" : enc == 3 ? "Shift-JIS" : enc == 4 ? "UTF-8" : "CP1252");
+    char line[160];
+    snprintf(line, sizeof(line), "%u messages, %s, sections: %s\n\n", (unsigned)count,
+             enc == 2 ? "UTF-16" : enc == 3 ? "Shift-JIS" : enc == 4 ? "UTF-8" : "CP1252", names);
     put(&s, line, strlen(line));
 
     for (u32 i = 0; i < count && esz >= 4 && inf + 0x10 + (i + 1) * esz <= len; i++) {
         u32 off = dat + 8 + be32(b + inf + 0x10 + i * esz);
-        snprintf(line, sizeof(line), "#%u: ", (unsigned)i);
+        if (mid && i < nids && mid + 16 + (i + 1) * 4 <= len)
+            snprintf(line, sizeof(line), "#%u [id %u]", (unsigned)i,
+                     (unsigned)be32(b + mid + 16 + i * 4));
+        else
+            snprintf(line, sizeof(line), "#%u", (unsigned)i);
         put(&s, line, strlen(line));
+        /* the attribute bytes after the string offset, when any is set */
+        bool attr = false;
+        for (u32 k = 4; k < esz; k++) attr |= b[inf + 0x10 + i * esz + k] != 0;
+        if (attr) {
+            put(&s, " (attr", 6);
+            for (u32 k = 4; k < esz; k++) {
+                snprintf(line, sizeof(line), " %02X", b[inf + 0x10 + i * esz + k]);
+                put(&s, line, 3);
+            }
+            put(&s, ")", 1);
+        }
+        put(&s, ": ", 2);
 
         u32 p = off;
         while (p < len) {
             u32 c;
+            u32 start = p;
             if (enc == 2) {
                 if (p + 2 > len) break;
                 c = be16(b + p);
@@ -159,11 +227,14 @@ bool bmg_view(const char *path)
                 c = b[p++];
             }
             if (!c) break;
-            if (c == 0x1A) {                /* control code: a length byte comes next */
-                u32 l = p < len ? b[p] : 0;
-                u32 skip = enc == 2 ? (l > 2 ? l - 2 : 0) : (l > 1 ? l - 1 : 0);
-                put(&s, "{...}", 5);
-                p += skip;
+            if (c == 0x1A) {                /* control code */
+                u32 size = p < len ? b[p] : 0;
+                if (size < (enc == 2 ? 2u : 1u) + 1 || start + size > len) {
+                    put(&s, "{?}", 3);
+                    continue;
+                }
+                bmg_escape(&s, b + start, size, enc == 2);
+                p = start + size;
                 continue;
             }
 
@@ -178,6 +249,39 @@ bool bmg_view(const char *path)
             }
         }
         put(&s, "\n", 1);
+    }
+
+    /* FLW1: u16 node count, u16 label count, 4 reserved; 8 byte nodes, then the u16 labels.
+     * FLI1: u16 count, u16 entry size, 4 reserved; entries of u32 id, u16 pad, u16 node. */
+    if (flw && flw + 16 <= len) {
+        u32 nn = be16(b + flw + 8), nl = be16(b + flw + 10);
+        snprintf(line, sizeof(line), "\nFlow: %u nodes, %u labels\n", (unsigned)nn, (unsigned)nl);
+        put(&s, line, strlen(line));
+        for (u32 i = 0; i < nn && flw + 16 + (i + 1) * 8 <= len; i++) {
+            const u8 *n = b + flw + 16 + i * 8;
+            const char *t = n[0] == 1 ? "message" : n[0] == 2 ? "branch" : n[0] == 3 ? "event" : "node";
+            snprintf(line, sizeof(line), "  %3u %-7s sub %u  %04X %04X %04X\n", (unsigned)i, t,
+                     (unsigned)n[1], (unsigned)be16(n + 2), (unsigned)be16(n + 4),
+                     (unsigned)be16(n + 6));
+            put(&s, line, strlen(line));
+        }
+        u32 lab = flw + 16 + nn * 8;
+        for (u32 i = 0; i < nl && lab + (i + 1) * 2 <= len; i++) {
+            snprintf(line, sizeof(line), "  label %u -> node %u\n", (unsigned)i,
+                     (unsigned)be16(b + lab + i * 2));
+            put(&s, line, strlen(line));
+        }
+    }
+    if (fli && fli + 16 <= len) {
+        u32 nf = be16(b + fli + 8), fes = be16(b + fli + 10);
+        snprintf(line, sizeof(line), "\nFlow entries: %u\n", (unsigned)nf);
+        put(&s, line, strlen(line));
+        for (u32 i = 0; fes >= 8 && i < nf && fli + 16 + (i + 1) * fes <= len; i++) {
+            const u8 *e = b + fli + 16 + i * fes;
+            snprintf(line, sizeof(line), "  id %u -> node %u\n", (unsigned)be32(e),
+                     (unsigned)be16(e + 6));
+            put(&s, line, strlen(line));
+        }
     }
     free(b);
 
