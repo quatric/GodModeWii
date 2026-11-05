@@ -8,6 +8,7 @@
 #include "archive.h"
 #include "excite.h"
 #include "media.h"
+#include "tga.h"
 
 #define M(s) (n >= sizeof(s) - 1 && !memcmp(h, s, sizeof(s) - 1))
 
@@ -45,6 +46,8 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
             ro + nrel * 4 + (nroot + nref) * 8 <= size)
             return FT_MODEL;
     }
+    /* Truevision TGA: no magic; the header has to describe an image the file is large enough for */
+    if (arc_name_has_ext(name, ".tga") && tga_header_ok(h, n, size)) return FT_IMAGE;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
     static const char *const audio[] = { ".mp3", ".mp2", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };

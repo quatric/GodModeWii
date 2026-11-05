@@ -30,6 +30,7 @@
 #include <input_wii.h>
 #include "archive.h"
 #include "excite.h"
+#include "tga.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_VERTS (2u * 1024 * 1024)
@@ -807,8 +808,39 @@ static void ext_palette(const char *pname, u32 plen, const char *name, u32 nlen,
     free(list);
 }
 
+/* "<name>.tga" beside the model (textures exported from or made for a BRRES): an RGBA8 texture keyed by
+ * the name, so every material using it shares one. -> m->tex index, or -1. */
+static int ext_tga_texture(model_t *m, const char *name, u32 nlen)
+{
+    if (!g_ext_dir[0] || !nlen) return -1;
+    u32 key = 0x80000000u;
+    for (u32 i = 0; i < nlen; i++) key = key * 31 + (u8)(name[i] | 0x20);
+    key = (key ^ 0x54474100u) | 0x80000000u;    /* apart from the .mod texture keys of the same name */
+    for (int i = 0; i < m->ntex; i++)
+        if (m->tex[i].key == key) return i;
+    vfs_entry *list; int n;
+    if (!vfs_list(g_ext_dir, &list, &n)) return -1;
+    int t = -1;
+    char p[VFS_PATH_MAX];
+    for (int i = 0; i < n; i++) {
+        if (list[i].is_dir || !name_is(list[i].name, name, nlen, ".tga") || list[i].size > EXT_FILE_MAX ||
+            !vfs_join(p, sizeof(p), g_ext_dir, list[i].name))
+            continue;
+        u32 len;
+        u8 *f = load_file(p, &len);
+        int w, h;
+        u8 *rgba = f ? tga_decode(f, len, &w, &h) : NULL;
+        if (rgba) t = add_rgba_texture(m, rgba, w, h, key);
+        free(rgba);
+        free(f);
+        break;
+    }
+    free(list);
+    return t;
+}
+
 /* The texture called nm (its palette pn, for CI textures) from the BRRES in f, or another BRRES the
- * folder has -> m->tex index, or -1. */
+ * folder has (or a .tga there) -> m->tex index, or -1. */
 static int tex_by_name(model_t *m, const u8 *f, u32 flen, const char *nm, u32 nlen, const char *pn, u32 plen,
                        int wrap_s, int wrap_t)
 {
@@ -822,7 +854,7 @@ static int tex_by_name(model_t *m, const u8 *f, u32 flen, const char *nm, u32 nl
         if (pl) { palbuf = f + pl; pallen = flen - pl; }
         else ext_palette(pn, plen, nm, nlen, &palbuf, &pallen);
     } else if (!ext_texture(nm, nlen, pn, plen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
-        return -1;
+        return ext_tga_texture(m, nm, nlen);
     const u8 *t = tf + tex;
     int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
     if (fmt >= 8 && fmt <= 10 && palbuf) {
