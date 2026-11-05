@@ -990,7 +990,7 @@ static void actions_menu(void)
     en[n] = on_entry || nmarks;
     code[n++] = A_INFO;
 
-    items[n] = "Disk usage (ncdu)";
+    items[n] = "Disk usage";
     en[n] = cwd[0] != '\0';
     code[n++] = A_USAGE;
 

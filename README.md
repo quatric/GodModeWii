@@ -157,7 +157,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * Summaries keep the result line (files, size, time); page through every problem with **L / R** (**-** / **+**).
 * Copying from a disc keeps going on read errors: bad sectors become zeros, listed in `<file>.errors.txt`.
 * Multi-select, select all / invert, rename, new folder, folder size and info.
-* Disk usage (ncdu-like): Actions > Disk usage lists a folder's entries by total size with a share bar. A opens a folder, B goes up, 1 flips size / name order, 2 deletes, B while measuring stops.
+* Disk usage: Actions > Disk usage lists a folder's entries by total size with a share bar. A opens a folder, B goes up, 1 flips size / name order, 2 deletes, B while measuring stops.
 * Text viewer, hex viewer, and in-place editors (*Edit as text*, *Edit as hex*). Edits are only written when you save.
 * Read-only FAT files and folders can be deleted.
 
