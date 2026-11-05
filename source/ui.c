@@ -15,6 +15,10 @@ static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
 static int g_cols = 76, g_rows = 28;
 
+/* the console's text starts this far in, in rows this tall (libogc's 8x16 font) */
+#define CON_EDGE 16
+#define CON_ROW  16
+
 void *ui_framebuffer(int *w, int *h)
 {
     if (w) *w = rmode ? rmode->fbWidth : 0;
@@ -51,8 +55,8 @@ void ui_init(void)
     rmode = VIDEO_GetPreferredMode(NULL);
     xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
-    console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
-                 rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+    console_init(xfb, CON_EDGE, CON_EDGE, rmode->fbWidth - 2 * CON_EDGE,
+                 rmode->xfbHeight - 2 * CON_EDGE, rmode->fbWidth * VI_DISPLAY_PIX_SZ);
     /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw
      * over the screen. */
     devoptab_list[STD_ERR] = &discard_tab;
@@ -72,6 +76,7 @@ void ui_init(void)
 
 int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
+int ui_row_y(int row) { return CON_EDGE + row * CON_ROW; }
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
 void ui_goto(int row, int col) { printf("\x1b[%d;%dH", row + 1, col + 1); }

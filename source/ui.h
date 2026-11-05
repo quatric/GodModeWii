@@ -9,6 +9,8 @@ enum { C_BLACK, C_RED, C_GREEN, C_YELLOW, C_BLUE, C_MAGENTA, C_CYAN, C_WHITE };
 void ui_init(void);
 int  ui_cols(void);
 int  ui_rows(void);
+/* The framebuffer line where text row `row` starts. */
+int  ui_row_y(int row);
 
 void ui_clear(void);
 /* Clears the whole screen, the border around the text area too: after a viewer drew over it. */

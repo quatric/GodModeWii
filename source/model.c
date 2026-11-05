@@ -2358,14 +2358,37 @@ void model_gx_setup(void)
     GX_SetColorUpdate(GX_TRUE);
 }
 
+void model_gx_show(int head, int foot)
+{
+    GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
+    u8 *xfb = ui_framebuffer(NULL, NULL);
+    u32 eh = rm->efbHeight, xh = rm->xfbHeight;
+    u32 y0 = head > 0 ? ui_row_y(head) : 0, y1 = foot > 0 ? ui_row_y(ui_rows() - foot) : xh;
+    /* the same band in EFB lines, rounded inwards to even lines, so no copied line lands on text */
+    u32 e0 = ((y0 * eh + xh - 1) / xh + 1) & ~1u, e1 = (y1 * eh / xh) & ~1u, d0 = e0 * xh / eh;
+    f32 ys = GX_GetYScaleFactor(eh, xh);
+    GX_SetDispCopySrc(0, e0, rm->fbWidth, e1 - e0);
+    /* scaled lines (PAL 50 Hz) can come out a line taller than the band: shorten it */
+    while (d0 + GX_SetDispCopyYScale(ys) > y1 && e1 - e0 > 2) {
+        e1 -= 2;
+        GX_SetDispCopySrc(0, e0, rm->fbWidth, e1 - e0);
+    }
+
+    GX_DrawDone();
+    GX_CopyDisp(xfb + d0 * rm->fbWidth * VI_DISPLAY_PIX_SZ, GX_TRUE);
+    GX_Flush();
+    GX_DrawDone();
+    GX_SetDispCopySrc(0, 0, rm->fbWidth, eh);
+    GX_SetDispCopyYScale(ys);
+}
+
 enum { SH_LIT, SH_FLAT, SH_WIRE, SH_COUNT };
 
 static void draw_range(const model_t *m, u32 done, u32 stop, int shade);
 
-static void render(const model_t *m, float yaw, float pitch, float dist, int shade)
+static void render(const model_t *m, float yaw, float pitch, float dist, int shade, int head)
 {
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
-    void *xfb = ui_framebuffer(NULL, NULL);
     float c[3], r = 0;
     for (int k = 0; k < 3; k++) {
         c[k] = (m->min[k] + m->max[k]) / 2;
@@ -2450,11 +2473,7 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     }
     GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
     GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
-
-    GX_DrawDone();
-    GX_CopyDisp(xfb, GX_TRUE);
-    GX_Flush();
-    GX_DrawDone();
+    model_gx_show(head, head ? 1 : 0);
 }
 
 static void draw_range(const model_t *m, u32 done, u32 stop, int shade)
@@ -2637,7 +2656,9 @@ bool model_view(const char *path)
     model_gx_setup();
 
     float yaw = 30, pitch = 15, dist = 2.6f;
-    bool first = true;
+    /* full: the whole screen is copied, then the text: at the start, after another model loads and
+     * when the header's height changes. Otherwise the text rows are left alone. */
+    bool first = true, full = true;
     int shade = SH_LIT;
     bool info = true, redraw = true;
     ptr_drag drag = { 0 };
@@ -2647,9 +2668,9 @@ bool model_view(const char *path)
         if (redraw) {
             ptr_hide();
             /* the first copy after GX starts up doesn't reach the screen */
-            if (first) render(&m, yaw, pitch, dist, shade);
-            first = false;
-            render(&m, yaw, pitch, dist, shade);
+            if (first) render(&m, yaw, pitch, dist, shade, 0);
+            render(&m, yaw, pitch, dist, shade, full ? 0 : info ? 2 : 1);
+            first = full = false;
             ui_color(C_WHITE, true);
             ui_field(0, 0, ui_cols() - 1, " MODEL  %s  [%d/%d] %s", vfs_basename(path), cur + 1,
                      count, m.name);
@@ -2713,7 +2734,7 @@ bool model_view(const char *path)
         }
         if (p & WPAD_BUTTON_2) {
             info = !info;
-            redraw = true;
+            redraw = full = true;
         }
 
         if ((p & WPAD_BUTTON_1) && count > 1) {
@@ -2726,7 +2747,7 @@ bool model_view(const char *path)
             yaw = 30;
             pitch = 15;
             dist = 2.6f;
-            redraw = true;
+            redraw = full = true;
         }
     }
 

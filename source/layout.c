@@ -932,9 +932,7 @@ static void draw_window(lyt_t *L, const pane_t *p, u8 alpha)
     }
 }
 
-static void *gx_xfb;
-
-static void render(lyt_t *L, float vx, float vy, float vw, float vh)
+static void render(lyt_t *L, float vx, float vy, float vw, float vh, bool keep_text)
 {
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
     GX_SetViewport(vx, vy, vw, vh, 0, 1);
@@ -1005,10 +1003,7 @@ static void render(lyt_t *L, float vx, float vy, float vw, float vh)
         quad(x0, y0, p->w, p->h, p->vc, alpha, p->tc);
     }
 
-    GX_DrawDone();
-    GX_CopyDisp(gx_xfb, GX_TRUE);
-    GX_Flush();
-    GX_DrawDone();
+    model_gx_show(keep_text ? 2 : 0, keep_text ? 1 : 0);
 }
 
 /* GX state the other viewers expect */
@@ -1181,14 +1176,14 @@ bool lyt_view(const char *path)
     GX_InitTexObj(&white_obj, white_pix, 4, 4, GX_TF_I8, GX_CLAMP, GX_CLAMP, GX_FALSE);
 
     model_gx_setup();
-    int fw, fh;
-    gx_xfb = ui_framebuffer(&fw, &fh);
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
     GXColor bg = { 0, 0, 0, 255 };
     GX_SetCopyClear(bg, GX_MAX_Z24);
 
     float frame = 0, zoom = 1;
-    bool paused = false, info = true, first = true;
+    /* full: the whole screen is copied, then the text: at the start and when the text is turned
+     * on or off. Otherwise the text rows are left alone. */
+    bool paused = false, info = true, first = true, full = true;
     /* animations play once and stop on their last frame */
     bool looping = false, at_end = false;
 #ifdef GMW_AUTOTEST
@@ -1206,20 +1201,18 @@ bool lyt_view(const char *path)
         anim_t *a = cur >= 0 ? &L->anim[cur] : NULL;
         if (a) apply(L, a, frame);
 
-        /* fit the layout's canvas in the screen, under the title lines when they show */
-        /* the console's text starts 16 pixels in, 16 pixels a row: keep clear of rows 0, 1 and the
-         * last */
-        float top = info ? 16 + 2 * 16 : 0,
-              bottom = info ? rm->efbHeight - (16 + 16 * (ui_rows() - 1)) : 0;
+        /* fit the layout's canvas in the screen, clear of the text rows when they show (they are
+         * in screen lines, which outnumber EFB lines at 50 Hz) */
+        float lines = (float)rm->efbHeight / rm->xfbHeight;
+        float top = info ? ui_row_y(2) * lines : 0,
+              bottom = info ? rm->efbHeight - ui_row_y(ui_rows() - 1) * lines : 0;
         float aw = rm->fbWidth, ah = rm->efbHeight - top - bottom;
         float sc = (aw / L->W < ah / L->H ? aw / L->W : ah / L->H) * zoom;
         float vw = L->W * sc, vh = L->H * sc;
 
-        render(L, (rm->fbWidth - vw) / 2, top + (ah - vh) / 2, vw, vh);
-        if (first) {
-            render(L, (rm->fbWidth - vw) / 2, top + (ah - vh) / 2, vw, vh);
-            first = false;
-        }
+        if (first) render(L, (rm->fbWidth - vw) / 2, top + (ah - vh) / 2, vw, vh, false);
+        render(L, (rm->fbWidth - vw) / 2, top + (ah - vh) / 2, vw, vh, info && !full);
+        first = full = false;
         if (ntex_ok < 0) {
             ntex_ok = 0;
             for (int i = 0; i < L->ntex; i++) ntex_ok += L->tex[i].ok;
@@ -1263,7 +1256,10 @@ bool lyt_view(const char *path)
                 paused = !paused;
         }
 
-        if (p & WPAD_BUTTON_2) info = !info;
+        if (p & WPAD_BUTTON_2) {
+            info = !info;
+            full = true;
+        }
         if ((p & WPAD_BUTTON_PLUS) && zoom < 8) zoom *= 1.25f;
         if ((p & WPAD_BUTTON_MINUS) && zoom > 0.3f) zoom /= 1.25f;
         if (p & WPAD_BUTTON_1) looping = !looping;
