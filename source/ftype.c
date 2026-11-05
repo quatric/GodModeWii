@@ -26,6 +26,8 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
      * one (the header, or 2^k pixel bytes and a 128-byte tail) */
     if (arc_name_has_ext(name, ".sfx") && audio_sfx_header(h, n, size)) return FT_STREAM;
     if (arc_name_has_ext(name, ".tex") || arc_name_has_ext(name, ".art")) return FT_IMAGE;
+    /* .mod models: the "3LDN" / "2LDN" chunks are often well past the start (the model viewer looks) */
+    if (arc_name_has_ext(name, ".mod") && size >= 0x40) return FT_MODEL;
     if (arc_name_has_ext(name, ".tm0") && n >= 0x86 && excite_head_ok(h + 0x80, n - 0x80)) return FT_IMAGE;
     if (arc_name_has_ext(name, ".img") && size > 128 && size <= (4u << 20) + 128 &&
         (excite_head_ok(h, n) || !((size - 128) & (size - 129))))
@@ -34,6 +36,15 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
     static const char *const mii[] = { ".miigx", ".mii", ".rcd", ".rsd", NULL };
     if (ext_any(name, mii) && (size == 0x4A || size == 0x4C) && n >= 4)
         return FT_MII;
+    /* HAL sysdolphin (HSD) .dat / .usd: the header's size, tables in bounds. The model viewer tries
+     * it; with no model in it, it is browsed as an archive. */
+    static const char *const hsd[] = { ".dat", ".usd", NULL };
+    if (ext_any(name, hsd) && n >= 20 && be32(h) == size && size >= 0x40) {
+        u64 ro = be32(h + 4) + 0x20ull, nrel = be32(h + 8), nroot = be32(h + 12), nref = be32(h + 16);
+        if (ro <= size && nroot >= 1 && nroot <= 0x10000 && nref <= 0x10000 && nrel <= 0x400000 &&
+            ro + nrel * 4 + (nroot + nref) * 8 <= size)
+            return FT_MODEL;
+    }
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
     static const char *const audio[] = { ".mp3", ".mp2", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };

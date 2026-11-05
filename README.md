@@ -124,7 +124,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 
 | Viewer | Formats | Buttons |
 | --- | --- | --- |
-| **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, and Mario Party `.hsf` (HSFV037, with each material's texture, or its colour); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
+| **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, Mario Party `.hsf` (HSFV037, with each material's texture, or its colour), and Monster Games `.mod` (Excite Truck / Excitebots; textured from the `.tex` files in their archive, the region's base track and the shared `HobbySet.res` / `race.res` / `common.res`); lit, posed by their bones and textured | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model |
 | **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
 | **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as colour swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), PNG, JPEG, WebP, GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
@@ -476,7 +476,10 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   extensionless one, but only when the first bytes it unpacks to are the start of a valid bank, and scans for banks only in `.sbn`
   modules. The `LZ77` tag handling follows nintoolbox's `lib-wii-banner.c`.
 * **Monster Games** (Excite Truck, Excitebots) — the RST / TOC layouts (`lib-rst.c`), the `.sfx` header (`lib-sfx.c`) and the
-  `.tex` / `.art` / `.tm0` texture recovery (`lib-excite.c`, itself ported from the **ExciteExtract** research tool), all via nintoolbox.
+  `.tex` / `.art` / `.tm0` texture recovery and the `.mod` display-list models (`lib-excite.c`, itself ported from the **ExciteExtract**
+  research tool), all via nintoolbox. GodModeWii differs in two places: Excite Truck's 0x44-byte TOC offsets count from the archive's
+  data offset (read from the file's start, every member came out 0x80 bytes early), and an NDL2 model's positions and texcoords are
+  found through its header's array pointers (packed or padded per file).
 * **[QuickLZ](http://www.quicklz.com/)** by Lasse Mikkel Reinhold (GPL) — `source/qlz.c` decodes the 1.4.0 (level 3) and 1.20
   streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
 * **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in

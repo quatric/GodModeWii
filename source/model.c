@@ -28,6 +28,7 @@
 #include "input.h"
 #include <input_wii.h>
 #include "archive.h"
+#include "excite.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
 #define MAX_VERTS (2u * 1024 * 1024)
@@ -202,6 +203,39 @@ static int add_texture(model_t *m, const u8 *file, u32 flen, u32 at, int fmt, in
     GX_InitTexObjLOD(&t->obj, GX_LINEAR, GX_LINEAR, 0, 0, 0, GX_FALSE, GX_FALSE, GX_ANISO_1);
     t->key = key;
     t->cutout = fmt != GX_TF_I4 && fmt != GX_TF_I8 && fmt != GX_TF_RGB565;
+    return m->ntex++;
+}
+
+/* A decoded RGBA picture as a GX RGBA8 texture (repeating where the size allows); key tells textures
+ * apart for sharing. Returns the index into m->tex, or -1. */
+static int add_rgba_texture(model_t *m, const u8 *rgba, int w, int h, u32 key)
+{
+    for (int i = 0; i < m->ntex; i++)
+        if (m->tex[i].key == key) return i;
+    if (m->ntex >= MAX_TEX || w <= 0 || h <= 0 || w > 1024 || h > 1024) return -1;
+    int tw = (w + 3) & ~3, th = (h + 3) & ~3;
+    u8 *gx = memalign(32, tw * th * 4);
+    if (!gx) return -1;
+    u8 *o = gx;
+    for (int by = 0; by < th; by += 4)                 /* 4x4 tiles: 32 bytes of AR, then 32 of GB */
+        for (int bx = 0; bx < tw; bx += 4, o += 64)
+            for (int i = 0; i < 16; i++) {
+                int x = bx + (i & 3), y = by + (i >> 2);
+                const u8 *c = x < w && y < h ? rgba + (y * w + x) * 4 : (const u8 *)"\0\0\0\0";
+                o[i * 2] = c[3];
+                o[i * 2 + 1] = c[0];
+                o[32 + i * 2] = c[1];
+                o[32 + i * 2 + 1] = c[2];
+            }
+    tex_t *t = &m->tex[m->ntex];
+    memset(t, 0, sizeof(*t));
+    t->own = gx;
+    DCFlushRange(gx, tw * th * 4);
+    GX_InitTexObj(&t->obj, gx, w, h, GX_TF_RGBA8, is_pow2(w) ? GX_REPEAT : GX_CLAMP,
+                  is_pow2(h) ? GX_REPEAT : GX_CLAMP, GX_FALSE);
+    GX_InitTexObjLOD(&t->obj, GX_LINEAR, GX_LINEAR, 0, 0, 0, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    t->key = key;
+    t->cutout = true;
     return m->ntex++;
 }
 
@@ -1051,6 +1085,378 @@ static bool load_hsf(model_t *m, const u8 *b, u32 len, const char *name)
     return m->n > 0;
 }
 
+/* ---------------------------------------------------------------- Monster Games .mod */
+
+/* Excite Truck / Excitebots models (after nintoolbox's lib-excite.c, GPL-2.0+): one or more "3LDN" /
+ * "2LDN" chunks, each a 0x40-byte little-endian header, the position and texcoord arrays, then a
+ * genuine GX display list. The list's CP writes give the arrays' formats (VAT group A at 0x70); its
+ * draw calls carry index tuples whose width isn't stored, so it is found by trying each one and
+ * keeping the one that reads the whole list as well-formed commands with sane positions. A file may
+ * start with an entry table (count, offset; 16-byte entries whose +12 is a chunk); without one every
+ * chunk in the file is taken. Geometry only: each chunk gets a flat colour. */
+#define MOD_PRIMS 4096
+
+typedef struct { u8 kind; u16 cnt; u32 off; } modprim_t;
+
+/* The display list read with bpv-byte vertices; false on a malformed command. */
+static bool mod_dl(const u8 *dl, u32 n, u32 bpv, modprim_t *pr, u32 *np, u32 *total, u32 *vat70, bool *have70)
+{
+    u32 p = 0;
+    *np = *total = 0;
+    *have70 = false;
+    while (p < n) {
+        u8 op = dl[p];
+        if (op == 0x00) { p++; continue; }
+        if (op == 0xE3) break;
+        if (op == 0x08) {
+            if (p + 6 > n) return false;
+            if (dl[p + 1] == 0x70) { *vat70 = be32(dl + p + 2); *have70 = true; }
+            p += 6;
+            continue;
+        }
+        if (op == 0x10) {
+            if (p + 5 > n) return false;
+            u64 adv = 5 + ((u64)be16(dl + p + 1) + 1) * 4;
+            if (p + adv > n) return false;
+            p += (u32)adv;
+            continue;
+        }
+        if (op == 0x61) {
+            if (p + 5 > n) return false;
+            p += 5;
+            continue;
+        }
+        if (op < 0x80 || op >= 0xC0 || p + 3 > n) return false;
+        u16 cnt = be16(dl + p + 1);
+        p += 3;
+        if (p + (u64)cnt * bpv > n || *np >= MOD_PRIMS) return false;
+        pr[*np].kind = (op - 0x80) >> 3;        /* 0 quads, 1 quads, 2 triangles, 3 strip, 4 fan, 5+ lines */
+        pr[*np].cnt = cnt;
+        pr[*np].off = p;
+        (*np)++;
+        *total += cnt;
+        p += cnt * bpv;
+    }
+    return *np > 0;
+}
+
+static float mod_attr(const u8 *p, u32 fmt, float scale)
+{
+    switch (fmt) {
+    case 0: return p[0] * scale;
+    case 1: return (s8)p[0] * scale;
+    case 2: return be16(p) * scale;
+    case 3: return (s16)be16(p) * scale;
+    default: return bef(p);
+    }
+}
+
+/* One chunk at m into the model. */
+static bool mod_chunk(model_t *m, const u8 *b, u32 len, u32 at, int color, int tex)
+{
+    static const u32 FSZ[5] = { 1, 1, 2, 2, 4 };
+    if ((u64)at + 0x40 > len) return false;
+    u32 h[14];
+    for (int i = 0; i < 14; i++) h[i] = le32(b + at + i * 4);
+    u32 dl_end = h[1];
+    if (dl_end >> 16 == 0xE3E3) dl_end &= 0xFFFF;                 /* NDL2 keeps it in 16 bits */
+    u32 npos = h[7];
+    if (!npos || npos > 100000) return false;
+    bool ndl2 = !memcmp(b + at, "2LDN", 4);
+
+    /* the display list starts with its CP preamble: 08 70 .. 08 80 .. 08 90 */
+    u32 hi = dl_end && (u64)at + dl_end <= len ? at + dl_end : len, dls = 0, dln = 0;
+    for (u32 q = at; q + 14 <= hi; q++)
+        if (b[q] == 0x08 && b[q + 1] == 0x70 && b[q + 6] == 0x08 && b[q + 7] == 0x80 && b[q + 12] == 0x08 &&
+            b[q + 13] == 0x90) {
+            dls = q;
+            dln = dl_end > q - at && (u64)at + dl_end <= len ? dl_end - (q - at) : len - q;
+            break;
+        }
+    if (!dls && h[13] >= at && h[13] < len && h[12] && (u64)h[13] + h[12] <= len) {
+        dls = h[13];
+        dln = h[12];
+    }
+    if (!dls) return false;
+    const u8 *dl = b + dls;
+
+    modprim_t *pr = malloc(MOD_PRIMS * sizeof(*pr)), *best = malloc(MOD_PRIMS * sizeof(*best));
+    if (!pr || !best) {
+        free(pr);
+        free(best);
+        return false;
+    }
+    static const u32 CAND[8] = { 3, 2, 4, 5, 6, 7, 8, 1 };
+    bool excluded[9] = { false }, ok = false, padded = false;
+    int tbyte = -1;
+    u32 bpv = 0, nb = 0, pos_n = 3, pos_fmt = 0, tex_fmt = 0, tex_n = 2, pos_off = 0, tex_off = 0, ntex = 0;
+    float pscale = 1, tscale = 1;
+    for (int retry = 0; retry < 8 && !ok; retry++) {
+        u32 best_total = 0, va = 0;
+        bpv = 0;
+        for (int c = 0; c < 8; c++) {
+            u32 v = CAND[c], np, total, va_c = 0;
+            bool have;
+            if (excluded[v] || !mod_dl(dl, dln, v, pr, &np, &total, &va_c, &have) || total <= best_total) continue;
+            if (!have) {
+                if (!bpv) excluded[v] = true;
+                continue;
+            }
+            best_total = total;
+            bpv = v;
+            nb = np;
+            va = va_c;
+            memcpy(best, pr, np * sizeof(*pr));
+        }
+        if (!bpv) break;
+        pos_fmt = va >> 1 & 7;
+        u32 pos_shift = va >> 4 & 31;
+        tex_fmt = va >> 22 & 7;
+        u32 tex_shift = va >> 25 & 31;
+        pos_n = (va & 1 ? 3 : 2) + (padded ? 1 : 0);    /* some NDL2 files pad XYZ to four floats */
+        /* NDL2 names its arrays: positions at h[8], the next array at h[9] (so the gap says whether
+         * positions are padded), texcoords at h[10] */
+        bool n2arr = ndl2 && h[8] >= at + 0x40 && h[9] > h[8] && h[9] <= dls && !((h[9] - h[8]) % npos) &&
+                     (h[9] - h[8]) / npos / FSZ[pos_fmt] >= pos_n && (h[9] - h[8]) / npos / FSZ[pos_fmt] <= 4 &&
+                     !((h[9] - h[8]) / npos % FSZ[pos_fmt]);
+        if (n2arr) pos_n = (h[9] - h[8]) / npos / FSZ[pos_fmt];
+        tex_n = va >> 21 & 1 ? 2 : 1;
+        if (pos_fmt > 4) {
+            excluded[bpv] = true;
+            continue;
+        }
+        pscale = pos_fmt == 4 ? 1 : 1.0f / (1u << pos_shift);
+        tscale = tex_fmt == 4 ? 1 : 1.0f / (1u << tex_shift);
+        /* NDL3 names its arrays at h[9..11]; NDL2's positions follow the header */
+        u32 pbytes = npos * pos_n * FSZ[pos_fmt];
+        pos_off = !ndl2 && h[9] >= at + 0x40 && h[9] < dls && h[9] + pbytes <= dls ? h[9] : at + 0x40;
+        u32 second = !ndl2 && h[10] >= at + 0x40 && h[10] < dls ? h[10] : 0;
+        u32 third = !ndl2 && h[11] >= at + 0x40 && h[11] < dls ? h[11] : 0;
+        tex_off = third ? third : second ? second : pos_off + pbytes;
+        if (n2arr) {
+            pos_off = h[8];
+            if (h[10] >= h[9] && h[10] < dls) tex_off = h[10];
+        }
+        /* which byte of a vertex is its texcoord index (the last one; -1: none) */
+        tbyte = bpv == 3 && (n2arr || third || (second && second != tex_off)) ? 2
+              : bpv == 5 ? 4 : n2arr && bpv > 1 ? (int)bpv - 1 : -1;
+        u32 maxt = 0;
+        for (u32 i = 0; tbyte >= 0 && i < nb; i++)
+            for (u32 v = 0; v < best[i].cnt; v++) {
+                u32 ti = dl[best[i].off + v * bpv + tbyte];
+                if (ti > maxt) maxt = ti;
+            }
+        ntex = tbyte >= 0 ? maxt + 1 : 0;
+        if ((u64)pos_off + pbytes > len) {
+            excluded[bpv] = true;
+            continue;
+        }
+        if (tex_fmt > 4 || (u64)tex_off + (u64)ntex * tex_n * FSZ[tex_fmt] > len) ntex = 0;
+        /* a misread shows as huge or broken positions */
+        float max_abs = 0;
+        ok = true;
+        for (u32 i = 0; i < npos * pos_n && ok; i++) {
+            float v = mod_attr(b + pos_off + i * FSZ[pos_fmt], pos_fmt, pscale);
+            if (!isfinite(v) || fabsf(v) > 1e9f) ok = false;
+            else if (fabsf(v) > max_abs) max_abs = fabsf(v);
+        }
+        /* the header's radius is no use as a bound (tracks have tiny ones), but a misread runs away */
+        if (ok && max_abs > 1e6f) ok = false;
+        if (!ok && ndl2 && !padded && !n2arr) {
+            padded = true;                          /* the same width again, with padded positions */
+            retry--;
+            continue;
+        }
+        padded = false;
+        if (!ok) excluded[bpv] = true;
+    }
+    free(pr);
+    if (!ok) {
+        free(best);
+        return false;
+    }
+
+    u32 start = m->n;
+    for (u32 i = 0; i < nb; i++) {
+        const modprim_t *q = &best[i];
+        u32 ntri = q->kind == 3 || q->kind == 4 ? (q->cnt > 2 ? q->cnt - 2 : 0)
+                 : q->kind == 2 ? q->cnt / 3 : q->kind <= 1 ? q->cnt / 4 * 2 : 0;
+        for (u32 t = 0; t < ntri; t++) {
+            u32 c[3];
+            if (q->kind == 3) {                     /* strip, alternating winding */
+                if (t & 1) { c[0] = t + 1; c[1] = t; c[2] = t + 2; }
+                else       { c[0] = t; c[1] = t + 1; c[2] = t + 2; }
+            } else if (q->kind == 4) { c[0] = 0; c[1] = t + 1; c[2] = t + 2; }
+            else if (q->kind == 2)   { c[0] = t * 3; c[1] = t * 3 + 1; c[2] = t * 3 + 2; }
+            else {                                  /* quads: two triangles each */
+                u32 k = t / 2 * 4;
+                if (t & 1) { c[0] = k; c[1] = k + 2; c[2] = k + 3; }
+                else       { c[0] = k; c[1] = k + 1; c[2] = k + 2; }
+            }
+            vert_t v[3];
+            for (int k = 0; k < 3; k++) {
+                const u8 *vp = dl + q->off + c[k] * bpv;
+                u32 pi = bpv == 4 || bpv == 5 ? be16(vp) : vp[0];
+                u32 ti = tbyte >= 0 ? vp[tbyte] : 0;
+                if (pi >= npos) pi = 0;
+                const u8 *pp = b + pos_off + pi * pos_n * FSZ[pos_fmt];
+                v[k].p[0] = mod_attr(pp, pos_fmt, pscale);
+                v[k].p[1] = mod_attr(pp + FSZ[pos_fmt], pos_fmt, pscale);
+                v[k].p[2] = pos_n > 2 ? mod_attr(pp + 2 * FSZ[pos_fmt], pos_fmt, pscale) : 0;
+                v[k].t[0] = v[k].t[1] = 0;
+                if (ntex && ti < ntex) {
+                    const u8 *tp = b + tex_off + ti * tex_n * FSZ[tex_fmt];
+                    v[k].t[0] = mod_attr(tp, tex_fmt, tscale);
+                    v[k].t[1] = tex_n > 1 ? mod_attr(tp + FSZ[tex_fmt], tex_fmt, tscale) : 0;
+                }
+                if (tex >= 0) memset(v[k].c, 255, 3);
+                else memcpy(v[k].c, PALETTE[color & 7], 3);
+                v[k].c[3] = 255;
+            }
+            /* no normals in the file: the face's own */
+            float e1[3], e2[3], n[3];
+            for (int k = 0; k < 3; k++) { e1[k] = v[1].p[k] - v[0].p[k]; e2[k] = v[2].p[k] - v[0].p[k]; }
+            n[0] = e1[1] * e2[2] - e1[2] * e2[1];
+            n[1] = e1[2] * e2[0] - e1[0] * e2[2];
+            n[2] = e1[0] * e2[1] - e1[1] * e2[0];
+            float l = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+            if (l < 1e-12f) continue;
+            for (int k = 0; k < 3; k++)
+                for (int j = 0; j < 3; j++) v[k].n[j] = n[j] / l;
+            if (!push(m, &v[0]) || !push(m, &v[1]) || !push(m, &v[2])) break;
+        }
+    }
+    free(best);
+    if (m->n == start) return false;
+    add_mesh(m, start, tex, 0);
+    m->meshes++;
+    return true;
+}
+
+/* Where a .mod's textures are: its own folder (usually the .car / .trk archive it came from), then,
+ * beside that archive, the region's base track ("Canada_Opt1.trk" -> "canada.trk") and the shared
+ * HobbySet.res, race.res and common.res. Set by model_view. */
+#define MOD_DIRS 5
+static char g_mod_dir[MOD_DIRS][VFS_PATH_MAX];
+static vfs_entry *g_mod_list[MOD_DIRS];
+static int g_mod_n[MOD_DIRS], g_mod_ndirs;
+
+static void mod_dirs_free(void)
+{
+    for (int i = 0; i < g_mod_ndirs; i++) free(g_mod_list[i]);
+    for (int i = 0; i < MOD_DIRS; i++) g_mod_list[i] = NULL, g_mod_n[i] = -1;
+    g_mod_ndirs = 0;
+}
+
+/* name in the folder dir, any case; false when it isn't there */
+static bool find_ci(const char *dir, const char *name, char *out)
+{
+    vfs_entry *l;
+    int n;
+    if (!vfs_list(dir, &l, &n)) return false;
+    bool found = false;
+    for (int i = 0; i < n && !found; i++)
+        if (!strcasecmp(l[i].name, name)) found = vfs_join(out, VFS_PATH_MAX, dir, l[i].name);
+    free(l);
+    return found;
+}
+
+static void mod_dirs_set(const char *path)
+{
+    mod_dirs_free();
+    char dir[VFS_PATH_MAX], outer[VFS_PATH_MAX], arc[VFS_PATH_MAX], p[VFS_PATH_MAX];
+    if (!vfs_parent(path, dir, sizeof(dir))) return;
+    snprintf(g_mod_dir[g_mod_ndirs++], VFS_PATH_MAX, "%s", dir);
+    /* the archive the model is in, and the folder that holds it */
+    snprintf(arc, sizeof(arc), "%s", path);
+    char *bar = strstr(arc, "|/");
+    if (!bar) return;
+    *bar = 0;
+    if (!vfs_parent(arc, outer, sizeof(outer))) return;
+    const char *an = vfs_basename(arc);
+    char want[4][64];
+    int nw = 0;
+    const char *cut = an + strcspn(an, "_.");
+    if (arc_name_has_ext(an, ".trk") && *cut == '_')
+        snprintf(want[nw++], 64, "%.*s.trk", (int)(cut - an), an);
+    snprintf(want[nw++], 64, "HobbySet.res");
+    snprintf(want[nw++], 64, "race.res");
+    snprintf(want[nw++], 64, "common.res");
+    for (int i = 0; i < nw && g_mod_ndirs < MOD_DIRS; i++)
+        if (find_ci(outer, want[i], p)) {
+            size_t l = strlen(p);
+            if (l + 3 < VFS_PATH_MAX) snprintf(g_mod_dir[g_mod_ndirs++], VFS_PATH_MAX, "%s|/", p);
+        }
+}
+
+/* The texture a chunk's descriptor names, loaded from the folders above; -1 when it isn't found. */
+static int mod_texture(model_t *m, const u8 *b, u32 len, u32 desc)
+{
+    if (!desc || (u64)desc + 64 > len) return -1;
+    u32 layers = le32(b + desc), at = layers == 1 ? 16 : layers == 2 ? 20 : layers <= 8 ? 24 : 0;
+    if (!at) return -1;
+    char name[48];
+    u32 k = 0;
+    for (; k + 1 < sizeof(name) && b[desc + at + k] >= 0x20 && b[desc + at + k] < 0x7F; k++)
+        name[k] = (char)b[desc + at + k];
+    name[k] = 0;
+    if (k < 5 || strcasecmp(name + k - 4, ".tex")) return -1;
+    u32 key = 0x80000000u;                              /* by name: the same texture is loaded once */
+    for (u32 i = 0; i < k; i++) key = key * 31 + (u8)(name[i] | 0x20);
+    key |= 0x80000000u;
+    for (int i = 0; i < m->ntex; i++)
+        if (m->tex[i].key == key) return i;
+    for (int d = 0; d < g_mod_ndirs; d++) {
+        if (g_mod_n[d] < 0 && !vfs_list(g_mod_dir[d], &g_mod_list[d], &g_mod_n[d])) {
+            g_mod_n[d] = 0;
+            g_mod_list[d] = NULL;
+        }
+        for (int i = 0; i < g_mod_n[d]; i++) {
+            if (strcasecmp(g_mod_list[d][i].name, name)) continue;
+            char p[VFS_PATH_MAX];
+            u32 n;
+            u8 *f = vfs_join(p, sizeof(p), g_mod_dir[d], g_mod_list[d][i].name) ? load_file(p, &n) : NULL;
+            int w, h, t = -1;
+            u8 *rgba = f ? excite_tex(f, n, &w, &h) : NULL;
+            if (rgba) t = add_rgba_texture(m, rgba, w, h, key);
+            free(rgba);
+            free(f);
+            return t;
+        }
+    }
+    return -1;
+}
+
+static bool mod_is(const u8 *b, u32 len)
+{
+    for (u32 q = 0; q + 0x40 <= len; q += 4)
+        if (!memcmp(b + q, "3LDN", 4) || !memcmp(b + q, "2LDN", 4)) return true;
+    return false;
+}
+
+static bool load_mod(model_t *m, const u8 *b, u32 len, const char *name)
+{
+    m->bones = 0;
+    u32 count = len >= 8 ? le32(b) : 0, table = len >= 8 ? le32(b + 4) : 0;
+    if (count && count < 2000 && table >= 0x40 && (u64)table + (u64)count * 16 <= len) {
+        for (u32 i = 0; i < count; i++)
+            mod_chunk(m, b, len, le32(b + table + i * 16 + 12), (int)i, mod_texture(m, b, len, le32(b + table + i * 16 + 8)));
+    }
+    if (!m->n)
+        for (u32 q = 0, i = 0; q + 0x40 <= len; q++) {
+            if (memcmp(b + q, "3LDN", 4) && memcmp(b + q, "2LDN", 4)) continue;
+            mod_chunk(m, b, len, q, (int)i++, -1);
+            /* past this chunk, so its data isn't taken for another one */
+            u32 skip = le32(b + q + 4);
+            if (skip >> 16 == 0xE3E3) skip &= 0xFFFF;
+            if (skip > 0x38 && (u64)q + skip <= len) q += skip - 1;
+            else q += 0x37;
+        }
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "Monster Games MOD";
+    return m->n > 0;
+}
+
 /* ---------------------------------------------------------------- J3D */
 
 typedef struct {
@@ -1381,6 +1787,516 @@ static bool load_j3d(model_t *m, const u8 *b, u32 len, const char *name)
     return m->n > 0;
 }
 
+/* ---------------------------------------------------------------- HSD */
+
+/* HAL Laboratory sysdolphin (HSD) .dat models (Super Smash Bros. Melee, Kirby Air Ride, TV no Tomo
+ * Channel, ...), after nintoolbox's lib-hsd.c and Ploaj's HSDLib: a 0x20 byte header, the data, a
+ * relocation table (every pointer in the data is listed there), then root / reference tables and
+ * their names. A root is a joint (JObj) tree, or "scene_data" listing several. Each joint has a
+ * list of DObjs, each a material (MObj: colour, TObj textures) and polygons (PObj: GX vertex
+ * attributes and display lists), bound to their joint, another one, or weighted envelopes. */
+#define HSD_BASE   0x20
+#define HSD_JOINTS 2048
+
+typedef struct {
+    const u8 *d;
+    u32 size, ro;                       /* file size, start of the relocation table */
+    u32 *loc, *dst;                     /* pointer locations (sorted) and where they point */
+    u32 n;
+    u32 *joff;                          /* joints: offset and world matrix */
+    float (*jw)[12];
+    int nj;
+} hsdm_t;
+
+static bool hsd_head(const u8 *b, u32 len, u32 *ro, u32 *nrel, u32 *nroot, u32 *nref)
+{
+    if (len < 0x40 || be32(b) != len) return false;
+    *ro = be32(b + 4) + HSD_BASE;
+    *nrel = be32(b + 8);
+    *nroot = be32(b + 12);
+    *nref = be32(b + 16);
+    return *ro >= HSD_BASE && *ro <= len && *nroot >= 1 && *nroot <= 0x10000 && *nref <= 0x10000 &&
+           *nrel <= 0x400000 && (u64)*ro + (u64)*nrel * 4 + (u64)(*nroot + *nref) * 8 <= len;
+}
+
+bool model_hsd_is(const u8 *b, u32 len)
+{
+    u32 ro, nrel, nroot, nref;
+    return hsd_head(b, len, &ro, &nrel, &nroot, &nref);
+}
+
+/* What the pointer stored at loc points to (an absolute offset), or 0. */
+static u32 hp(const hsdm_t *h, u32 loc)
+{
+    u32 lo = 0, hi = h->n;
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        if (h->loc[mid] < loc) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo < h->n && h->loc[lo] == loc ? h->dst[lo] : 0;
+}
+
+static bool hsd_in(const hsdm_t *h, u32 off, u32 need) { return off >= HSD_BASE && (u64)off + need <= h->ro; }
+
+static const float *hsd_world(const hsdm_t *h, u32 jobj)
+{
+    for (int i = 0; i < h->nj; i++)
+        if (h->joff[i] == jobj) return h->jw[i];
+    return NULL;
+}
+
+/* A joint's scale, rotation and translation, if they are sane numbers. */
+static bool hsd_srt(const hsdm_t *h, u32 off, float *M)
+{
+    if (!hsd_in(h, off, 0x40)) return false;
+    float r[3], s[3], t[3];
+    for (int k = 0; k < 3; k++) {
+        r[k] = bef(h->d + off + 0x14 + k * 4);
+        s[k] = bef(h->d + off + 0x20 + k * 4);
+        t[k] = bef(h->d + off + 0x2C + k * 4);
+        if (!isfinite(r[k]) || !isfinite(s[k]) || !isfinite(t[k]) || fabsf(t[k]) > 1e7f || fabsf(s[k]) > 1e5f)
+            return false;
+    }
+    euler_mtx(s, r, t, M);
+    return true;
+}
+
+static void hsd_skeleton(hsdm_t *h, u32 off, const float *parent, int depth)
+{
+    while (off && depth < 64 && h->nj < HSD_JOINTS) {
+        if (hsd_world(h, off)) return;                  /* already seen: a loop */
+        float L[12];
+        if (!hsd_srt(h, off, L)) {
+            /* a fighter's ftData: its joint tree hangs off +0x5C */
+            u32 sk = hsd_in(h, off, 0x60) ? hp(h, off + 0x5C) : 0;
+            if (sk && sk != off) hsd_skeleton(h, sk, parent, depth + 1);
+            return;
+        }
+        int j = h->nj++;
+        h->joff[j] = off;
+        if (parent) mul34(parent, L, h->jw[j]);
+        else memcpy(h->jw[j], L, sizeof(L));
+        hsd_skeleton(h, hp(h, off + 0x08), h->jw[j], depth + 1);
+        off = hp(h, off + 0x0C);                        /* siblings, iteratively */
+        depth++;
+    }
+}
+
+/* ---- vertex attributes */
+
+typedef struct {
+    u32 name, type, ctype, buf;
+    int stride, frac;
+} hsda_t;
+
+enum { HV_PNMTX = 0, HV_POS = 9, HV_NRM = 10, HV_CLR0 = 11, HV_TEX0 = 13, HV_NBT = 25 };
+
+static int hsd_attrs(const hsdm_t *h, u32 off, hsda_t *a)
+{
+    int n = 0;
+    while (n < 16 && hsd_in(h, off, 0x18)) {
+        const u8 *s = h->d + off;
+        u32 name = be32(s);
+        if (name == 0xFF) break;
+        a[n].name = name;
+        a[n].type = be32(s + 4);
+        a[n].ctype = be32(s + 0x0C);
+        a[n].frac = s[0x10];
+        a[n].stride = (s16)be16(s + 0x12);
+        a[n].buf = hp(h, off + 0x14);
+        n++;
+        off += 0x18;
+    }
+    return n;
+}
+
+static float hsd_comp(const hsda_t *a, const u8 *p, int k)
+{
+    float d = (float)(1u << (a->frac & 31));
+    switch (a->ctype) {
+    case 0: return p[k] / d;
+    case 1: return (s8)p[k] / d;
+    case 2: return be16(p + k * 2) / d;
+    case 3: return (s16)be16(p + k * 2) / d;
+    default: return bef(p + k * 4);
+    }
+}
+
+typedef struct {
+    float p[3], n[3], t[2];
+    u8 c[4];
+    int env;                            /* PNMTXIDX / 3, or -1 */
+    bool has_c;
+} hsdv_t;
+
+/* One vertex from the display list at *dl. */
+static bool hsd_vertex(const hsdm_t *h, const hsda_t *a, int na, const u8 **dl, const u8 *end, hsdv_t *v)
+{
+    memset(v, 0, sizeof(*v));
+    v->n[1] = 1;
+    v->env = -1;
+    for (int i = 0; i < na; i++) {
+        const u8 *src;
+        if (a[i].type == 1) {                           /* direct: inline */
+            int w = a[i].stride > 0 ? a[i].stride : 1;
+            if (*dl + w > end) return false;
+            src = *dl;
+            *dl += w;
+        } else if (a[i].type == 2 || a[i].type == 3) {
+            u32 idx;
+            if (a[i].type == 2) {
+                if (*dl + 1 > end) return false;
+                idx = **dl;
+                *dl += 1;
+            } else {
+                if (*dl + 2 > end) return false;
+                idx = be16(*dl);
+                *dl += 2;
+            }
+            if (!a[i].buf || a[i].stride <= 0) continue;
+            u64 at = a[i].buf + (u64)idx * (u32)a[i].stride;
+            if (at + (u32)a[i].stride > h->ro) return false;
+            src = h->d + at;
+        } else
+            continue;
+        int esz = a[i].ctype < 2 ? 1 : a[i].ctype < 4 ? 2 : 4;
+        int nc = a[i].stride > 0 ? a[i].stride / esz : 0;
+        switch (a[i].name) {
+        case HV_PNMTX: v->env = src[0] / 3; break;
+        case HV_POS:
+            for (int k = 0; k < 3 && k < nc; k++) v->p[k] = hsd_comp(&a[i], src, k);
+            break;
+        case HV_NRM:
+        case HV_NBT:
+            for (int k = 0; k < 3 && k < nc; k++) v->n[k] = hsd_comp(&a[i], src, k);
+            break;
+        case HV_TEX0:
+            for (int k = 0; k < 2 && k < nc; k++) v->t[k] = hsd_comp(&a[i], src, k);
+            break;
+        case HV_CLR0:
+            get_color(src, 1, 0, (int)a[i].ctype, 0, v->c);
+            v->has_c = true;
+            break;
+        default: break;
+        }
+    }
+    return true;
+}
+
+/* ---- materials */
+
+typedef struct {
+    int tex;
+    u8 rgba[4];
+    bool xlu;
+    float ss, st, ts, tt;
+} hsdmat_t;
+
+/* An HSD_Image's GX format: a plain u32 (Melee), or packed into the high byte with the mip count
+ * after it (TV no Tomo). */
+static int hsd_img_fmt(const u8 *p)
+{
+    u32 f = be32(p);
+    if (f <= 14) return (int)f;
+    return p[0] <= 14 && !(f & 0xFFFF) ? p[0] : -1;
+}
+
+static void hsd_material(model_t *m, const hsdm_t *h, u32 mobj, hsdmat_t *mt)
+{
+    memset(mt, 0, sizeof(*mt));
+    mt->tex = -1;
+    mt->rgba[0] = mt->rgba[1] = mt->rgba[2] = 200;
+    mt->rgba[3] = 255;
+    mt->ss = mt->st = 1;
+    if (!hsd_in(h, mobj, 0x18)) return;
+    u32 mode = be32(h->d + mobj + 4), mat = hp(h, mobj + 0x0C);
+    if (hsd_in(h, mat, 0x14)) {
+        memcpy(mt->rgba, h->d + mat + 4, 3);
+        float al = bef(h->d + mat + 0x0C);
+        if (al > 0 && al < 1) mt->rgba[3] = (u8)(al * 255);
+    }
+    mt->xlu = (mode & (1u << 30)) && mt->rgba[3] < 255;
+    u32 t = hp(h, mobj + 0x08);
+    for (int layer = 0; layer < 8 && hsd_in(h, t, 0x58) && mt->tex < 0; layer++) {
+        const u8 *to = h->d + t;
+        u32 img = hp(h, t + 0x4C);
+        if (hsd_in(h, img, 0x0C)) {
+            u32 pix = hp(h, img);
+            int w = be16(h->d + img + 4), hh = be16(h->d + img + 6), fmt = hsd_img_fmt(h->d + img + 8);
+            const u8 *pal = NULL;
+            int pf = 0, pn = 0;
+            if (fmt == 8 || fmt == 9 || fmt == 10) {
+                u32 tl = hp(h, t + 0x50), pd = tl ? hp(h, tl) : 0;
+                if (hsd_in(h, tl, 0x0E) && pd) {
+                    pf = (int)be32(h->d + tl + 4);
+                    pn = be16(h->d + tl + 0x0C);
+                    if (pf <= 2 && pn > 0 && hsd_in(h, pd, pn * 2)) pal = h->d + pd;
+                }
+                if (!pal) fmt = -1;
+            }
+            if (pix && fmt >= 0)
+                mt->tex = add_texture(m, h->d, h->ro, pix, fmt, w, hh, pal, pf, pn, (int)be32(to + 0x34),
+                                      (int)be32(to + 0x38), 0);
+            if (mt->tex >= 0) {
+                mt->ss = bef(to + 0x1C);
+                mt->st = bef(to + 0x20);
+                mt->ts = bef(to + 0x28);
+                mt->tt = bef(to + 0x2C);
+                if (!(fabsf(mt->ss) > 1e-6f && fabsf(mt->ss) < 1e4f)) mt->ss = 1;
+                if (!(fabsf(mt->st) > 1e-6f && fabsf(mt->st) < 1e4f)) mt->st = 1;
+                if (!(fabsf(mt->ts) < 1e4f)) mt->ts = 0;
+                if (!(fabsf(mt->tt) < 1e4f)) mt->tt = 0;
+            }
+        }
+        u32 next = hp(h, t + 0x04);
+        if (next == t) break;
+        t = next;
+    }
+}
+
+/* ---- polygons */
+
+/* Envelope e of a PObj as one matrix: the weighted sum of each joint's world matrix times its
+ * inverse bind matrix (identity at the bind pose, where such vertices are stored). */
+static bool hsd_envelope(const hsdm_t *h, u32 pobj, int e, float *M)
+{
+    u32 arr = hp(h, pobj + 0x14);
+    if (!arr || e < 0 || e > 255) return false;
+    for (int i = 0; i <= e; i++)
+        if (!hp(h, arr + i * 4)) return false;
+    u32 ed = hp(h, arr + e * 4);
+    memset(M, 0, 12 * sizeof(float));
+    float total = 0;
+    for (int k = 0; k < 16 && hsd_in(h, ed + k * 8, 8); k++) {
+        u32 j = hp(h, ed + k * 8);
+        float w = bef(h->d + ed + k * 8 + 4);
+        if (!j || !(w > 0)) break;
+        const float *W = hsd_world(h, j);
+        if (!W) continue;
+        float B[12];
+        u32 ib = hp(h, j + 0x38);
+        if (hsd_in(h, ib, 48)) {
+            float I[12];
+            for (int q = 0; q < 12; q++) I[q] = bef(h->d + ib + q * 4);
+            mul34(W, I, B);
+        } else
+            memcpy(B, W, sizeof(B));
+        for (int q = 0; q < 12; q++) M[q] += w * B[q];
+        total += w;
+        if (total >= 0.999f) break;
+    }
+    if (!(total > 0)) return false;
+    if (fabsf(total - 1) > 1e-4f)
+        for (int q = 0; q < 12; q++) M[q] /= total;
+    return true;
+}
+
+static void hsd_put(model_t *m, const hsdv_t *s, const float *M, const hsdmat_t *mt)
+{
+    vert_t v;
+    if (M) {
+        xform(M, s->p, v.p);
+        xform_n(M, s->n, v.n);
+    } else {
+        memcpy(v.p, s->p, 12);
+        memcpy(v.n, s->n, 12);
+    }
+    v.t[0] = s->t[0];
+    v.t[1] = s->t[1];
+    if (mt->tex >= 0) {
+        v.t[0] = v.t[0] * mt->ss + mt->ts;
+        v.t[1] = v.t[1] * mt->st + mt->tt;
+        if (s->has_c) memcpy(v.c, s->c, 4);
+        else v.c[0] = v.c[1] = v.c[2] = 255, v.c[3] = mt->rgba[3];
+    } else if (s->has_c)
+        memcpy(v.c, s->c, 4);
+    else
+        memcpy(v.c, mt->rgba, 4);
+    push(m, &v);
+}
+
+static void hsd_tri(model_t *m, const hsdv_t *a, const hsdv_t *b, const hsdv_t *c, const float *const *M,
+                    const hsdmat_t *mt)
+{
+    hsd_put(m, a, M[0], mt);
+    hsd_put(m, b, M[1], mt);
+    hsd_put(m, c, M[2], mt);
+}
+
+/* One PObj's display list. Rigid polygons go through `rigid`; envelope ones per vertex. */
+static void hsd_pobj(model_t *m, const hsdm_t *h, u32 pobj, const float *rigid, const hsdmat_t *mt)
+{
+    hsda_t a[16];
+    int na = hsd_attrs(h, hp(h, pobj + 0x08), a);
+    u16 flags = be16(h->d + pobj + 0x0C);
+    s16 words = (s16)be16(h->d + pobj + 0x0E);
+    u32 dlo = hp(h, pobj + 0x10);
+    if (!na || words <= 0 || !hsd_in(h, dlo, (u32)words * 32)) return;
+    bool env = (flags & 0x3000) == 0x2000;
+    if ((flags & 0x3000) == 0) {                         /* bound to another joint */
+        u32 sb = hp(h, pobj + 0x14);
+        const float *W = sb ? hsd_world(h, sb) : NULL;
+        if (W) rigid = W;
+    }
+    static float envm[256][12];
+    static bool have[256];
+    memset(have, 0, sizeof(have));
+    int vsize = 0;
+    for (int i = 0; i < na; i++)
+        vsize += a[i].type == 1 ? (a[i].stride > 0 ? a[i].stride : 1) : a[i].type == 2 ? 1 : a[i].type == 3 ? 2 : 0;
+
+    const u8 *p = h->d + dlo, *end = p + (u32)words * 32;
+    static hsdv_t vs[4096];
+    while (p < end) {
+        u8 op = *p;
+        if (!op) { p++; continue; }
+        if (op == 0x61 || op == 0x08 || op == 0x10) {   /* BP / CP / XF register loads */
+            p += op == 0x08 ? 6 : op == 0x61 ? 5 : 5 + (be16(p + 1) + 1) * 4;
+            continue;
+        }
+        if (p + 3 > end) break;
+        u32 cnt = be16(p + 1);
+        int prim = op & 0xF8;
+        p += 3;
+        if (prim < 0x80 || prim > 0xB8) break;
+        if (prim > 0xA0 || cnt > 4096) {                /* lines, points: not drawn */
+            p += cnt * vsize;
+            continue;
+        }
+        u32 n = 0;
+        bool ok = true;
+        for (; n < cnt && (ok = hsd_vertex(h, a, na, &p, end, &vs[n])); n++)
+            ;
+        if (!ok) break;
+        const float *M[3];
+        #define HSD_MTX(v) (env ? ((v).env >= 0 && (v).env < 256 && (have[(v).env] || (have[(v).env] = hsd_envelope(h, pobj, (v).env, envm[(v).env]))) ? envm[(v).env] : \
+                          (have[0] || (have[0] = hsd_envelope(h, pobj, 0, envm[0]))) ? envm[0] : rigid) : rigid)
+        #define HSD_T(i0, i1, i2) do { M[0] = HSD_MTX(vs[i0]); M[1] = HSD_MTX(vs[i1]); M[2] = HSD_MTX(vs[i2]); \
+                                     hsd_tri(m, &vs[i0], &vs[i1], &vs[i2], M, mt); } while (0)
+        /* GX winding, reversed as for the other formats */
+        if (prim == 0x90)
+            for (u32 i = 0; i + 2 < n; i += 3) HSD_T(i + 2, i + 1, i);
+        else if (prim == 0x80 || prim == 0x88)
+            for (u32 i = 0; i + 3 < n; i += 4) {
+                HSD_T(i, i + 2, i + 1);
+                HSD_T(i, i + 3, i + 2);
+            }
+        else if (prim == 0x98)
+            for (u32 i = 2; i < n; i++) {
+                if (i & 1) HSD_T(i, i - 2, i - 1);
+                else HSD_T(i, i - 1, i - 2);
+            }
+        else if (prim == 0xA0)
+            for (u32 i = 2; i < n; i++) HSD_T(0, i, i - 1);
+        #undef HSD_T
+        #undef HSD_MTX
+        if (m->n >= MAX_VERTS - 3) break;
+    }
+}
+
+static void hsd_meshes(model_t *m, hsdm_t *h, u32 off, int depth, u32 *seen, int *nseen)
+{
+    while (off && depth < 64) {
+        const float *W = hsd_world(h, off);
+        if (!W) {
+            u32 sk = hsd_in(h, off, 0x60) ? hp(h, off + 0x5C) : 0;
+            if (sk && sk != off) hsd_meshes(m, h, sk, depth + 1, seen, nseen);
+            return;
+        }
+        for (int i = 0; i < *nseen; i++)
+            if (seen[i] == off) return;
+        if (*nseen < HSD_JOINTS) seen[(*nseen)++] = off;
+        u32 jflags = be32(h->d + off + 4);
+        /* +0x10 is a spline or particle instead of DObjs for those joints */
+        u32 dobj = jflags & (0x20 | 0x4000) ? 0 : hp(h, off + 0x10);
+        for (int k = 0; dobj && hsd_in(h, dobj, 0x10) && k < 4096; k++) {
+            hsdmat_t mt;
+            hsd_material(m, h, hp(h, dobj + 0x08), &mt);
+            u32 start = m->n;
+            u32 pobj = hp(h, dobj + 0x0C);
+            for (int q = 0; pobj && hsd_in(h, pobj, 0x18) && q < 4096; q++) {
+                hsd_pobj(m, h, pobj, W, &mt);
+                u32 nx = hp(h, pobj + 0x04);
+                if (nx == pobj) break;
+                pobj = nx;
+            }
+            add_mesh(m, start, mt.tex, mt.xlu ? PE_XLU | PE_BLEND | (5u << 5) | (4u << 8) : 0);
+            if (m->n > start) m->meshes++;
+            u32 nx = hp(h, dobj + 0x04);
+            if (nx == dobj) break;
+            dobj = nx;
+        }
+        hsd_meshes(m, h, hp(h, off + 0x08), depth + 1, seen, nseen);
+        off = hp(h, off + 0x0C);
+        depth++;
+    }
+}
+
+static bool load_hsd(model_t *m, const u8 *b, u32 len, const char *name)
+{
+    hsdm_t h = { 0 };
+    u32 nrel, nroot, nref;
+    if (!hsd_head(b, len, &h.ro, &nrel, &nroot, &nref)) return false;
+    h.d = b;
+    h.size = len;
+    h.loc = malloc((nrel ? nrel : 1) * 4);
+    h.dst = malloc((nrel ? nrel : 1) * 4);
+    h.joff = malloc(HSD_JOINTS * 4);
+    h.jw = malloc(HSD_JOINTS * sizeof(*h.jw));
+    u32 *seen = malloc(HSD_JOINTS * 4);
+    bool ok = false;
+    if (!h.loc || !h.dst || !h.joff || !h.jw || !seen) goto out;
+    /* the relocation table, sorted by location (it usually is already) */
+    for (u32 i = 0; i < nrel; i++) {
+        u32 l = be32(b + h.ro + 4 * i) + HSD_BASE;
+        if (l < HSD_BASE || l + 4 > h.ro) continue;
+        u32 t = be32(b + l) + HSD_BASE;
+        if (t < HSD_BASE || t >= h.ro) continue;
+        u32 k = h.n;
+        while (k && h.loc[k - 1] > l) {
+            h.loc[k] = h.loc[k - 1];
+            h.dst[k] = h.dst[k - 1];
+            k--;
+        }
+        h.loc[k] = l;
+        h.dst[k] = t;
+        h.n++;
+    }
+
+    /* the root joints: each root, or the joints a "scene_data" root lists */
+    u32 roots[256];
+    int nr = 0;
+    u32 table = h.ro + 4 * nrel, strs = table + 8 * (nroot + nref);
+    for (u32 i = 0; i < nroot && nr < 256; i++) {
+        u32 off = be32(b + table + 8 * i) + HSD_BASE, no = strs + be32(b + table + 8 * i + 4);
+        if (!hsd_in(&h, off, 4)) continue;
+        if (no + 11 <= len && !memcmp(b + no, "scene_data", 11)) {
+            for (u32 l = hp(&h, off); l && hsd_in(&h, l, 4) && nr < 256; l += 4) {
+                u32 desc = hp(&h, l);
+                if (!desc) break;
+                u32 j = hp(&h, desc);
+                if (j) roots[nr++] = j;
+            }
+        } else
+            roots[nr++] = off;
+    }
+    for (int i = 0; i < nr; i++) hsd_skeleton(&h, roots[i], NULL, 0);
+    int nseen = 0;
+    for (int i = 0; i < nr; i++) hsd_meshes(m, &h, roots[i], 0, seen, &nseen);
+    m->bones = h.nj;
+    snprintf(m->name, sizeof(m->name), "%s", name);
+    m->kind = "HSD";
+    ok = m->n > 0;
+out:
+    free(h.loc);
+    free(h.dst);
+    free(h.joff);
+    free(h.jw);
+    free(seen);
+    return ok;
+}
+
 /* ---------------------------------------------------------------- GX drawing */
 
 static void *gx_fifo;
@@ -1627,6 +2543,8 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
         return load_mdl0(m, b, len, off, sz, name);
     }
     if (!memcmp(b, "HSFV037", 7)) return load_hsf(m, b, len, name);
+    if (model_hsd_is(b, len)) return load_hsd(m, b, len, name);
+    if (memcmp(b, "J3D", 3) && mod_is(b, len)) return load_mod(m, b, len, name);
     return load_j3d(m, b, len, name);
 }
 
@@ -1664,13 +2582,15 @@ bool model_view(const char *path)
         char *first = strstr(whole, "|/");
         if (first) *first = 0;
         ext_reset(vfs_parent(whole, dir, sizeof(dir)) ? dir : NULL);
+        if (arc_name_has_ext(path, ".mod")) mod_dirs_set(path);
     }
 
     u32 offs[MAX_MODELS];
     static char names[MAX_MODELS][64];
     int count;
 
-    bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4) || !memcmp(b, "HSFV037", 7);
+    bool j3d = !memcmp(b, "J3D2", 4) || !memcmp(b, "J3D1", 4) || !memcmp(b, "HSFV037", 7) || model_hsd_is(b, len) ||
+               (arc_name_has_ext(path, ".mod") && mod_is(b, len));
     if (j3d) {
         count = 1;
         offs[0] = 0;
@@ -1680,6 +2600,7 @@ bool model_view(const char *path)
     if (!count) {
         free(b);
         ext_reset(NULL);
+        mod_dirs_free();
         return false;
     }
 
@@ -1693,11 +2614,13 @@ bool model_view(const char *path)
                 break;
             }
     if (!load_model(&m, b, len, offs[cur], names[cur])) {
-        /* a BRRES with no drawable model: let the caller browse it */
+        /* a BRRES (or an HSD archive) with no drawable model: let the caller browse it */
+        bool hsd = model_hsd_is(b, len);
         free_model(&m);
         free(b);
         ext_reset(NULL);
-        if (j3d) {
+        mod_dirs_free();
+        if (j3d && !hsd) {
             ui_message("MODEL", C_YELLOW, "No drawable geometry was found in this model.");
             return true;
         }
@@ -1805,6 +2728,7 @@ bool model_view(const char *path)
     free_model(&m);
     free(b);
     ext_reset(NULL);
+    mod_dirs_free();
     ui_wipe();
     return true;
 }

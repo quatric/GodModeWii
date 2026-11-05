@@ -12,8 +12,8 @@
  *                  the compact version 3 form, 0x28-byte records {name offset, ?, ?, size, offset} and a
  *                  name pool; or, on WiiWare, that .toc is a member of a "tocres.res" RST next to it.
  *                  Excite Truck's older layout keeps 0x44-byte records {name[32], ..., size at 0x28,
- *                  absolute offset at 0x2C} in its .toc (after 0x28 bytes) or right after the header,
- *                  and a compressed tocres.res holds a compact directory with no .toc at all.
+ *                  offset at 0x2C, from the data offset} in its .toc (after 0x28 bytes) or right after
+ *                  the header, and a compressed tocres.res holds a compact directory with no .toc at all.
  *
  * The decompressed block stays in memory; files in the raw part are read from the archive on demand.
  */
@@ -146,8 +146,11 @@ static uint32_t rst_list(rst_t *r, const uint8_t *toc, uint32_t tsz, bool inline
         }
         for (uint32_t i = 0; i < r->count; i++) {
             const uint8_t *e = rec + i * 0x44;
-            uint32_t sz = le32(e + 0x28), off = le32(e + 0x2C);
-            if (!sz || !good_name(e, 32) || (uint64_t)off + sz > r->f.size) continue;
+            /* the offset counts from the data offset (0x80), like the later layouts' raw part: read
+             * from the file's start, every member began 0x80 bytes early and lost its last 0x80 */
+            uint32_t sz = le32(e + 0x28);
+            uint64_t off = (uint64_t)r->doff + le32(e + 0x2C);
+            if (!sz || !good_name(e, 32) || off + sz > r->f.size) continue;
             clean(nm, sizeof(nm), (const char *)e, 32);
             add(ctx, nm, sz, 1, off);
             found++;
