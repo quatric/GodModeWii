@@ -1321,9 +1321,15 @@ bool vfs_open_read(vfs_file *f, const char *path)
     f->fp = fopen(path, "rb");
     if (!f->fp)
         return false;
-    fseek(f->fp, 0, SEEK_END);
-    f->size = (u64)ftell(f->fp);
-    fseek(f->fp, 0, SEEK_SET);
+    /* off_t is 64 bits here, long only 32: ftell / fseek fail past 2 GiB (a disc image's end) */
+    off_t end = fseeko(f->fp, 0, SEEK_END) == 0 ? ftello(f->fp) : -1;
+    fseeko(f->fp, 0, SEEK_SET);
+    if (end < 0) {
+        fclose(f->fp);
+        f->fp = NULL;
+        return false;
+    }
+    f->size = (u64)end;
     return true;
 }
 
@@ -1402,7 +1408,7 @@ bool vfs_seek(vfs_file *f, u64 off)
     if (f->dev == DEV_NAND)
         return ISFS_Seek(f->fd, (s32)off, 0) >= 0;
     clearerr(f->fp);
-    return fseek(f->fp, (long)off, SEEK_SET) == 0;
+    return fseeko(f->fp, (off_t)off, SEEK_SET) == 0;
 }
 
 bool vfs_close_checked(vfs_file *f)
