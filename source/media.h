@@ -21,7 +21,8 @@ u8 *image_decode_gx(const u8 *data, u32 avail, int fmt, int w, int h, const u8 *
                     int palcount);
 u32 image_gx_size(int fmt, int w, int h);
 
-bool model_view(const char *path);          /* BRRES (MDL0) / BMD / BDL in 3D */
+bool model_view(const char *path);
+unsigned model_brres_texture_palette(const unsigned char *b, unsigned len, const char *tex);  /* PLT0 offset, or 0 */          /* BRRES (MDL0) / BMD / BDL in 3D */
 
 bool bmg_view(const char *path);            /* BMG message files as text */
 bool breff_view(const char *path);          /* BREFF effect sets: the emitter list */

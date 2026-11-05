@@ -55,6 +55,7 @@ typedef struct {
     /* converted / realigned copy, or NULL when it points into the file */
     void *own;
     u32 key;                    /* where it came from in the file, to share it between meshes */
+    const u8 *pal;              /* and the palette it was decoded with (one CI texture, several palettes) */
     bool cutout;                /* has real alpha (I4 / I8 repeat their intensity as alpha on GX) */
 } tex_t;
 
@@ -145,7 +146,7 @@ static int add_texture(model_t *m, const u8 *file, u32 flen, u32 at, int fmt, in
 {
     u32 key = at | keybase;
     for (int i = 0; i < m->ntex; i++)
-        if (m->tex[i].key == key) return i;
+        if (m->tex[i].key == key && m->tex[i].pal == pal) return i;
     if (m->ntex >= MAX_TEX || w <= 0 || h <= 0 || w > 1024 || h > 1024 || at >= flen) return -1;
     if (!((fmt >= 0 && fmt <= 6) || (fmt >= 8 && fmt <= 10) || fmt == 14)) return -1;
 
@@ -202,6 +203,7 @@ static int add_texture(model_t *m, const u8 *file, u32 flen, u32 at, int fmt, in
     GX_InitTexObj(&t->obj, pixels, w, h, fmt, wrap_s, wrap_t, GX_FALSE);
     GX_InitTexObjLOD(&t->obj, GX_LINEAR, GX_LINEAR, 0, 0, 0, GX_FALSE, GX_FALSE, GX_ANISO_1);
     t->key = key;
+    t->pal = pal;
     t->cutout = fmt != GX_TF_I4 && fmt != GX_TF_I8 && fmt != GX_TF_RGB565;
     return m->ntex++;
 }
@@ -575,6 +577,90 @@ static u32 brres_find(const u8 *f, u32 flen, const char *folder, const char *nam
     return 0;
 }
 
+/* A PLT0 in a BRRES: the one the material names (Animal Crossing's CI textures share palettes such as
+ * "skin", and swap them for color variants), else the one called like the texture. 0 if neither. */
+static u32 brres_palette(const u8 *f, u32 flen, const char *pname, u32 plen, const char *tname, u32 tlen)
+{
+    u32 pl = pname && plen ? brres_find(f, flen, "Palettes(NW4R)", pname, plen) : 0;
+    if (!pl || memcmp(f + pl, "PLT0", 4)) pl = brres_find(f, flen, "Palettes(NW4R)", tname, tlen);
+    return pl && !memcmp(f + pl, "PLT0", 4) ? pl : 0;
+}
+
+/* The name a layer reference points at (self-relative offset at `at` in the reference, to the
+ * characters; the length is the u32 before them), or NULL. The names are in the BRRES's string table,
+ * after the MDL0, so they are looked for in the whole file. */
+static const char *mdl_ref_name(const mdl_t *d, const u8 *ref, u32 at, u32 *len)
+{
+    s32 rel = (s32)be32(ref + at);
+    *len = 0;
+    if (!rel) return NULL;
+    s64 o = (s64)(ref - d->file) + rel;
+    if (o < 4 || o >= (s64)d->flen) return NULL;
+    const u8 *nm = d->file + o;
+    u32 n = be32(nm - 4);
+    if (!n || n > 255 || (u64)o + n > d->flen) return NULL;
+    *len = n;
+    return (const char *)nm;
+}
+
+/* The PLT0 that the BRRES's models draw the texture `tex` with: the palette named by the first
+ * material layer that uses it, else one called like the texture, else the only palette there.
+ * Offset into b, or 0. For the image viewer, which shows one TEX0 at a time. */
+u32 model_brres_texture_palette(const u8 *b, u32 len, const char *tex)
+{
+    u32 tlen = (u32)strlen(tex);
+    if (len < 0x10 || memcmp(b, "bres", 4) || !tlen) return 0;
+    u32 root = be16(b + 0x0C);
+    if (root + 16 > len || memcmp(b + root, "root", 4)) return 0;
+    u32 g = root + 8, n = be32(b + g + 4), pals = 0, models = 0;
+    for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= len; i++) {
+        const u8 *e = b + g + 8 + i * 16;
+        u32 fn = g + be32(e + 8), sub = g + be32(e + 12);
+        if (fn >= len || sub + 8 > len) continue;
+        if (!strncmp((const char *)b + fn, "Palettes(NW4R)", len - fn)) pals = sub;
+        if (!strncmp((const char *)b + fn, "3DModels(NW4R)", len - fn)) models = sub;
+    }
+    if (!pals) return 0;
+    for (u32 k = 1; models && k <= be32(b + models + 4) && models + 8 + (k + 1) * 16 <= len; k++) {
+        u32 mo = models + be32(b + models + 8 + k * 16 + 12);
+        if (mo + 0x40 > len || memcmp(b + mo, "MDL0", 4)) continue;
+        u32 ver = be32(b + mo + 8), msize = be32(b + mo + 4);
+        if (msize > len - mo) msize = len - mo;
+        int si = ver >= 10 ? 8 : 6;
+        s32 mg = (s32)be32(b + mo + 0x10 + si * 4);
+        if (mg <= 0 || (u32)mg + 8 > msize) continue;
+        mdl_t d = { 0 };
+        d.b = b + mo;
+        d.len = msize;
+        d.file = b;
+        d.flen = len;
+        u32 grp = (u32)mg, cnt = be32(d.b + grp + 4);
+        for (u32 j = 1; j <= cnt && grp + 8 + (j + 1) * 16 <= msize; j++) {
+            u32 mat = grp + be32(d.b + grp + 8 + j * 16 + 12);
+            if (mat + 0x34 > msize) continue;
+            u32 nl = be32(d.b + mat + 0x2C);
+            s32 refs = (s32)be32(d.b + mat + 0x30);
+            if (nl > 8 || refs <= 0) continue;
+            for (u32 l = 0; l < nl && mat + refs + (l + 1) * 0x34 <= msize; l++) {
+                const u8 *ref = d.b + mat + refs + l * 0x34;
+                u32 a, pl;
+                const char *tn = mdl_ref_name(&d, ref, 0, &a);
+                if (!tn || a != tlen || memcmp(tn, tex, tlen)) continue;
+                const char *pn = mdl_ref_name(&d, ref, 4, &pl);
+                u32 at = pn ? brres_palette(b, len, pn, pl, tex, tlen) : 0;
+                if (at) return at;
+            }
+        }
+    }
+    u32 at = brres_palette(b, len, NULL, 0, tex, tlen);
+    if (at) return at;
+    if (be32(b + pals + 4) == 1 && pals + 8 + 32 <= len) {
+        at = pals + be32(b + pals + 8 + 16 + 12);
+        if (at + 0x20 <= len && !memcmp(b + at, "PLT0", 4)) return at;
+    }
+    return 0;
+}
+
 /* Textures that are not in the MDL0's own BRRES: a bare .mdl0 keeps them in files next to it, either
  * "<texture>.tex0" (+ ".plt0") or inside some .brres of the same folder. The loaded files stay in memory
  * while the model is open. */
@@ -618,7 +704,7 @@ static bool name_is(const char *a, const char *want, u32 wlen, const char *ext)
 
 /* Looks for the TEX0 called `name` outside the model's own file. On success: the buffer holding it, its
  * offset in there, a palette (pointer into some buffer, or NULL), and a number that tells buffers apart. */
-static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u32 *tex, const u8 **pal, u32 *pallen, int *id)
+static bool ext_texture(const char *name, u32 nlen, const char *pname, u32 plen, const u8 **buf, u32 *blen, u32 *tex, const u8 **pal, u32 *pallen, int *id)
 {
     *pal = NULL; *pallen = 0;
     if (!g_ext_dir[0]) return false;
@@ -633,13 +719,18 @@ static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u
         int k = ext_get(p);
         if (k < 0 || g_ext[k].len < 0x40 || memcmp(g_ext[k].buf, "TEX0", 4)) continue;
         *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = 0; *id = k + 1; found = true;
-        for (int j = 0; j < n; j++) {
-            if (list[j].is_dir || !name_is(list[j].name, name, nlen, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[j].name)) continue;
-            int pk = ext_get(p);
-            if (pk >= 0 && g_ext[pk].len >= 0x20 && !memcmp(g_ext[pk].buf, "PLT0", 4)) {
-                *pal = g_ext[pk].buf; *pallen = g_ext[pk].len;
+        for (int pass = 0; pass < 2 && !*pal; pass++) {
+            const char *pn = pass ? name : pname;
+            u32 pl = pass ? nlen : plen;
+            if (!pn || !pl) continue;
+            for (int j = 0; j < n; j++) {
+                if (list[j].is_dir || !name_is(list[j].name, pn, pl, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[j].name)) continue;
+                int pk = ext_get(p);
+                if (pk >= 0 && g_ext[pk].len >= 0x20 && !memcmp(g_ext[pk].buf, "PLT0", 4)) {
+                    *pal = g_ext[pk].buf; *pallen = g_ext[pk].len;
+                }
+                break;
             }
-            break;
         }
     }
     /* 2: a BRRES in the folder that has it in "Textures(NW4R)" */
@@ -652,11 +743,42 @@ static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u
         u32 t = brres_find(g_ext[k].buf, g_ext[k].len, "Textures(NW4R)", name, nlen);
         if (!t || memcmp(g_ext[k].buf + t, "TEX0", 4)) continue;
         *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = t; *id = k + 1; found = true;
-        u32 pl = brres_find(g_ext[k].buf, g_ext[k].len, "Palettes(NW4R)", name, nlen);
-        if (pl && !memcmp(g_ext[k].buf + pl, "PLT0", 4)) { *pal = g_ext[k].buf + pl; *pallen = g_ext[k].len - pl; }
+        u32 pl = brres_palette(g_ext[k].buf, g_ext[k].len, pname, plen, name, nlen);
+        if (pl) { *pal = g_ext[k].buf + pl; *pallen = g_ext[k].len - pl; }
     }
     free(list);
     return found;
+}
+
+/* A palette for a texture of the model's own file that has none there: "<name>.plt0" beside the
+ * file, or a PLT0 in a BRRES of the folder (by the material's palette name, then the texture's). */
+static void ext_palette(const char *pname, u32 plen, const char *name, u32 nlen, const u8 **pal, u32 *pallen)
+{
+    *pal = NULL; *pallen = 0;
+    if (!g_ext_dir[0]) return;
+    vfs_entry *list; int n;
+    if (!vfs_list(g_ext_dir, &list, &n)) return;
+    char p[VFS_PATH_MAX];
+    for (int pass = 0; pass < 2 && !*pal; pass++) {
+        const char *pn = pass ? name : pname;
+        u32 pl = pass ? nlen : plen;
+        if (!pn || !pl) continue;
+        for (int i = 0; i < n && !*pal; i++) {
+            if (list[i].is_dir || !name_is(list[i].name, pn, pl, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[i].name)) continue;
+            int k = ext_get(p);
+            if (k >= 0 && g_ext[k].len >= 0x20 && !memcmp(g_ext[k].buf, "PLT0", 4)) { *pal = g_ext[k].buf; *pallen = g_ext[k].len; }
+        }
+    }
+    int tried = 0;
+    for (int i = 0; i < n && !*pal && tried < 12; i++) {
+        if (list[i].is_dir || !arc_name_has_ext(list[i].name, ".brres") || list[i].size > EXT_FILE_MAX || !vfs_join(p, sizeof(p), g_ext_dir, list[i].name)) continue;
+        tried++;
+        int k = ext_get(p);
+        if (k < 0 || g_ext[k].len < 0x20 || memcmp(g_ext[k].buf, "bres", 4)) continue;
+        u32 pl = brres_palette(g_ext[k].buf, g_ext[k].len, pname, plen, name, nlen);
+        if (pl) { *pal = g_ext[k].buf + pl; *pallen = g_ext[k].len - pl; }
+    }
+    free(list);
 }
 
 /* Texture layer 0 of an MDL0 material -> m->tex index, or -1. */
@@ -668,28 +790,28 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
     s32 refs = (s32)be32(d->b + mat + 0x30);
     if (!count || count > 8 || refs <= 0 || mat + refs + 0x34 > d->len) return -1;
     const u8 *ref = d->b + mat + refs;
-    s32 rel = (s32)be32(ref);                   /* self-relative, to the name's characters */
-    const u8 *nm = ref + rel;
-    if (!rel || nm - 4 < d->b || nm >= d->b + d->len) return -1;
-    u32 nlen = be32(nm - 4);
-    if (!nlen || nlen > 255 || nm + nlen > d->b + d->len) return -1;
+    u32 nlen, plen;
+    const char *nm = mdl_ref_name(d, ref, 0, &nlen);   /* the texture's name */
+    if (!nm) return -1;
+    const char *pn = mdl_ref_name(d, ref, 4, &plen);   /* its palette's, for CI4 / CI8 / CI14x2 */
 
     const u8 *tf = f;                           /* the buffer the texture is in */
-    u32 tflen = d->flen, tex = brres_find(f, d->flen, "Textures(NW4R)", (const char *)nm, nlen);
+    u32 tflen = d->flen, tex = brres_find(f, d->flen, "Textures(NW4R)", nm, nlen);
     int id = 0;
     const u8 *pal = NULL; int palfmt = 0, palcount = 0;
     const u8 *palbuf = NULL; u32 pallen = 0;
     if (tex && !memcmp(f + tex, "TEX0", 4)) {
-        u32 pl = brres_find(f, d->flen, "Palettes(NW4R)", (const char *)nm, nlen);
-        if (pl && !memcmp(f + pl, "PLT0", 4)) { palbuf = f + pl; pallen = d->flen - pl; }
-    } else if (!ext_texture((const char *)nm, nlen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
+        u32 pl = brres_palette(f, d->flen, pn, plen, nm, nlen);
+        if (pl) { palbuf = f + pl; pallen = d->flen - pl; }
+        else ext_palette(pn, plen, nm, nlen, &palbuf, &pallen);
+    } else if (!ext_texture(nm, nlen, pn, plen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
         return -1;
     const u8 *t = tf + tex;
     int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
     if (fmt >= 8 && fmt <= 10 && palbuf) {
-        u32 plen = be32(palbuf + 4), doff = be32(palbuf + 0x10);
+        u32 psize = be32(palbuf + 4), doff = be32(palbuf + 0x10);
         palcount = be16(palbuf + 0x1C);
-        if (doff + palcount * 2u <= pallen && doff + palcount * 2u <= plen) { pal = palbuf + doff; palfmt = be32(palbuf + 0x18); }
+        if (doff + palcount * 2u <= pallen && doff + palcount * 2u <= psize) { pal = palbuf + doff; palfmt = be32(palbuf + 0x18); }
         else palcount = 0;
     }
     /* the textures of a model are told apart by where they are; another file gets its own range */
@@ -2586,8 +2708,10 @@ bool model_view(const char *path)
     {
         char whole[VFS_PATH_MAX], dir[VFS_PATH_MAX];
         snprintf(whole, sizeof(whole), "%s", path);
-        char *first = strstr(whole, "|/");
-        if (first) *first = 0;
+        /* an MDL0 inside a BRRES opened as an archive looks beside the BRRES; a file inside a disc image
+         * or an archive looks in its own folder there */
+        char *in = strstr(whole, "|/3DModels(NW4R)/");
+        if (in) *in = 0;
         ext_reset(vfs_parent(whole, dir, sizeof(dir)) ? dir : NULL);
         if (arc_name_has_ext(path, ".mod")) mod_dirs_set(path);
     }

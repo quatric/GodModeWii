@@ -769,6 +769,25 @@ static u8 *sibling_palette(const char *path)
         free(b);
         b = NULL;
     }
+    if (b || !tex) return b;
+    /* none called like the texture (Animal Crossing's share palettes such as "skin"): the one the
+     * BRRES's materials use it with */
+    char tn[256];
+    snprintf(tn, sizeof(tn), "%s", tex + 16);
+    l = strlen(tn);
+    if (l > 5 && !strcasecmp(tn + l - 5, ".tex0")) tn[l - 5] = 0;
+    snprintf(p, sizeof(p), "%.*s", (int)(tex - path), path);
+    l = strlen(p);
+    while (l && p[l - 1] == '|') p[--l] = 0;
+    u8 *r = load_file(p, &len);
+    u32 at = r ? model_brres_texture_palette(r, len, tn) : 0;
+    if (at) {
+        u32 n = be32(r + at + 4);
+        if (n < 0x20 || n > len - at) n = len - at;
+        b = malloc(n);
+        if (b) memcpy(b, r + at, n);
+    }
+    free(r);
     return b;
 }
 
