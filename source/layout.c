@@ -705,8 +705,9 @@ static void bind_material(lyt_t *L, const mat_t *m)
         t[1][0] = s->s[0] * n;
         t[1][1] = s->s[1] * c;
         t[1][2] = 0;
+        /* both translations add: City Folk mirrors one corner into a whole frame with (0.5, 0.5) */
         t[0][3] = 0.5f + s->t[0] - (t[0][0] + t[0][1]) * 0.5f;
-        t[1][3] = 0.5f - s->t[1] - (t[1][0] + t[1][1]) * 0.5f;
+        t[1][3] = 0.5f + s->t[1] - (t[1][0] + t[1][1]) * 0.5f;
         t[2][0] = t[2][1] = t[2][3] = 0;
         t[2][2] = 1;
         GX_LoadTexMtxImm(t, GX_TEXMTX0 + i * 3, GX_MTX2x4);
