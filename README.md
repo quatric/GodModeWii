@@ -140,7 +140,6 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **Text files** (`.txt`, such as a PDF's pages or an EPUB's chapters) open in the text viewer straight away.
 * **A bare MDL0** (opened on its own, not inside its BRRES) gets its textures too: each one is looked up as `<name>.tex0` (with its
   `.plt0`) next to the model, or inside any `.brres` in the same folder. A model opened from inside a BRRES uses that BRRES.
-  Any model whose texture is in none of those takes `<name>.tga` or `<name>.bmp` from its folder.
 * **Layouts** are drawn with GX: picture and window panes with their textures, texture SRTs and flips, TEV stages, colors,
   alpha compare and blending. A banner plays its Start animation into its Loop one, as on the Wii Menu, and opening a BRLAN
   plays it on its layout. Other animations play once and stop on their last frame (**A** starts them again). Text boxes are not
