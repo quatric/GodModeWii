@@ -618,7 +618,8 @@ static bool name_is(const char *a, const char *want, u32 wlen, const char *ext)
 
 /* Looks for the TEX0 called `name` outside the model's own file. On success: the buffer holding it, its
  * offset in there, a palette (pointer into some buffer, or NULL), and a number that tells buffers apart. */
-static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u32 *tex, const u8 **pal, u32 *pallen, int *id)
+static bool ext_texture(const char *name, u32 nlen, const char *pname, u32 plen, const u8 **buf, u32 *blen, u32 *tex,
+                        const u8 **pal, u32 *pallen, int *id)
 {
     *pal = NULL; *pallen = 0;
     if (!g_ext_dir[0]) return false;
@@ -634,7 +635,7 @@ static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u
         if (k < 0 || g_ext[k].len < 0x40 || memcmp(g_ext[k].buf, "TEX0", 4)) continue;
         *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = 0; *id = k + 1; found = true;
         for (int j = 0; j < n; j++) {
-            if (list[j].is_dir || !name_is(list[j].name, name, nlen, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[j].name)) continue;
+            if (list[j].is_dir || !name_is(list[j].name, pname, plen, ".plt0") || !vfs_join(p, sizeof(p), g_ext_dir, list[j].name)) continue;
             int pk = ext_get(p);
             if (pk >= 0 && g_ext[pk].len >= 0x20 && !memcmp(g_ext[pk].buf, "PLT0", 4)) {
                 *pal = g_ext[pk].buf; *pallen = g_ext[pk].len;
@@ -652,7 +653,7 @@ static bool ext_texture(const char *name, u32 nlen, const u8 **buf, u32 *blen, u
         u32 t = brres_find(g_ext[k].buf, g_ext[k].len, "Textures(NW4R)", name, nlen);
         if (!t || memcmp(g_ext[k].buf + t, "TEX0", 4)) continue;
         *buf = g_ext[k].buf; *blen = g_ext[k].len; *tex = t; *id = k + 1; found = true;
-        u32 pl = brres_find(g_ext[k].buf, g_ext[k].len, "Palettes(NW4R)", name, nlen);
+        u32 pl = brres_find(g_ext[k].buf, g_ext[k].len, "Palettes(NW4R)", pname, plen);
         if (pl && !memcmp(g_ext[k].buf + pl, "PLT0", 4)) { *pal = g_ext[k].buf + pl; *pallen = g_ext[k].len - pl; }
     }
     free(list);
@@ -668,11 +669,22 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
     s32 refs = (s32)be32(d->b + mat + 0x30);
     if (!count || count > 8 || refs <= 0 || mat + refs + 0x34 > d->len) return -1;
     const u8 *ref = d->b + mat + refs;
-    s32 rel = (s32)be32(ref);                   /* self-relative, to the name's characters */
+    /* self-relative, to the name's characters, which may be anywhere in the BRRES (City Folk's are in
+     * its string table, after the MDL0) */
+    s32 rel = (s32)be32(ref);
     const u8 *nm = ref + rel;
-    if (!rel || nm - 4 < d->b || nm >= d->b + d->len) return -1;
+    if (!rel || nm - 4 < f || nm >= f + d->flen) return -1;
     u32 nlen = be32(nm - 4);
-    if (!nlen || nlen > 255 || nm + nlen > d->b + d->len) return -1;
+    if (!nlen || nlen > 255 || nm + nlen > f + d->flen) return -1;
+    /* the palette is the one the material names, which needn't be named after the texture (City
+     * Folk's characters use "skin") */
+    const u8 *pnm = nm;
+    u32 pnlen = nlen;
+    s32 prel = (s32)be32(ref + 4);
+    if (prel && ref + prel - 4 >= f && ref + prel < f + d->flen) {
+        u32 l = be32(ref + prel - 4);
+        if (l && l <= 255 && ref + prel + l <= f + d->flen) { pnm = ref + prel; pnlen = l; }
+    }
 
     const u8 *tf = f;                           /* the buffer the texture is in */
     u32 tflen = d->flen, tex = brres_find(f, d->flen, "Textures(NW4R)", (const char *)nm, nlen);
@@ -680,9 +692,9 @@ static int mdl_material_texture(mdl_t *d, model_t *m, u32 mat)
     const u8 *pal = NULL; int palfmt = 0, palcount = 0;
     const u8 *palbuf = NULL; u32 pallen = 0;
     if (tex && !memcmp(f + tex, "TEX0", 4)) {
-        u32 pl = brres_find(f, d->flen, "Palettes(NW4R)", (const char *)nm, nlen);
+        u32 pl = brres_find(f, d->flen, "Palettes(NW4R)", (const char *)pnm, pnlen);
         if (pl && !memcmp(f + pl, "PLT0", 4)) { palbuf = f + pl; pallen = d->flen - pl; }
-    } else if (!ext_texture((const char *)nm, nlen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
+    } else if (!ext_texture((const char *)nm, nlen, (const char *)pnm, pnlen, &tf, &tflen, &tex, &palbuf, &pallen, &id))
         return -1;
     const u8 *t = tf + tex;
     int fmt = be32(t + 0x20), w = be16(t + 0x1C), h = be16(t + 0x1E);
