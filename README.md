@@ -8,7 +8,7 @@ No fancy GUI: just a console, a cursor and a lot of power.
 * Copy, move and delete files between every drive the console can see.
 * Open archives, disc images, saves and WADs like folders.
 * View images, 3D models, banners and layouts; play music, sequences and videos.
-* Install WADs, launch homebrew, and install apps and WADs over the network (FTP or `wiiload`).
+* Install WADs and Wii Menu themes (`.csm`, `.mym`), launch homebrew, and install apps and WADs over the network (FTP or `wiiload`).
 * And, only if you really mean it, change the NAND.
 
 > [!CAUTION]
@@ -186,6 +186,22 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   left for other WAD managers. The files only work on the Wii that made them. A ticket that isn't for this console needs a System
   Menu IOS with the signing bug (a cIOS for DLC), as with wad2bin. Every content is checked against its TMD hash and both
   signatures are verified before the file is kept. System titles (IOS, System Menu …) can't run from the SD card and are refused.
+* **Install Wii Menu themes (DANGEROUS):** **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces
+  the System Menu's layout archive on the NAND, and a bad one stops the Wii Menu from starting, so the checks of
+  [csm-installer](https://github.com/Naim2000/csm-installer) apply: Priiloader must be installed (it is how you get back to
+  homebrew if the Wii Menu doesn't start), the System Menu is identified from its TMD, and the theme must be a U8 archive with the
+  menu's files, this region's `iplsetting.ash` and a `main.sel` naming the same System Menu major version and platform (Wii,
+  vWii or Wii mini). On vWii the WiiWare 4:3 database is patched for the WiiConnect24 channels, as csm-installer does. Before
+  anything is written, the stock archive is saved (hash checked against the TMD) to `GodModeWii/themes/original/` on the SD card
+  or a USB drive, or a custom theme that is installed to `GodModeWii/themes/backup/`; no backup, no install. The theme is then
+  written to the NAND's `/tmp`, read back and hash checked, and only then moved over the old archive and checked again. Asks
+  twice and for the Konami code. To go back, install the saved `.csm` the same way (the original one is the stock theme). If
+  the archive went missing from the NAND, installing a theme puts one back.
+  A `.mym` (ThemeMii) is first built into a `.csm` from the stock archive, the way ThemeMii and cmyksoda's mym-to-csm do it
+  (byte for byte mym-to-csm's result), for System Menu 4.3 on a Wii only; the csm is kept in `GodModeWii/themes/` and goes
+  through the same checks. *Build a .csm on the SD card* does only that, without touching the NAND. Entries whose target isn't in
+  this menu are skipped and listed. When a custom theme is installed, the stock archive comes from `GodModeWii/themes/original/`
+  (or csm-installer's `themes/original_backup/`).
 * **Save data is never deleted:** there is no uninstall, and an installed title's `data` folder is first backed up to
   `GodModeWii/save-backups/` and checked again after the install.
 * **Launch homebrew:** **A** on a `.dol` or `.elf`. Arguments from a `meta.xml` next to it are passed on, and HW_AHBPROT access is kept.
@@ -380,6 +396,10 @@ scripts/autotest.sh out/ some.brlyt game.rvz::DATA/files/x.brres
 The test build opens each file listed in `sd:/gmwtest.txt` and saves a screenshot of every viewer; `scripts/autotest.sh` runs it
 in Dolphin with those files on a temporary SD card image and turns the screenshots into PNGs. `GFX=Metal` / `Vulkan` / `OGL`
 renders the GX viewers, `AUDIO=True` dumps the sound, and `@wiiload` waits for a wiiload upload.
+`@theme install <path>` / `@theme convert <path>` run the theme installer with every question answered yes (log in
+`gmwtest.log`); give it a copy of an emulated NAND with `NAND=~/Library/Application\ Support/Dolphin/Wii` and put files on the
+card with `@put:LOCAL:/SDPATH`. `scripts/mym_host_test.sh theme.mym menu.app [mym-to-csm]` builds the mym converter for the PC
+and compares its csm with mym-to-csm's.
 
 ### CI
 
@@ -466,6 +486,10 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC.
 * **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ.
 * **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
+* **[csm-installer](https://github.com/Naim2000/csm-installer)** by Naim2000 (GPL-2.0) — the Wii Menu theme
+  installer's checks and install sequence (`source/theme.c`: identifying the System Menu and its archive, Priiloader detection,
+  the theme checks, the vWii 4:3 database patch after DarkMatterCore's ww-43db-patcher, writing through `/tmp`).
+* **mym-to-csm** by cmyksoda — `source/mym.c` is a C port of it (mym.ini handling, U8 rebuild, TPL encoder, LZ77 compressor).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
 * **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch use GlowWii's approach.
 * **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.

@@ -14,6 +14,9 @@
 # and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
 # @wiiload waits for one wiiload upload (send it to tcp:127.0.0.1 while this runs).
 # AUDIO=True also saves what was played as OUTDIR/dspdump.wav.
+# NAND=/path/to/Wii runs on a copy of that emulated NAND (left in OUTDIR/.dolphin/user/Wii afterwards).
+# @put:LOCAL:SDPATH copies a file onto the card without opening it (e.g. @put:x.app:/GodModeWii/a.csm).
+# The card is left as OUTDIR/.dolphin/sd.img.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out=$1; shift
@@ -29,6 +32,13 @@ dd if=/dev/zero of="$sd" bs=1m count=0 seek="${SDSIZE:-256}" 2>/dev/null
 mformat -i "$sd" -F ::
 : > "$work/gmwtest.txt"
 for arg in "$@"; do
+    case "$arg" in @put:*)
+        spec=${arg#@put:}; local_file=${spec%%:*}; sdpath=${spec#*:}
+        d=$(dirname "$sdpath"); p=
+        for part in $(echo "$d" | tr '/' ' '); do p="$p/$part"; mmd -i "$sd" "::$p" 2>/dev/null || true; done
+        mcopy -o -i "$sd" "$local_file" "::$sdpath"
+        continue ;;
+    esac
     case "$arg" in @*) echo "$arg" >> "$work/gmwtest.txt"; continue ;; esac   # a command, e.g. @wiiload
     f=${arg%%::*}
     inner=
@@ -38,6 +48,8 @@ for arg in "$@"; do
     echo "sd:/$name$inner" >> "$work/gmwtest.txt"
 done
 mcopy -i "$sd" "$work/gmwtest.txt" ::/gmwtest.txt
+
+if [ -n "${NAND:-}" ]; then cp -R "$NAND" "$work/user/Wii"; fi
 
 cat > "$work/user/Config/Dolphin.ini" <<EOF
 [General]

@@ -234,6 +234,14 @@ int main(int argc, char **argv)
                     wad2bin_autotest(wad, keyf, !strcmp(nk, "null"));
                 continue;
             }
+            /* "@theme install|convert <path>": the Wii Menu theme installer, answering yes */
+            if (!strncmp(line, "@theme ", 7)) {
+                extern void theme_autotest(const char *cmd, const char *path);
+                char cmd[16], tp[400];
+                if (sscanf(line + 7, "%15s %399s", cmd, tp) == 2)
+                    theme_autotest(cmd, tp);
+                continue;
+            }
             /* one wiiload upload (sent from the PC), logged */
             if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);

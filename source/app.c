@@ -17,6 +17,7 @@
 #include "ftp.h"
 #include "arcfs.h"
 #include "wadinstall.h"
+#include "theme.h"
 #include "launch.h"
 #include "archive.h"
 #include "saves.h"
@@ -936,6 +937,36 @@ static void wad_menu(const vfs_entry *en)
     }
 }
 
+/* A on a .csm / .mym: install it as the Wii Menu's theme, or look inside. */
+static void theme_menu(const vfs_entry *en)
+{
+    bool mym = theme_is_mym_name(en->name);
+    const char *items[4];
+    int n = 0, code[4];
+    items[n] = "Install as the Wii Menu theme (DANGEROUS)";
+    code[n++] = 0;
+    if (mym) {
+        items[n] = "Build a .csm on the SD card (NAND untouched)";
+        code[n++] = 1;
+    }
+    items[n] = "Browse contents";
+    code[n++] = 2;
+    items[n] = "More actions...";
+    code[n++] = 3;
+    int r = ui_menu(en->name, items, NULL, n, 0);
+    if (r < 0)
+        return;
+    char path[VFS_PATH_MAX];
+    if (code[r] <= 1 && !vfs_join(path, sizeof(path), cwd, en->name))
+        return;
+    switch (code[r]) {
+    case 0: theme_install(path); reload_keep(); break;
+    case 1: theme_convert(path); reload_keep(); break;
+    case 2: open_archive(en); break;
+    case 3: actions_menu(); break;
+    }
+}
+
 static void actions_menu(void)
 {
     int off = clip_n ? 1 : 0;
@@ -1354,6 +1385,8 @@ int app_run(void)
                     ftype_t ft = joined ? ftype_detect(path) : FT_NONE;
                     if (ft == FT_WAD && !vfs_is_archive(cwd) && arcfs_can_open(path))
                         wad_menu(en);
+                    else if (joined && theme_is_name(en->name) && !vfs_is_archive(cwd))
+                        theme_menu(en);
                     else if (ft == FT_PROGRAM)
                         do_launch(en);
                     else if (ftype_is_media(ft) && media_open_type(path, ft))
