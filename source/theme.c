@@ -18,6 +18,8 @@
 #include <gccore.h>
 #include <ogc/es.h>
 #include <ogc/isfs.h>
+#include <network.h>
+#include <poll.h>
 
 #include "theme.h"
 #include "mym.h"
@@ -27,6 +29,8 @@
 #include "risk.h"
 #include "sha1.h"
 #include "archive.h"
+#include "aes.h"
+#include "ftp.h"
 
 #define SM_TID       0x0000000100000002ULL
 #define CONTENT_FMT  "/title/00000001/00000002/content/%08x.app"
@@ -48,6 +52,7 @@ typedef struct {
     bool priiloader;
     bool missing;               /* the archive's file isn't on the NAND (a failed install) */
     u32 cid;                    /* the layout archive */
+    u16 index;                  /* its content index (the IV when it is downloaded) */
     u32 size;
     u8 hash[20];
 } sysmenu_t;
@@ -155,6 +160,7 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
         ISFS_Close(fd);
         if (r >= 4 && be32(bounce) == 0x55AA382Du) {
             sm->cid = c->cid;
+            sm->index = c->index;
             sm->size = (u32)c->size;
             memcpy(sm->hash, c->hash, 20);
         }
@@ -162,6 +168,7 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
     if (!sm->cid && ngone == 1 && gone->size >= THEME_MIN && gone->size <= THEME_MAX) {
         /* the one content that isn't there: the archive, removed by an install that failed half way */
         sm->cid = gone->cid;
+        sm->index = gone->index;
         sm->size = (u32)gone->size;
         memcpy(sm->hash, gone->hash, 20);
         sm->missing = true;
@@ -424,6 +431,177 @@ static bool nand_copy_checked(const char *nand, const char *path, u32 len, const
     return ok;
 }
 
+/* ---------------------------------------------------------------- NUS download (csm-installer's) */
+
+#define NUS_HOST "nus.cdn.shop.wii.com"
+#define NET_WAIT_MS 15000
+
+/* Plain HTTP GET (NUS has no HTTPS) of up to `cap` bytes into `buf`; the body must be exactly
+ * `want` bytes long. */
+static bool http_get(const char *host, const char *path, u8 *buf, u32 want, char *why, size_t wn)
+{
+    struct hostent *he = net_gethostbyname(host);
+    if (!he || he->h_length != 4 || !he->h_addr_list || !he->h_addr_list[0]) {
+        snprintf(why, wn, "Couldn't look up %s.", host);
+        return false;
+    }
+    s32 s = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (s < 0) {
+        snprintf(why, wn, "Couldn't open a network socket (%d).", s);
+        return false;
+    }
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_port = htons(80);
+    memcpy(&a.sin_addr, he->h_addr_list[0], 4);
+    bool ok = false;
+    if (net_connect(s, (struct sockaddr *)&a, sizeof(a)) < 0) {
+        snprintf(why, wn, "Couldn't connect to %s.", host);
+        goto out;
+    }
+    char req[256];
+    int rl = snprintf(req, sizeof(req),
+                      "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: wii libnup/1.0\r\nConnection: close\r\n\r\n",
+                      path, host);
+    for (int sent = 0; sent < rl;) {
+        s32 r = net_send(s, req + sent, rl - sent, 0);
+        if (r <= 0) {
+            snprintf(why, wn, "Couldn't send the request to %s.", host);
+            goto out;
+        }
+        sent += r;
+    }
+
+    char head[2048];
+    u32 hl = 0, got = 0;
+    bool in_body = false;
+    long long length = -1;
+    for (;;) {
+        struct pollsd sd = { s, POLLIN, 0 };
+        if (net_poll(&sd, 1, NET_WAIT_MS) <= 0) {
+            snprintf(why, wn, "%s stopped answering.", host);
+            goto out;
+        }
+        s32 r;
+        if (!in_body) {
+            r = net_recv(s, head + hl, sizeof(head) - 1 - hl, 0);
+            if (r <= 0) {
+                snprintf(why, wn, "%s closed the connection.", host);
+                goto out;
+            }
+            hl += r;
+            head[hl] = '\0';
+            char *end = strstr(head, "\r\n\r\n");
+            if (!end) {
+                if (hl >= sizeof(head) - 1) {
+                    snprintf(why, wn, "Bad answer from %s.", host);
+                    goto out;
+                }
+                continue;
+            }
+            int status = 0;
+            if (sscanf(head, "HTTP/%*d.%*d %d", &status) != 1 || status != 200) {
+                snprintf(why, wn, "%s answered with HTTP %d.", host, status);
+                goto out;
+            }
+            for (char *l = strstr(head, "\r\n"); l && l < end; l = strstr(l + 2, "\r\n"))
+                if (!strncasecmp(l + 2, "content-length:", 15)) length = strtoll(l + 17, NULL, 10);
+            if (length >= 0 && length != want) {
+                snprintf(why, wn, "%s sent %lld bytes; %u were expected.", host, length, want);
+                goto out;
+            }
+            in_body = true;
+            u32 extra = hl - (u32)(end + 4 - head);
+            if (extra > want) extra = want;
+            memcpy(buf, end + 4, extra);
+            got = extra;
+        } else {
+            r = net_recv(s, buf + got, want - got > CHUNK ? CHUNK : want - got, 0);
+            if (r < 0) {
+                snprintf(why, wn, "The download from %s broke off.", host);
+                goto out;
+            }
+            if (r == 0) break;
+            got += r;
+        }
+        progress("Downloading the original Wii Menu from Nintendo", got, want);
+        if (got >= want) break;
+    }
+    ok = got == want;
+    if (!ok) snprintf(why, wn, "The download from %s ended early (%u of %u bytes).", host, got, want);
+out:
+    net_close(s);
+    return ok;
+}
+
+/* The stock archive, as csm-installer's DownloadOriginalTheme gets it: the encrypted content from
+ * NUS, decrypted with the title key in the System Menu's ticket, and hash checked against the TMD. */
+static u8 *nus_download(const sysmenu_t *sm, u32 *len, char *why, size_t wn)
+{
+    u32 tl;
+    u8 *tik = nand_read_all("/ticket/00000001/00000002.tik", 0x4000, &tl);
+    if (!tik || tl < 0x2A4 || be32(tik) != 0x10001) {
+        free(tik);
+        snprintf(why, wn, "Couldn't read the System Menu's ticket, which the download is decrypted with.");
+        return NULL;
+    }
+    u8 ck[16], tk[16], iv[16];
+    int idx = tik[0x1F1] > 2 ? 0 : tik[0x1F1];
+    if (!arc_common_key(idx, ck)) {
+        free(tik);
+        snprintf(why, wn, "The System Menu's ticket uses an unknown common key.");
+        return NULL;
+    }
+    aes128_t c;
+    aes128_init_dec(&c, ck);
+    memset(iv, 0, 16);
+    memcpy(iv, tik + 0x1DC, 8);
+    aes128_cbc_decrypt(&c, iv, tik + 0x1BF, tk, 16);
+    free(tik);
+
+    char name[48], q[300];
+    sm_name(sm, name, sizeof(name));
+    snprintf(q, sizeof(q),
+             "The original Wii Menu archive is needed to build the theme, and there is no copy on the "
+             "console or the SD card.\n\nDownload it (%u KiB, System Menu %s) from Nintendo's update "
+             "server?", sm->size / 1024, name);
+    if (!ask(g_title, C_CYAN, q) || !ftp_net_start()) {
+        snprintf(why, wn, "The original Wii Menu archive wasn't downloaded.");
+        return NULL;
+    }
+    u32 enc = (sm->size + 15) & ~15u;
+    u8 *buf = memalign(32, enc);
+    if (!buf) {
+        snprintf(why, wn, "Out of memory.");
+        return NULL;
+    }
+    char path[96];
+    snprintf(path, sizeof(path), "/ccs/download/%016llx/%08x",
+             sm->platform == 'V' ? 0x0000000700000002ULL : SM_TID, sm->cid);
+    if (!http_get(NUS_HOST, path, buf, enc, why, wn)) {
+        free(buf);
+        return NULL;
+    }
+    progress("Decrypting the original Wii Menu", 0, 1);
+    aes128_init_dec(&c, tk);
+    memset(iv, 0, 16);
+    iv[0] = sm->index >> 8;
+    iv[1] = sm->index;
+    aes128_cbc_decrypt(&c, iv, buf, buf, enc);
+    memset(tk, 0, 16);
+    memset(&c, 0, sizeof(c));
+    u8 sha[20];
+    sha_buf(buf, sm->size, sha);
+    if (memcmp(sha, sm->hash, 20)) {
+        free(buf);
+        snprintf(why, wn, "The downloaded Wii Menu archive doesn't match the TMD's hash.");
+        return NULL;
+    }
+    *len = sm->size;
+    return buf;
+}
+
 /* ---------------------------------------------------------------- the theme */
 
 static void original_path(const sysmenu_t *sm, int dev, char *out, size_t n)
@@ -456,11 +634,22 @@ static u8 *load_stock(const sysmenu_t *sm, u32 *len, char *why, size_t wn)
             free(b);
         }
     }
+    /* not on the console: download it, and keep it for next time */
+    char nus_why[200];
+    b = nus_download(sm, len, nus_why, sizeof(nus_why));
+    if (b) {
+        int dev = backup_device();
+        if (dev >= 0) {
+            original_path(sm, dev, path, sizeof(path));
+            file_write_checked(path, b, *len);
+        }
+        return b;
+    }
     snprintf(why, wn,
              "A custom theme is installed and there is no copy of the original Wii Menu archive to build "
-             "the mym on.\n\nPut the original %08x.app of System Menu v%u at\n"
+             "the mym on.\n\n%s\n\nOr put the original %08x.app of System Menu v%u at\n"
              "sd:/GodModeWii/themes/original/%08x-v%u.csm",
-             sm->cid, sm->rev, sm->cid, sm->rev);
+             nus_why, sm->cid, sm->rev, sm->cid, sm->rev);
     return NULL;
 }
 

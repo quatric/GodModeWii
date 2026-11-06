@@ -201,7 +201,9 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   (byte for byte mym-to-csm's result), for System Menu 4.3 on a Wii only; the csm is kept in `GodModeWii/themes/` and goes
   through the same checks. *Build a .csm on the SD card* does only that, without touching the NAND. Entries whose target isn't in
   this menu are skipped and listed. When a custom theme is installed, the stock archive comes from `GodModeWii/themes/original/`
-  (or csm-installer's `themes/original_backup/`).
+  (or csm-installer's `themes/original_backup/`); with neither, it is downloaded from Nintendo's update server (asks first),
+  decrypted with the System Menu's ticket and hash checked against the TMD, as csm-installer does, and kept in
+  `GodModeWii/themes/original/` for next time.
 * **Save data is never deleted:** there is no uninstall, and an installed title's `data` folder is first backed up to
   `GodModeWii/save-backups/` and checked again after the install.
 * **Launch homebrew:** **A** on a `.dol` or `.elf`. Arguments from a `meta.xml` next to it are passed on, and HW_AHBPROT access is kept.
@@ -488,7 +490,8 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
 * **[csm-installer](https://github.com/Naim2000/csm-installer)** by Naim2000 (GPL-2.0) — the Wii Menu theme
   installer's checks and install sequence (`source/theme.c`: identifying the System Menu and its archive, Priiloader detection,
-  the theme checks, the vWii 4:3 database patch after DarkMatterCore's ww-43db-patcher, writing through `/tmp`).
+  the theme checks, the vWii 4:3 database patch after DarkMatterCore's ww-43db-patcher, writing through `/tmp`, downloading the original archive
+  from NUS).
 * **mym-to-csm** by cmyksoda — `source/mym.c` is a C port of it (mym.ini handling, U8 rebuild, TPL encoder, LZ77 compressor).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
 * **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch use GlowWii's approach.
