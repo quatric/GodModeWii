@@ -4,6 +4,7 @@
  *   MP3 (and MP2)       dr_mp3
  *   FLAC                dr_flac
  *   Ogg Vorbis          Tremor (devkitPro's libvorbisidec)
+ *   MOD / S3M / XM / IT tracker modules, mixed by tracker.c
  * dr_wav, dr_mp3 and dr_flac are David Reid's dr_libs (public domain / MIT-0, source/drlibs).
  * Files are read through a buffer: vfs reads want 32-byte aligned memory, the decoders don't
  * promise it.
@@ -28,6 +29,7 @@
 #include <tremor/ivorbisfile.h>
 
 #include "audio_gen.h"
+#include "tracker.h"
 #include "vfs.h"
 #include "archive.h"
 
@@ -101,7 +103,10 @@ static bool bio_seek(bio_t *b, s64 off, int whence)
 
 /* ---------------------------------------------------------------- decoders */
 
-enum { K_WAV, K_MP3, K_FLAC, K_OGG };
+enum { K_WAV, K_MP3, K_FLAC, K_OGG, K_TRK };
+
+#define TRK_RATE 32000
+#define TRK_MAX_FILE (32u << 20)
 
 struct gen {
     bio_t io;
@@ -111,6 +116,7 @@ struct gen {
         drmp3 mp3;
         drflac *flac;
         OggVorbis_File ogg;
+        trk_t *trk;
     } d;
     gen_info info;
 };
@@ -173,6 +179,7 @@ static int kind_of(const u8 *h, u32 n, const char *name)
         if (n >= 0x23 && !memcmp(h + 0x1C, "OpusHead", 8)) return -1;
         return K_OGG;
     }
+    if (trk_probe(h, n, name)) return K_TRK;
     if (n >= 3 && !memcmp(h, "ID3", 3)) return K_MP3;
     if (n >= 2 && h[0] == 0xFF && (h[1] & 0xE0) == 0xE0) return K_MP3;
     if (arc_name_has_ext(name, ".mp3") || arc_name_has_ext(name, ".mp2")) return K_MP3;
@@ -253,6 +260,26 @@ gen_t *gen_open(const char *path)
         if (br > 0) snprintf(i->detail, sizeof(i->detail), "%ld kbps", br / 1000);
         break;
     }
+    case K_TRK: {
+        /* modules are small and parsed whole: read the file, let the player copy what it keeps */
+        u64 size = g->io.f.size;
+        if (size < 0x30 || size > TRK_MAX_FILE) break;
+        u8 *file = malloc((size_t)size);
+        if (!file) break;
+        bio_seek(&g->io, 0, SEEK_SET);
+        size_t got = bio_read(&g->io, file, (size_t)size);
+        g->d.trk = got == size ? trk_open(file, (u32)size, TRK_RATE) : NULL;
+        free(file);
+        ok = g->d.trk != NULL;
+        if (!ok) break;
+        i->channels = 2;
+        i->rate = TRK_RATE;
+        i->total = trk_frames(g->d.trk);
+        i->format = trk_format(g->d.trk);
+        i->codec = "tracker";
+        snprintf(i->detail, sizeof(i->detail), "%d ch", trk_channels(g->d.trk));
+        break;
+    }
     default:
         break;
     }
@@ -277,6 +304,7 @@ u32 gen_read(gen_t *g, s16 *out, u32 frames)
     case K_WAV:  return (u32)drwav_read_pcm_frames_s16(&g->d.wav, frames, out);
     case K_MP3:  return (u32)drmp3_read_pcm_frames_s16(&g->d.mp3, frames, out);
     case K_FLAC: return (u32)drflac_read_pcm_frames_s16(g->d.flac, frames, out);
+    case K_TRK:  return trk_read(g->d.trk, out, frames);
     case K_OGG: {
         u32 got = 0, fb = (u32)g->info.channels * 2;
         while (got < frames) {
@@ -303,6 +331,7 @@ bool gen_rewind(gen_t *g)
     case K_MP3:  return drmp3_seek_to_pcm_frame(&g->d.mp3, 0);
     case K_FLAC: return drflac_seek_to_pcm_frame(g->d.flac, 0);
     case K_OGG:  return ov_pcm_seek(&g->d.ogg, 0) == 0;
+    case K_TRK:  trk_rewind(g->d.trk); return true;
     }
     return false;
 }
@@ -315,6 +344,7 @@ void gen_close(gen_t *g)
     case K_MP3:  drmp3_uninit(&g->d.mp3); break;
     case K_FLAC: drflac_close(g->d.flac); break;
     case K_OGG:  ov_clear(&g->d.ogg); break;
+    case K_TRK:  trk_close(g->d.trk); break;
     }
     bio_close(&g->io);
     free(g);

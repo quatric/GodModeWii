@@ -125,7 +125,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | Viewer | Formats | Buttons |
 | --- | --- | --- |
 | **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, Mario Party `.hsf` (HSFV037, with each material's texture, or its color), HAL sysdolphin `.dat` / `.usd` (HSD: Super Smash Bros. Melee, Kirby Air Ride; posed by their joints and envelopes, with each material's texture, palette ones included, or its color), Paon `OCN.` models (Donkey Kong: Barrel Blast `chara/` and `entry/` `.dat`, LZ10-compressed: skinned characters in their bind pose, rigid props, CMPR textures) and FJG bundles (each HSD model in it, **1** for the next), and Monster Games `.mod` (Excite Truck / Excitebots; textured from the `.tex` files in their archive, the region's base track and the shared `HobbySet.res` / `race.res` / `common.res`); lit, posed by their bones and textured; a BRRES model plays its animations, looping: `AnmChr` (CHR0) bones, `AnmVis` (VIS0) hidden bones, `AnmTexSrt` (SRT0) moving textures, `AnmClr` (CLR0) material colors (the balloons' palette steps twice a second), `AnmTexPat` (PAT0) texture swaps and `AnmScn` (SCN0) ambient light color; animations of one name play together | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model, **2** next animation (or info, for a model with none) |
-| **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
+| **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis, tracker modules (`.mod`, `.s3m`, `.xm`, `.it`) | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
 | **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as color swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), Paon `.d4` (Donkey Kong: Barrel Blast), PNG, JPEG, WebP, TGA (true-color, grayscale and color-mapped, raw or RLE), BMP (1 to 32-bit, RLE4 / RLE8, bit fields and alpha, OS/2 too), GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences (a sequence with a loop loops for ever, as in the game) | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat (sequences: loop / repeat / play the loop twice and fade), **B** stop |
@@ -147,6 +147,11 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **MIDI** uses the SoundFont with the same name next to the file (`song.mid` + `song.sf2`), or else a built-in General MIDI set.
   Each channel shows its instrument, note count and level.
 * **Audio** covers DSP-ADPCM, AFC and PCM8 / PCM16, plus WAV in PCM, float, IMA / MS ADPCM, A-law, µ-law and RF64, and FLAC in Ogg.
+* **Tracker modules** (ProTracker `.mod` with 4 to 32 channels, ScreamTracker `.s3m`, FastTracker 2 `.xm`, Impulse Tracker `.it`) are
+  mixed on the Wii at 32 kHz (`source/tracker.c`, its own code): all the usual effects, XM / IT volume columns and volume envelopes
+  with fadeout, ping-pong loops and compressed IT samples. Not played: IT's NNA and duplicate checks, pitch and pan envelopes,
+  auto-vibrato, filters. A song plays once and stops where it would loop; **1** repeats it. A `.mod` that is not a ProTracker module
+  (Monster Games models also use the name) still opens in the model viewer.
 
 ## Other features
 

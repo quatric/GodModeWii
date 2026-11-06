@@ -10,6 +10,7 @@
 #include "media.h"
 #include "tga.h"
 #include "bmp.h"
+#include "tracker.h"
 
 #define M(s) (n >= sizeof(s) - 1 && !memcmp(h, s, sizeof(s) - 1))
 
@@ -110,6 +111,9 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (n >= 12 && M("FORM") && (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4)))
             return FT_AUDIO;
         if (M("fLaC") || M("OggS") || M("ID3")) return FT_AUDIO;
+        /* tracker modules: XM, IT and S3M carry a magic (S3M's sits at 0x2C); a MOD's is at 0x438 and is
+         * checked by ftype_detect() */
+        if (n >= 0x30 && trk_probe(h, n, NULL)) return FT_AUDIO;
 
         if (M("MOC5") || M("THP\0") || M("PARA") || M("KFH")) return FT_VIDEO;
 
@@ -174,6 +178,12 @@ ftype_t ftype_detect(const char *path)
         got += r;
     }
     u64 size = f.size;
+    /* a ".mod" is a Monster Games model unless it is a ProTracker module: its signature is at 0x438 */
+    bool mod = arc_name_has_ext(path, ".mod") && size >= 1084;
+    static u8 sig[32] __attribute__((aligned(32)));
+    if (mod && (!vfs_seek(&f, 1056) || vfs_read(&f, sig, sizeof(sig)) != (s32)sizeof(sig))) mod = false;
     vfs_close(&f);
-    return ftype_sniff(head, got, size, vfs_basename(path));
+    ftype_t t = ftype_sniff(head, got, size, vfs_basename(path));
+    if (mod && t == FT_MODEL && trk_is_mod_sig(sig + 24)) return FT_AUDIO;
+    return t;
 }
