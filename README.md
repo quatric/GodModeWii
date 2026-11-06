@@ -1,6 +1,6 @@
 # GodModeWii
 
-**Version:** 0.11.0 · **By:** quatric & cmyksoda
+**Version:** 0.12.0 · **By:** quatric & cmyksoda
 
 A text-mode file manager for the **Wii** and the **Wii U's vWii mode**, in the style of [GodMode9](https://github.com/d0k3/GodMode9).
 No fancy GUI: just a console, a cursor and a lot of power.
@@ -126,7 +126,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | --- | --- | --- |
 | **3D models** | MDL0 in `.brres` or on its own, J3D `.bmd` / `.bdl`, Mario Party `.hsf` (HSFV037, with each material's texture, or its color), HAL sysdolphin `.dat` / `.usd` (HSD: Super Smash Bros. Melee, Kirby Air Ride; posed by their joints and envelopes, with each material's texture, palette ones included, or its color), Paon `OCN.` models (Donkey Kong: Barrel Blast `chara/` and `entry/` `.dat`, LZ10-compressed: skinned characters in their bind pose, rigid props, CMPR textures) and FJG bundles (each HSD model in it, **1** for the next), and Monster Games `.mod` (Excite Truck / Excitebots; textured from the `.tex` files in their archive, the region's base track and the shared `HobbySet.res` / `race.res` / `common.res`); lit, posed by their bones and textured; a BRRES model plays its animations, looping: `AnmChr` (CHR0) bones, `AnmVis` (VIS0) hidden bones, `AnmTexSrt` (SRT0) moving textures, `AnmClr` (CLR0) material colors (the balloons' palette steps twice a second), `AnmTexPat` (PAT0) texture swaps and `AnmScn` (SCN0) ambient light color; animations of one name play together | D-Pad rotate, **+** / **-** zoom, **A** lit / unlit / wireframe, **1** next model, **2** next animation (or info, for a model with none) |
 | **Audio** | BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND, Monster Games `.sfx`, WAV, AIFF, MP3, FLAC, Ogg Vorbis, tracker modules (`.mod`, `.s3m`, `.xm`, `.it`) | **A** pause, **1** loop, **+** / **-** pick channels, **B** stop |
-| **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as color swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), Paon `.d4` (Donkey Kong: Barrel Blast), PNG, JPEG, WebP, TGA (true-color, grayscale and color-mapped, raw or RLE), BMP (1 to 32-bit, RLE4 / RLE8, bit fields and alpha, OS/2 too), GIF (first frame). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
+| **Images** | TPL, BTI, TEX0 / BRTEX (with a `.plt0` beside it), PLT0 (as color swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, AJPG (Wii Message Board photos), Paon `.d4` (Donkey Kong: Barrel Blast), PNG, JPEG, WebP, TGA (true-color, grayscale and color-mapped, raw or RLE), BMP (1 to 32-bit, RLE4 / RLE8, bit fields and alpha, OS/2 too), GIF (first frame), Photoshop `.psd` / `.psb` (the flattened image), Illustrator `.ai` (its embedded preview). Every GX format (I4 to CMPR, with palettes) | **1** fit / 1:1, **+** / **-** zoom, D-Pad pan (or previous / next image when it all fits), **A** background, **2** info |
 | **Layouts** | BRLYT layouts (banners and icons) with their BRLAN animations | **A** play / pause, D-Pad **Left / Right** step a frame, **Up / Down** previous / next animation, **1** loop, **+** / **-** zoom, **2** info |
 | **MIDI** | `.mid`, `.rmi`, `.kar`, and BRSAR sequences (a sequence with a loop loops for ever, as in the game) | Up / Down pick a channel, **A** on / off, **2** solo, **-** all on, **+** pause, **1** repeat (sequences: loop / repeat / play the loop twice and fade), **B** stop |
 | **Miis** | A Mii (`.miigx`, `.mii`, `.rcd`, `.rsd`) or a Mii database (`RFL_DB.dat`): each Mii's head and shoulders, drawn on the Wii by MiiKit, with its name, creator, gender, birthday, favorite color, height, weight and Mii ID. A database lists its Miis and can export them like **Miis** in the HOME menu | Up / Down pick, **A** mark, **1** mark all, **+** export, **2** change the expression, **B** back |
@@ -134,6 +134,11 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 | **Video** | Mobiclip `.mo`, THP, Flipnote `.kwz` / `.ppm`, with sound | **A** / **+** pause, **B** stop |
 
 * **Images** open pixel for pixel (1:1) in their real colors. A `.stpl` is unpacked first and shown as the TPL it holds.
+* **Photoshop** files show the flattened image Photoshop saves after the layers (the default "Maximize Compatibility"): 1, 8 and 16 bits
+  per channel; bitmap, grayscale, indexed, RGB, CMYK and Lab; raw or RLE. Transparency is kept when the file marks it. ZIP-compressed
+  composites and 32-bit float files don't open. An image over 4096 pixels either way is shown at a whole-number fraction of its size.
+* **Illustrator** files are PDFs (or PostScript) that can't be drawn here, so the viewer shows the JPEG preview Illustrator stores in the
+  file's metadata (usually at most 256 pixels). A file saved without one doesn't open as an image.
 * **Monster Games textures** don't store their pixel format, so `.tex` / `.art` / `.img` are decoded in every format that fits and
   the one whose mip levels agree (or whose GX tiles join up) is shown, as nintoolbox and ExciteExtract do: best effort, a few
   percent of files come out in the wrong format. `.tm0` and Excitebots' headed files are exact.

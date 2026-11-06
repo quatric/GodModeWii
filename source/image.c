@@ -37,6 +37,7 @@
 #include "ajpg.h"
 #include "gif.h"
 #include "tga.h"
+#include "psd.h"
 #include "bmp.h"
 
 #define FILE_MAX (32u * 1024 * 1024)
@@ -728,6 +729,83 @@ bool image_d4_ok(const u8 *h, u32 n, u64 size)
 
 /* ---------------------------------------------------------------- loading */
 
+static void load_psd(set_t *s)
+{
+    int w, h;
+    u8 *px = psd_decode(s->buf, s->len, 4096, &w, &h);
+    add_rgba(s, w, h, px, "PSD");
+}
+
+/* Adobe Illustrator .ai: the file is a PDF (or old PostScript) whose pages can't be drawn here, but
+ * Illustrator stores a JPEG preview of the artwork in its XMP metadata, base64 in <xmpGImg:image>
+ * (with &#xA; line breaks). The largest one is shown. */
+static int b64_val(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    return c == '+' ? 62 : c == '/' ? 63 : -1;
+}
+
+static u8 *ai_preview(const u8 *d, u32 n, u32 *out_len)
+{
+    static const char open_tag[] = "<xmpGImg:image>", close_tag[] = "</xmpGImg:image>";
+    u8 *best = NULL;
+    u32 best_len = 0;
+    for (u32 i = 0; i + sizeof(open_tag) < n; i++) {
+        if (d[i] != '<' || memcmp(d + i, open_tag, sizeof(open_tag) - 1)) continue;
+        u32 from = i + sizeof(open_tag) - 1, to = from;
+        while (to + sizeof(close_tag) <= n && memcmp(d + to, close_tag, sizeof(close_tag) - 1)) to++;
+        if (to + sizeof(close_tag) > n) break;
+        u8 *jpg = malloc((to - from) / 4 * 3 + 4);
+        if (!jpg) break;
+        u32 o = 0, acc = 0;
+        int bits = 0;
+        for (u32 k = from; k < to; k++) {
+            if (d[k] == '&') {                              /* &#xA; and friends */
+                while (k < to && d[k] != ';') k++;
+                continue;
+            }
+            int v = b64_val(d[k]);
+            if (v < 0) continue;
+            acc = acc << 6 | (u32)v;
+            bits += 6;
+            if (bits >= 8) {
+                bits -= 8;
+                jpg[o++] = (u8)(acc >> bits);
+            }
+        }
+        if (o > best_len && o > 4 && jpg[0] == 0xFF && jpg[1] == 0xD8) {
+            free(best);
+            best = jpg;
+            best_len = o;
+        } else
+            free(jpg);
+        i = to;
+    }
+    *out_len = best_len;
+    return best;
+}
+
+static void load_ai(set_t *s)
+{
+    u32 jl;
+    u8 *jpg = ai_preview(s->buf, s->len, &jl);
+    if (!jpg) return;
+    u8 *sb = s->buf;
+    u32 sl = s->len;
+    s->buf = jpg;
+    s->len = jl;
+    load_jpeg(s);
+    s->buf = sb;
+    s->len = sl;
+    free(jpg);
+    if (s->n) {
+        s->kind = "Illustrator preview";
+        snprintf(s->img[0].label, sizeof(s->img[0].label), "preview");
+    }
+}
+
 static u8 *load_file(const char *path, u32 *len)
 {
     vfs_file f;
@@ -922,6 +1000,9 @@ static bool load_set(set_t *s, const char *path)
     else if (!memcmp(b, "PLT0", 4)) parse_plt0(s);
     else if (!memcmp(b, "AJPG", 4)) load_ajpg(s);
     else if (bmp_header_ok(b, s->len, s->len)) load_bmp(s);
+    else if (psd_header_ok(b, s->len)) load_psd(s);
+    else if (arc_name_has_ext(path, ".ai") && s->len > 8 && (!memcmp(b, "%PDF", 4) || !memcmp(b, "%!PS", 4)))
+        load_ai(s);
     else if (arc_name_has_ext(path, ".d4") && image_d4_ok(b, s->len, s->len)) {
         s->kind = "D4";                                 /* Paon: GX texture behind a 0x20 byte header */
         add(s, be16(b), be16(b + 2), be16(b + 4), be32(b + 8), vfs_basename(path));

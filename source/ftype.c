@@ -11,6 +11,7 @@
 #include "tga.h"
 #include "bmp.h"
 #include "tracker.h"
+#include "psd.h"
 
 #define M(s) (n >= sizeof(s) - 1 && !memcmp(h, s, sizeof(s) - 1))
 
@@ -52,6 +53,8 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
     if (arc_name_has_ext(name, ".d4") && image_d4_ok(h, n, size)) return FT_IMAGE;
     /* Truevision TGA: no magic; the header has to describe an image the file is large enough for */
     if (arc_name_has_ext(name, ".tga") && tga_header_ok(h, n, size)) return FT_IMAGE;
+    /* Illustrator: a PDF (or PostScript) with a preview image the viewer pulls out */
+    if (arc_name_has_ext(name, ".ai") && n >= 8 && (M("%PDF") || M("%!PS"))) return FT_IMAGE;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
     static const char *const audio[] = { ".mp3", ".mp2", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };
@@ -128,6 +131,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         /* GameCube / Wii save banners */
         if (M("BNR1") || M("BNR2") || M("WIBN")) return FT_IMAGE;
         if (bmp_header_ok(h, n, size)) return FT_IMAGE;                               /* BMP */
+        if (psd_header_ok(h, n)) return FT_IMAGE;                                     /* Photoshop */
 
         if (M("bres") || M("MDL0")) return FT_MODEL;
         /* Paon (Donkey Kong: Barrel Blast): OCN. models and FJG bundles of HSD archives, on their own or
