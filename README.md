@@ -330,7 +330,7 @@ It installs to the SD card, or to USB after pressing **1**. What happens depends
 | `.wad` | **WADs can be installed here.** You choose: *to the NAND* (as from the file browser: asks first, then for the Konami code; save data kept and backed up), *to the SD card* (wad2bin, see [Installing and launching](#other-features)), or not at all. Removed from `GodModeWii/wiiload/` once installed, kept there otherwise |
 | `.zip` / `.7z` / `.rar` with a program | The folder holding `boot.dol` / `boot.elf` (or another `.dol` / `.elf`) goes to `apps/<folder>/`, wherever it sits in the archive |
 | `.zip` / `.7z` / `.rar` without a program (WADs, say) | Placed like the FTP install server does it; then each WAD in it (put in `wad/`) asks the same as a `.wad` |
-| Anything else | Kept in `GodModeWii/wiiload/` |
+| Anything else | Put at the root of the drive. If a file of that name is already there you're asked whether to replace it; if not, the upload stays in `GodModeWii/wiiload/` |
 
 * Extra folders around the app don't matter: `MyApp-v1.2/apps/myapp/boot.dol` still ends up in `apps/myapp/`.
 * Files outside the program folder (readmes …) are left out, a zip with several apps installs each one, and a program at the

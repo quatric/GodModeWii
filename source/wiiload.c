@@ -491,7 +491,40 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         return false;
     }
 
-    wl_log("Not an archive or a program: kept GodModeWii/wiiload/%s", name);
+    /* anything else goes to the root of the drive, asking before a file there is replaced */
+    char dest[VFS_PATH_MAX];
+    bool is_dir = false;
+    if (!vfs_join(dest, sizeof(dest), vfs_dev_root(dev), name)) {
+        wl_log("Kept GodModeWii/wiiload/%s", name);
+        return false;
+    }
+    if (vfs_stat(dest, &is_dir, NULL)) {
+        if (is_dir) {
+            wl_log("%s is a folder at the root: kept GodModeWii/wiiload/%s", name, name);
+            return false;
+        }
+        char q[300];
+        snprintf(q, sizeof(q), "\"%s\" already exists at the root of the %s.\n\nReplace it with the file "
+                 "just received? (No keeps the new one in GodModeWii/wiiload.)", name, g_devs[dev].tag);
+#ifdef GMW_AUTOTEST
+        wl_log("Would ask: replace %s at the root? (answered yes)", name);
+        bool replace = true;
+#else
+        bool replace = ui_confirm("WIILOAD: FILE EXISTS", C_YELLOW, q);
+#endif
+        if (!replace) {
+            wl_log("Not replaced: kept GodModeWii/wiiload/%s", name);
+            return false;
+        }
+        if (!vfs_remove(dest, false)) {
+            wl_log("Can't replace %s: kept GodModeWii/wiiload/%s", name, name);
+            return false;
+        }
+    }
+    if (vfs_rename(path, dest))
+        wl_log("Put %s at the root of the %s", name, g_devs[dev].tag);
+    else
+        wl_log("Can't move it to the root: kept GodModeWii/wiiload/%s", name);
     vfs_update_space(dev);
     return false;
 }
