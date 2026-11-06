@@ -7,7 +7,7 @@
  *   channels  private/wii/title/<ABCD>/content.bin
  *     Part A  0x640 bytes, AES-CBC with the SD key / IV: title ID, icon.bin size, MD5 of this header
  *             (taken with the MD5 "blanker" in its place), MD5 of the padded icon.bin, three fixed
- *             title references, then the banner's IMET header without its hash
+ *             title references, then the banner's IMET header as it is (zeroed if it has none)
  *     Part B  the banner's meta/icon.bin, padded to 64 bytes, AES-CBC with the SD key / IV
  *     Part C  the "Bk" header (0x80 bytes): console ID, TMD size, content size, a bit per content
  *     Part D  the TMD, padded to 64 bytes
@@ -178,6 +178,7 @@ static bool wad_open(wad_t *w, const src_t *f, w2b_result_t *r)
     }
     uint8_t ck[16], tk[16], iv[16] = { 0 };
     int idx = w->tik[tb + 0xB1];
+    if (idx > 2) idx = 0;               /* a bogus index (0x35, 0xF6, ... seen in the wild) means the regular key */
     if (!arc_common_key(idx, ck)) {
         err(r, "The ticket uses an unknown common key");
         return false;
@@ -291,65 +292,97 @@ static bool copy_content(const wad_t *w, int i, uint64_t off, const uint8_t key[
     return true;
 }
 
-/* The banner (content index 0), decrypted, for its IMET header and icon.bin. */
-static uint8_t *load_banner(const wad_t *w, uint32_t *len, w2b_result_t *r)
+/* One content, decrypted and checked against its TMD hash. NULL (and *bad set when it was readable but
+ * its hash is wrong) otherwise. */
+static uint8_t *load_content(const wad_t *w, int i, uint64_t off, uint32_t *len, bool *bad)
 {
-    uint64_t off = w->data_off;
-    for (int i = 0; i < w->ncont; i++) {
-        const uint8_t *rc = rec(w, i);
-        uint64_t size = rb64(rc + 8);
-        if (rb16(rc + 4) == 0) {
-            if (size < 0x640 + 0x20 || size > 16u * 1024 * 1024) break;
-            uint8_t *b = rd(w->f, off, (uint32_t)a64(size));
-            if (!b) break;
-            uint8_t iv[16], sum[20];
-            content_iv(rc, iv);
-            aes128_cbc_decrypt(&w->title_key, iv, b, b, (size_t)a64(size));
-            sha1_t c;
-            sha1_init(&c);
-            sha1_update(&c, b, (size_t)size);
-            sha1_final(&c, sum);
-            if (memcmp(sum, rc + 0x10, 20)) {
-                free(b);
-                err(r, "The banner (content 0) doesn't match its TMD hash: the WAD is damaged");
-                return NULL;
-            }
-            *len = (uint32_t)size;
-            return b;
-        }
-        off += a64(size);
+    const uint8_t *rc = rec(w, i);
+    uint64_t size = rb64(rc + 8);
+    if (size < 0x20 || size > 16u * 1024 * 1024) return NULL;
+    uint8_t *b = rd(w->f, off, (uint32_t)a64(size));
+    if (!b) return NULL;
+    uint8_t iv[16], sum[20];
+    content_iv(rc, iv);
+    aes128_cbc_decrypt(&w->title_key, iv, b, b, (size_t)a64(size));
+    sha1_t c;
+    sha1_init(&c);
+    sha1_update(&c, b, (size_t)size);
+    sha1_final(&c, sum);
+    if (memcmp(sum, rc + 0x10, 20)) {
+        free(b);
+        *bad = true;
+        return NULL;
     }
-    err(r, "This WAD has no banner (content 0), so it can't run from the SD card");
-    return NULL;
+    *len = (uint32_t)size;
+    return b;
 }
 
-/* meta/icon.bin inside the banner's U8 archive (at 0x640) */
-static const uint8_t *find_icon(const uint8_t *b, uint32_t n, uint32_t *len)
+/* meta/icon.bin inside the U8 archive at `base` of the banner, or NULL when the header there doesn't hold
+ * together or has no such file. */
+static const uint8_t *u8_icon(const uint8_t *b, uint32_t n, uint32_t base, uint32_t *len)
 {
-    const uint32_t base = 0x640;
-    if (n < base + 0x20 || rb32(b + base) != 0x55AA382D) return NULL;
+    if ((uint64_t)base + 0x20 > n || rb32(b + base) != 0x55AA382D) return NULL;
     const uint8_t *u = b + base;
-    uint32_t root = rb32(u + 4);
-    if (base + root + 12 > n) return NULL;
+    uint32_t avail = n - base;
+    uint32_t root = rb32(u + 4), info = rb32(u + 8);
+    if (root > avail || info > avail - root || (uint64_t)root + 12 > avail) return NULL;
     uint32_t count = rb32(u + root + 8);
-    uint64_t strs = (uint64_t)root + (uint64_t)count * 12;
-    if (!count || base + strs > n) return NULL;
-    /* walk the tree: find directory "meta", then "icon.bin" inside it */
+    if (count < 2 || count > 4096 || (uint64_t)count * 12 > info) return NULL;
+    uint32_t strs = root + count * 12, strs_end = root + info;
+    /* walk the tree: directory "meta" right under the root, then "icon.bin" inside it */
     uint32_t meta_end = 0;
     for (uint32_t i = 1; i < count; i++) {
         const uint8_t *nd = u + root + i * 12;
-        uint32_t name_off = rb32(nd) & 0xFFFFFF;
-        if (base + strs + name_off >= n) return NULL;
-        const char *nm = (const char *)u + strs + name_off;
+        uint32_t name_off = strs + (rb32(nd) & 0xFFFFFF);
+        if (name_off >= strs_end || !memchr(u + name_off, 0, strs_end - name_off)) return NULL;
+        const char *nm = (const char *)u + name_off;
         bool dir = nd[0] == 1;
-        if (dir && !strcmp(nm, "meta") && rb32(nd + 4) == 0) meta_end = rb32(nd + 8);
+        if (dir && !meta_end && !strcmp(nm, "meta") && rb32(nd + 4) == 0) meta_end = rb32(nd + 8);
         else if (!dir && meta_end && i < meta_end && !strcmp(nm, "icon.bin")) {
             uint32_t o = rb32(nd + 4), l = rb32(nd + 8);
-            if ((uint64_t)base + o + l > n) return NULL;
+            if (!l || (uint64_t)o + l > avail) return NULL;
             *len = l;
             return u + o;
         }
     }
+    return NULL;
+}
+
+/* icon.bin of a banner: the U8 archive normally starts at 0x640 (build tag + IMET header), but it is
+ * looked for anywhere, the way wad2bin ports that cope with shifted banners do. */
+static const uint8_t *find_icon(const uint8_t *b, uint32_t n, uint32_t *len)
+{
+    const uint8_t *icon = u8_icon(b, n, 0x640, len);
+    int tried = 0;
+    for (uint32_t off = 0; !icon && off + 0x20 <= n && tried < 64; off += 4) {
+        if (rb32(b + off) != 0x55AA382D || off == 0x640) continue;
+        tried++;
+        icon = u8_icon(b, n, off, len);
+    }
+    return icon && *len > 0x20 ? icon : NULL;
+}
+
+/* The banner (opening.bnr) and its icon.bin: the content with index 0 first, then every other one, for
+ * packers that keep it elsewhere; the first content holding meta/icon.bin wins. */
+static uint8_t *load_banner(const wad_t *w, uint32_t *len, const uint8_t **icon, uint32_t *ilen,
+                            w2b_result_t *r)
+{
+    bool bad = false;
+    for (int pass = 0; pass < 2; pass++) {
+        uint64_t off = w->data_off;
+        for (int i = 0; i < w->ncont; i++) {
+            const uint8_t *rc = rec(w, i);
+            bool idx0 = rb16(rc + 4) == 0;
+            if (idx0 == (pass == 0)) {
+                uint8_t *b = load_content(w, i, off, len, &bad);
+                if (b && (*icon = find_icon(b, *len, ilen))) return b;
+                free(b);
+            }
+            off += a64(rb64(rc + 8));
+        }
+    }
+    err(r, bad ? "The banner doesn't match its TMD hash: the WAD is damaged" :
+                 "This WAD has no banner with a meta/icon.bin, so it can't run from the SD card");
     return NULL;
 }
 
@@ -359,21 +392,19 @@ static int make_content_bin(const wad_t *w, const char *root, const w2b_keys_t *
                             w2b_result_t *r)
 {
     uint32_t blen = 0, ilen = 0;
-    uint8_t *banner = load_banner(w, &blen, r);
+    const uint8_t *icon = NULL;
+    uint8_t *banner = load_banner(w, &blen, &icon, &ilen, r);
     if (!banner) return -1;
-    const uint8_t *icon = find_icon(banner, blen, &ilen);
-    const uint8_t *imet = banner + 0x40;
-    if (rb32(imet + 0x40) != 0x494D4554 || rb32(imet + 0x44) != 0x600 || !icon || ilen <= 0x20 ||
-        rb32(icon) != 0x494D4435) {
-        free(banner);
-        err(r, "The banner has no IMET header or no meta/icon.bin");
-        return -1;
-    }
 
-    /* Part A */
+    /* Part A. The IMET header (titles, file sizes, its hash) is the banner's own, copied as it is from
+     * 0x40; a banner without one at the usual place leaves it zeroed, as wad2bin does, rather than
+     * refusing the WAD. */
     uint8_t a[0x640];
-    memcpy(a, banner, sizeof(a));
-    memset(a + 0x40 + 0x5F0, 0, 16);                     /* the IMET hash isn't kept */
+    memset(a, 0, sizeof(a));
+    if (blen >= 0x640 && rb32(banner + 0x80) == 0x494D4554)
+        memcpy(a + 0x40, banner + 0x40, 0x600);
+    else if (blen >= 0x600 && rb32(banner + 0x40) == 0x494D4554)     /* no build tag in front */
+        memcpy(a + 0x40, banner, 0x600);
     wb64(a, w->tid);
     wb32(a + 8, ilen);
     memcpy(a + 0x0C, MD5_BLANKER, 16);

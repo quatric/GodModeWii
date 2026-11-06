@@ -180,6 +180,7 @@ archive_t *arc_wad_open(const src_t *file, const char *name)
     if (tb && tik_sz >= tb + 0xB2) {
         uint8_t ck[16], tk[16], iv[16];
         int idx = tik[tb + 0xB1];
+        if (idx > 2) idx = 0;           /* bogus index: the regular common key */
         if (arc_common_key(idx, ck)) {
             aes128_t c;
             aes128_init_dec(&c, ck);
