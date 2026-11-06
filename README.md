@@ -305,7 +305,7 @@ on low memory.
 
 ### Wiiload
 
-HOME → *Wiiload (install apps over the network)* listens on TCP port **4299**, like the Homebrew Channel, so devkitPro's
+HOME → *Wiiload (receive apps, WADs and files)* listens on TCP port **4299**, like the Homebrew Channel, so devkitPro's
 `wiiload` (or any wiiload 0.4 / 0.5 client) works as is. Pack your app the way the Homebrew Channel wants it, one folder with
 the program in it:
 

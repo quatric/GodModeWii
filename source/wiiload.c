@@ -104,21 +104,19 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
 
     ui_field(4, 1, cols - 2, "Address :  %u.%u.%u.%u  (port %d)", ip >> 24, (ip >> 16) & 255,
              (ip >> 8) & 255, ip & 255, WIILOAD_PORT);
-    ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload MyApp.zip", ip >> 24,
+    ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload <file>", ip >> 24,
              (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
     ui_color(C_YELLOW, true);
-    ui_field(6, 1, cols - 2, "Install :  %s",
-             dev < 0         ? "no drive to install onto!"
-             : dev == DEV_SD ? "SD card"
-                             : g_devs[dev].tag);
+    ui_field(6, 1, cols - 2, "Drive   :  %s",
+             dev < 0 ? "no drive to put it on!" : dev == DEV_SD ? "SD card" : g_devs[dev].tag);
     ui_color(C_WHITE, false);
-    ui_field(7, 1, cols - 2, "Apps    :  .zip / .7z / .rar install into apps/; a .dol / .elf can run.");
+    ui_field(7, 1, cols - 2, "Apps    :  .zip / .7z / .rar go into apps/; a .dol / .elf can run.");
     ui_color(C_CYAN, true);
-    ui_field(8, 1, cols - 2, "WADs can be installed here, to the NAND or to the SD card.");
-    ui_field(9, 1, cols - 2, "A .wad, or an archive of WADs, asks which, one WAD at a time.");
-    ui_field(10, 1, cols - 2, "wad2bin: a content.bin made with this Wii's keys,");
-    ui_field(11, 1, cols - 2, "  run from the SD card menu.");
+    ui_field(8, 1, cols - 2, "WADs    :  each asks: to the NAND, to the SD card (wad2bin), or keep.");
     ui_color(C_WHITE, false);
+    ui_field(9, 1, cols - 2, "Others  :  put at the drive's root; asks before replacing a file.");
+    ui_field(10, 1, cols - 2, "%s", "");
+    ui_field(11, 1, cols - 2, "%s", "");
 
     if (busy) {
         char a[24], b[24];

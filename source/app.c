@@ -1172,19 +1172,19 @@ static bool system_menu(void)
             code[n++] = M_LOCK;
         }
 
-        items[n] = "Remount drives (SD / Gecko / USB)"; code[n++] = M_REMOUNT;
-        items[n] = "FTP server (read-only)";            code[n++] = M_FTP_RO;
-        items[n] = "FTP server (read/write)";           code[n++] = M_FTP_RW;
-        items[n] = "FTP install server (archives to SD)";  code[n++] = M_FTP_SD;
-        items[n] = "FTP install server (archives to USB)"; code[n++] = M_FTP_USB;
-        items[n] = "Wiiload (install apps over the network)"; code[n++] = M_WIILOAD;
-        items[n] = "Miis";                              code[n++] = M_MIIS;
-        items[n] = "Export all saves";                  code[n++] = M_SAVES;
-        items[n] = "About / credits";                   code[n++] = M_ABOUT;
-        items[n] = "Exit to loader (Homebrew Channel)"; code[n++] = M_LOADER;
-        items[n] = "Exit to Wii Menu";                  code[n++] = M_WIIMENU;
+        items[n] = "Remount drives (SD / Gecko / USB)";                 code[n++] = M_REMOUNT;
+        items[n] = "FTP server (read-only)";                            code[n++] = M_FTP_RO;
+        items[n] = "FTP server (read/write)";                           code[n++] = M_FTP_RW;
+        items[n] = "FTP install server (archives to SD)";               code[n++] = M_FTP_SD;
+        items[n] = "FTP install server (archives to USB)";              code[n++] = M_FTP_USB;
+        items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
+        items[n] = "Miis";                                              code[n++] = M_MIIS;
+        items[n] = "Export all saves";                                  code[n++] = M_SAVES;
+        items[n] = "About / credits";                                   code[n++] = M_ABOUT;
+        items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
+        items[n] = "Exit to Wii Menu";                                  code[n++] = M_WIIMENU;
         items[n] = g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii"; code[n++] = M_RESTART;
-        items[n] = "Power off";                         code[n++] = M_POWER;
+        items[n] = "Power off";                                         code[n++] = M_POWER;
 
         /* HOME closes the menu like the Wii's own HOME Menu; leaving is always an explicit
          * choice. */
