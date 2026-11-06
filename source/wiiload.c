@@ -340,10 +340,11 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
     }
     if (!name[0]) safe_name(name, sizeof(name), "");
 
-    /* the name the archive reader / launcher will go by: make its extension match what it is */
+    /* the name the archive reader / launcher will go by: make its extension match what it is. Not for
+     * zip: many formats are zips inside (.mym themes, .epub ...), so only a name ending in .zip is
+     * installed as one */
     const char *ext = NULL;
-    if (*headn >= 4 && !memcmp(head, "PK\3\4", 4)) ext = ".zip";
-    else if (*headn >= 6 && !memcmp(head, "7z\xBC\xAF\x27\x1C", 6)) ext = ".7z";
+    if (*headn >= 6 && !memcmp(head, "7z\xBC\xAF\x27\x1C", 6)) ext = ".7z";
     else if (*headn >= 4 && !memcmp(head, "Rar!", 4)) ext = ".rar";
     else if (ftype_sniff(head, *headn, size, NULL) == FT_PROGRAM)
         ext = *headn >= 4 && !memcmp(head, "\x7F" "ELF", 4) ? ".elf" : ".dol";
