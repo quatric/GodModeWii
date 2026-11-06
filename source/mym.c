@@ -296,29 +296,56 @@ bad:
 #define LZ_DIST 4096
 #define LZ_HASH_BITS 15
 #define LZ_CHAIN 256
+/* The chains only reach back LZ_DIST bytes, so a ring of 2 * LZ_DIST links is enough: a link is
+ * overwritten LZ_WIN positions later, after it can last be followed. A link per position would take
+ * 4 bytes for every byte of input (23 MB for the Wii Menu's health.ash). */
+#define LZ_WIN 8192
 
 static uint32_t hash3(const uint8_t *p)
 {
     return ((uint32_t)(p[0] << 16 | p[1] << 8 | p[2]) * 2654435761u) >> (32 - LZ_HASH_BITS);
 }
 
+/* True when `in` (LZ77-packed) decompresses to exactly `want`, without a buffer: back references
+ * are read from `want`, which is what they must reproduce. */
+static bool lz77_matches(const uint8_t *in, uint32_t len, const uint8_t *want, uint32_t wlen)
+{
+    if (len < 8 || memcmp(in, "LZ77\x10", 5)) return false;
+    uint32_t size = in[5] | in[6] << 8 | in[7] << 16, p = 8, o = 0;
+    if (size != wlen) return false;
+    while (o < size) {
+        if (p >= len) return false;
+        uint8_t flags = in[p++];
+        for (int bit = 0; bit < 8 && o < size; bit++) {
+            if (flags & (0x80 >> bit)) {
+                if (p + 2 > len) return false;
+                uint32_t n = (in[p] >> 4) + 3, d = ((in[p] & 15) << 8 | in[p + 1]) + 1;
+                p += 2;
+                if (d > o) return false;
+                for (uint32_t k = 0; k < n && o < size; k++, o++)
+                    if (want[o] != want[o - d]) return false;
+            } else {
+                if (p >= len || in[p++] != want[o++]) return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* mym-to-csm's lz77.c: hash chains, the longest match within 256 candidates, nearest first. */
 uint8_t *lz77_pack(const uint8_t *in, uint32_t n, uint32_t *out_len)
 {
     if (n > 0xFFFFFF) return NULL;
-    uint8_t *src = malloc(n + 3);
+    const uint8_t *src = in;
     int32_t *head = malloc(sizeof(int32_t) << LZ_HASH_BITS);
-    int32_t *prev = malloc(sizeof(int32_t) * (n + 1));
+    int32_t *prev = malloc(sizeof(int32_t) * LZ_WIN);
     uint8_t *out = malloc(8 + n + n / 8 + 16);
-    if (!src || !head || !prev || !out) {
-        free(src);
+    if (!head || !prev || !out) {
         free(head);
         free(prev);
         free(out);
         return NULL;
     }
-    memcpy(src, in, n);
-    memset(src + n, 0, 3);
     memset(head, 0xFF, sizeof(int32_t) << LZ_HASH_BITS);
     memcpy(out, "LZ77\x10", 5);
     out[5] = n & 0xFF;
@@ -332,13 +359,13 @@ uint8_t *lz77_pack(const uint8_t *in, uint32_t n, uint32_t *out_len)
         for (int bit = 0; bit < 8 && pos < (long)n; bit++) {
             for (; inserted < pos && inserted + LZ_MIN <= (long)n; inserted++) {
                 uint32_t h = hash3(src + inserted);
-                prev[inserted] = head[h];
+                prev[inserted & (LZ_WIN - 1)] = head[h];
                 head[h] = inserted;
             }
             int best_len = 0, best_dist = 0;
             if (pos + LZ_MIN <= (long)n) {
                 int32_t cand = head[hash3(src + pos)];
-                for (int steps = 0; cand >= 0 && steps < LZ_CHAIN; steps++, cand = prev[cand]) {
+                for (int steps = 0; cand >= 0 && steps < LZ_CHAIN; steps++, cand = prev[cand & (LZ_WIN - 1)]) {
                     long dist = pos - cand;
                     if (dist > LZ_DIST) break;
                     int len = 0, limit = ((long)n - pos < LZ_MAX) ? (int)(n - pos) : LZ_MAX;
@@ -362,7 +389,6 @@ uint8_t *lz77_pack(const uint8_t *in, uint32_t n, uint32_t *out_len)
         }
         out[flag_at] = flags;
     }
-    free(src);
     free(head);
     free(prev);
     *out_len = (uint32_t)o;
@@ -895,17 +921,21 @@ uint8_t *mym_build(const uint8_t *base_data, uint32_t base_len, mym_fetch_fn fet
     for (int i = 0; i < nct; i++) {
         if (!ct[i].edited) continue;
         if (progress) progress(pctx, ct[i].prefix, nsec, nsec);
-        uint32_t ul, pl, back_len;
+        uint32_t ul, pl;
         uint8_t *built = u8_build(&ct[i].u, &ul);
+        /* the unpacked container isn't needed once it is rebuilt: free it before compressing */
+        u8_free(&ct[i].u);
+        free(ct[i].raw);
+        ct[i].raw = NULL;
         uint8_t *packed = built ? lz77_pack(built, ul, &pl) : NULL;
         /* the round trip, as mym-to-csm checks it */
-        uint8_t *back = packed ? lz77_unpack(packed, pl, &back_len) : NULL;
-        bool same = back && back_len == ul && !memcmp(back, built, ul);
-        free(back);
+        bool oom = !built || !packed;
+        bool same = !oom && lz77_matches(packed, pl, built, ul);
         free(built);
         if (!same) {
             free(packed);
-            snprintf(err, errsz, "Couldn't rebuild %s.", ct[i].prefix);
+            snprintf(err, errsz, "Couldn't rebuild %s (%s).", ct[i].prefix,
+                     oom ? "out of memory" : "LZ77 round trip failed");
             goto done;
         }
         u8_set(&base, ct[i].index, packed, pl);
