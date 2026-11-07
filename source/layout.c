@@ -58,6 +58,7 @@ typedef struct {
     struct {
         u16 tex;
         u8 ws, wt;
+        u8 fmin, fmag;          /* GX filters, as nw4r::lyt::res::TexMap::GetMinFilter / GetMagFilter */
     } tm[8];
     u8 nsrt;
     srt_t srt[10];
@@ -314,6 +315,9 @@ static bool parse_mat(mat_t *m, const u8 *b, u32 end)
         m->tm[i].tex = be16(b + p);
         m->tm[i].ws = b[p + 2];
         m->tm[i].wt = b[p + 3];
+        /* the file stores the GX filter minus one: min is bits 2..4 of byte 2, mag bit 2 of byte 3 */
+        m->tm[i].fmin = (u8)((((b[p + 2] >> 2) & 7) + 1) & 7);
+        m->tm[i].fmag = (u8)((((b[p + 3] >> 2) & 1) + 1) & 1);
     }
 
     m->nsrt = nsrt;
@@ -689,6 +693,9 @@ static void bind_material(lyt_t *L, const mat_t *m)
             int ws = m->tm[i].ws <= 2 && is_pow2(t->w) ? m->tm[i].ws : GX_CLAMP;
             int wt = m->tm[i].wt <= 2 && is_pow2(t->h) ? m->tm[i].wt : GX_CLAMP;
             GX_InitTexObjWrapMode(&t->obj, ws, wt);
+            /* no mipmaps here: a mip filter samples the base level, nearest or linear by its kind */
+            GX_InitTexObjFilterMode(&t->obj, m->tm[i].fmin & 1 ? GX_LINEAR : GX_NEAR,
+                                    m->tm[i].fmag ? GX_LINEAR : GX_NEAR);
             GX_LoadTexObj(&t->obj, GX_TEXMAP0 + i);
         } else
             GX_LoadTexObj(&white_obj, GX_TEXMAP0 + i);
@@ -840,31 +847,21 @@ static void draw_window(lyt_t *L, const pane_t *p, u8 alpha)
     float x0, y0;
     pane_rect(p, &x0, &y0);
 
-    if (p->mat >= 0 && p->mat < L->nmat) {
-        bind_material(L, &L->mat[p->mat]);
-        quad(x0 - p->inf[0], y0 + p->inf[2], p->w + p->inf[0] + p->inf[1],
-             p->h + p->inf[2] + p->inf[3], p->vc, alpha, p->tc);
-    }
-
-    /* Frames, as NW4R lays them out: four bands around the edge (top from the left corner, right
-     * from the top, bottom from the right, left from the bottom), each starting with its corner at
-     * its own size and stretching the texture's inner edge along the rest. The file's frames are
-     * in the order left top, right top, left bottom, right bottom; one frame is mirrored into the
-     * other corners. Each frame has a flip: 1 horizontal, 2 vertical, 3 / 4 / 5 turned 90 / 180 /
-     * 270 degrees. */
-    if (!p->nfr) return;
-    static const u8 white[4][4] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 },
-                                    { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
-
     enum { LT, RT, LB, RB };
     tex_t *ft[4] = { 0 };
     const mat_t *fm[4] = { 0 };
-    float tw[4], th[4];
+    float tw[4] = { 0 }, th[4] = { 0 };
+    bool frames = p->nfr > 0;
 
-    for (int k = 0; k < 4; k++) {
+    /* the frames' first textures give their sizes: one frame is mirrored into all four corners,
+     * four or more are left top, right top, left bottom, right bottom */
+    for (int k = 0; frames && k < 4; k++) {
         int fi = p->nfr >= 4 ? k : 0;
         int mi = p->fmat[fi];
-        if (mi < 0 || mi >= L->nmat) return;
+        if (mi < 0 || mi >= L->nmat) {
+            frames = false;
+            break;
+        }
         fm[k] = &L->mat[mi];
         tex_t *t = fm[k]->ntm && fm[k]->tm[0].tex < L->ntex ? &L->tex[fm[k]->tm[0].tex] : NULL;
         if (t && !t->ok && t->name[0]) tex_load(L, t);
@@ -872,6 +869,25 @@ static void draw_window(lyt_t *L, const pane_t *p, u8 alpha)
         tw[k] = ft[k] ? ft[k]->w : 8;
         th[k] = ft[k] ? ft[k]->h : 8;
     }
+
+    /* the content, as nw4r::lyt::Window::DrawContent: inside the frames (left and top from the
+     * left top frame, right and bottom from the right bottom one), then grown by the window's
+     * inflation */
+    if (p->mat >= 0 && p->mat < L->nmat) {
+        float fl = frames ? tw[LT] : 0, ftop = frames ? th[LT] : 0;
+        float fr = frames ? tw[RB] : 0, fb = frames ? th[RB] : 0;
+        bind_material(L, &L->mat[p->mat]);
+        quad(x0 + fl - p->inf[0], y0 - ftop + p->inf[2], p->w - fl - fr + p->inf[0] + p->inf[1],
+             p->h - ftop - fb + p->inf[2] + p->inf[3], p->vc, alpha, p->tc);
+    }
+
+    /* Frames, as NW4R lays them out: four bands around the edge (top from the left corner, right
+     * from the top, bottom from the right, left from the bottom), each starting with its corner at
+     * its own size and stretching the texture's inner edge along the rest. Each frame has a flip:
+     * 1 horizontal, 2 vertical, 3 / 4 / 5 turned 90 / 180 / 270 degrees. */
+    if (!frames) return;
+    static const u8 white[4][4] = { { 255, 255, 255, 255 }, { 255, 255, 255, 255 },
+                                    { 255, 255, 255, 255 }, { 255, 255, 255, 255 } };
 
     float W = p->w, H = p->h;
     /* band k: top left corner, size; which corner of it is the frame's own corner */
