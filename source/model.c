@@ -1431,12 +1431,23 @@ static bool pat_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *
         const u8 *ge = f + data + 8 + k * 16;
         u32 no = data + be32(ge + 8), e = data + be32(ge + 12);
         if (no >= flen || e + 12 > flen) continue;
-        u32 node = be32(f + e + 8);
+        /* e + 4: four flag bits per texture layer (1 used, 2 constant, 4 has a texture, 8 has a
+         * palette); layer 0 comes first among the used ones. A constant layer holds its texture
+         * and palette numbers right there (two u16), a keyed one the node's offset (from e). */
+        u32 lf = be32(f + e + 4) & 15, node = be32(f + e + 8);
         int mi = mat_find(m, f, no);
-        if (mi < 0 || !node || e + node + 8 > flen) continue;
-        u32 n = e + node;
-        int nk = be16(f + n);
-        if (nk <= 0 || nk > 4096 || (u64)n + 8 + nk * 8 > flen) continue;
+        if (mi < 0 || !(lf & 1) || !(lf & 4)) continue;
+        int nk;
+        u32 n = 0;
+        bool konst = (lf & 2) != 0;
+        if (konst) {
+            nk = 1;
+        } else {
+            if (!node || e + node + 8 > flen) continue;
+            n = e + node;
+            nk = be16(f + n);
+            if (nk <= 0 || nk > 4096 || (u64)n + 8 + nk * 8 > flen) continue;
+        }
         apat_t *p = &pt[np];
         p->fr = malloc(nk * sizeof(float));
         p->tex = malloc(nk * sizeof(int));
@@ -1444,13 +1455,15 @@ static bool pat_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *
         p->mat = mi;
         p->nk = nk;
         for (int q = 0; q < nk; q++) {
-            const u8 *kk = f + n + 8 + q * 8;
-            u32 ti = be16(kk + 4), pi = be16(kk + 6);
-            p->fr[q] = bef(kk);
+            const u8 *kk = konst ? NULL : f + n + 8 + q * 8;
+            u32 ti = konst ? be16(f + e + 8) : be16(kk + 4);
+            u32 pi = konst ? be16(f + e + 10) : be16(kk + 6);
+            p->fr[q] = konst ? 0.0f : bef(kk);
             p->tex[q] = -1;
             if (ti >= (u32)ntex) continue;
             u32 tno = ttab + be32(f + ttab + ti * 4), pno = 0;
-            if (nplt > 0 && pi < (u32)nplt && (u64)ptab + nplt * 4 <= flen) pno = ptab + be32(f + ptab + pi * 4);
+            if ((lf & 8) && nplt > 0 && pi < (u32)nplt && (u64)ptab + nplt * 4 <= flen)
+                pno = ptab + be32(f + ptab + pi * 4);
             if (tno >= flen || pno >= flen) continue;
             const char *tn = (const char *)f + tno, *pn = pno ? (const char *)f + pno : NULL;
             p->tex[q] = tex_by_name(m, f, flen, tn, (u32)strnlen(tn, flen - tno), pn,
