@@ -11,6 +11,7 @@
 #define SETTING "sd:/apps/GodModeWii/sfx_off"
 
 static bool asnd_on, enabled = true;
+static int last_voice = -1;
 
 void sfx_asnd_acquire(void)
 {
@@ -56,6 +57,13 @@ static void play(int id)
     if (v < 0) return;
     unsigned off = be32(b + 8 + id * 8), len = be32(b + 12 + id * 8);
     ASND_SetVoice(v, VOICE_STEREO_16BIT, 48000, 0, (void *)(b + off), len, 200, 200, NULL);
+    last_voice = v;
+}
+
+void sfx_cancel(void)
+{
+    if (asnd_on && last_voice >= 0) ASND_StopVoice(last_voice);
+    last_voice = -1;
 }
 
 void sfx_play(int id)

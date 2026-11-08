@@ -1251,12 +1251,14 @@ static bool system_menu(void)
         case M_FTP_RW:
         case M_FTP_SD:
         case M_FTP_USB:
+            sfx_cancel();               /* the click comes once the network is up */
             ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD    ? FTP_INSTALL_SD
                                          : code[r] == M_FTP_USB ? FTP_INSTALL_USB
                                                                 : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
         case M_WIILOAD: {
+            sfx_cancel();
             char prog[VFS_PATH_MAX];
             if (wiiload_run(prog, sizeof(prog)) && launch_prepare(prog)) {
                 launch_requested = true;

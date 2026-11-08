@@ -278,11 +278,11 @@ static void say(const char *s)
 
 static void layout_items(void)
 {
-    int col = 6;
+    int col = 5;                                    /* the last column is left free: writing it wraps */
     for (int i = 0; i < CMD_COUNT; i++) {
         items[i].w = (int)strlen(items[i].label) + 2;
         items[i].col = col;
-        col += items[i].w + (i == CMD_SIZE3 ? 3 : 1);
+        col += items[i].w + (i == CMD_SIZE3 ? 2 : 1);
     }
 }
 

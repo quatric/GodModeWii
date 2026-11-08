@@ -34,6 +34,7 @@
 #include "ftp.h"
 #include "app.h"
 #include "ui.h"
+#include "sfx.h"
 #include "input.h"
 #include "vfs.h"
 #include "arcfs.h"
@@ -1511,8 +1512,10 @@ static void gen_password(void)
  * so start it asynchronously and let B leave; the start-up carries on in the background. */
 static bool net_bring_up(void)
 {
-    if (net_gethostip())
+    if (net_gethostip()) {
+        sfx_play(SFX_CLICK);
         return true;
+    }
     ui_splash("Connecting to the network...   B  Cancel");
     bool started = false;
     u64 quiet_since = now_ms();
@@ -1523,6 +1526,7 @@ static bool net_bring_up(void)
         if (st == -EBUSY) {
             quiet_since = now_ms();
         } else if (st == 0 && net_gethostip()) {
+            sfx_play(SFX_CLICK);                /* the click, now that the network is up */
             return true;
         } else if (started) {
             ui_message("NETWORK", C_RED,

@@ -17,6 +17,8 @@ void sfx_play(int id);
 void sfx_play_force(int id);
 /* Waits for what is playing to end (a moment): before powering off. */
 void sfx_wait(void);
+/* Silences the sound that has just started (the click of the A that chose something slow). */
+void sfx_cancel(void);
 bool sfx_enabled(void);
 void sfx_set_enabled(bool on);
 /* sd:/apps/GodModeWii/sfx_off exists: the sounds were turned off last time. */
