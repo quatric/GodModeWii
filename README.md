@@ -232,7 +232,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **Calculator**, after MoonCalc: a scientific calculator with on-screen keys (sin / cos / tan and their inverses, ln, log, sqrt,
   powers, percent, pi, e, the last answer, DEG / RAD) that the pointer or mouse clicks and the D-Pad moves between.
 * **Themes**, after macOS Terminal's default profiles: Basic, Grass, Homebrew, Man Page, Novel, Ocean, Pro, Red Sands and
-  Silver Aerogel (or the original colours). Chosen in HOME, kept on the card (`sd:/apps/GodModeWii/theme`).
+  Silver Aerogel (or the original colours), each with its own colours for the selection, title bars, dialogs and headings. Chosen in HOME, kept on the card (`sd:/apps/GodModeWii/theme`).
 * **Fast-forward / rewind** in the audio player (WAV, MP3, FLAC, Ogg): Left / Right jump 5 s, and held they keep scrubbing.
 * The hints along the bottom of a screen ("A Pause", "B Stop", ...) can be clicked with the pointer or mouse: pointing at one
   highlights it, and A presses that button.

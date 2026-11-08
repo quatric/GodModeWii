@@ -115,16 +115,20 @@ void ui_clear(void)
     printf("\x1b[0m\x1b[2J");
 }
 
+/* the theme's background (set by ui_wipe_with), so the border around the console keeps it after a viewer */
+static unsigned wipe_color = COLOR_BLACK;
+
 void ui_wipe(void)
 {
     ptr_hide();
-    VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
+    VIDEO_ClearFrameBuffer(rmode, xfb, wipe_color);
     ui_clear();
 }
 
 void ui_wipe_with(unsigned color)
 {
     ptr_hide();
+    wipe_color = color;
     VIDEO_ClearFrameBuffer(rmode, xfb, color);
     ui_clear();
 }

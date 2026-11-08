@@ -202,7 +202,7 @@ int main(int argc, char **argv)
     wiilight_load_setting();
     colors_load();
     alarm_load();
-    sfx_play(SFX_CLICK);
+    sfx_play(SFX_LONGTAP);                          /* the soft tick of A and B, not the chime */
     wiilight_pattern(WL_DISC_CLOSE);
 
     if (toggled) {

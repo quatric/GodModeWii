@@ -182,8 +182,13 @@ miikit_%.o: $(MIIKIT_DIR)/%.c
 
 launch.o: appboot_bin.h
 midisynth.o: gmsf2_bin.h
+app.o: tinyload_elf.h
 
 %.bin.o %_bin.h : %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%.elf.o %_elf.h : %.elf
 	@echo $(notdir $<)
 	@$(bin2o)
 
