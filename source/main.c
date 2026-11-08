@@ -19,6 +19,8 @@
 #include "ui.h"
 #include "sfx.h"
 #include "wiilight.h"
+#include "colors.h"
+#include "alarm.h"
 #include "input.h"
 #include "vfs.h"
 #include "risk.h"
@@ -179,9 +181,7 @@ int main(int argc, char **argv)
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
-    sfx_play(SFX_OPENING);
     wiilight_init();
-    wiilight_pattern(WL_DISC_CLOSE);
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
 #ifdef GMW_AUTOTEST
     bool update = false;
@@ -196,6 +196,14 @@ int main(int argc, char **argv)
     vfs_init();
     bool toggled = risk_startup_poll_end(4000, began);
     risk_load_forced();
+
+    /* what is kept on the card, now that it's mounted: sounds, light, theme, alarm */
+    sfx_load_setting();
+    wiilight_load_setting();
+    colors_load();
+    alarm_load();
+    sfx_play(SFX_OPENING);
+    wiilight_pattern(WL_DISC_CLOSE);
 
     if (toggled) {
         bool saved = risk_toggle_forced();

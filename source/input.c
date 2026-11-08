@@ -6,6 +6,7 @@
 #include "pointer.h"
 #include "sfx.h"
 #include "wiilight.h"
+#include "alarm.h"
 
 /* Controllers, keyboard and the optional Wii U / DualShock 3 backends are
  * handled by libwiiinput; everything arrives as WPAD_BUTTON_* bits. */
@@ -16,7 +17,6 @@ void input_init(void)
     INPUT_InitEx(0);
     ptr_begin();
 
-    sfx_load_setting();
     INPUT_KeyboardMapSet(0x4C, 0);                  /* Delete: unused here */
     INPUT_KeyboardMapSet(0x06, WPAD_BUTTON_PLUS);   /* C: copy */
     INPUT_KeyboardMapSet(0x19, WPAD_BUTTON_MINUS);  /* V: cut  */
@@ -35,6 +35,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
 
     INPUT_Update();
     ptr_overlay_update();
+    alarm_poll();
     return DownOrHeld == IN_DOWN ? INPUT_ButtonsDown() : INPUT_ButtonsHeld();
 }
 

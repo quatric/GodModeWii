@@ -13,6 +13,9 @@
 #include "pda.h"
 #include "sfx.h"
 #include "wiilight.h"
+#include "colors.h"
+#include "alarm.h"
+#include "calc.h"
 #include "vfs.h"
 #include "ops.h"
 #include "editor.h"
@@ -1172,6 +1175,9 @@ static bool system_menu(void)
         M_MEMOS,
         M_SFX,
         M_LIGHT,
+        M_ALARM,
+        M_CALC,
+        M_THEME,
         M_SAVES,
         M_ABOUT,
         M_LOADER,
@@ -1186,8 +1192,9 @@ static bool system_menu(void)
         else
             draw_home();
 
-        const char *items[18];
-        int code[18];
+        char theme_item[48];
+        const char *items[22];
+        int code[22];
         int n = 0;
 
         if (risk_unlocked() && !risk_forced()) {
@@ -1210,6 +1217,10 @@ static bool system_menu(void)
         items[n] = wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
                                       : "Disc slot light: OFF (select to turn on)";
                                                                         code[n++] = M_LIGHT;
+        items[n] = "Alarm clock";                                       code[n++] = M_ALARM;
+        items[n] = "Calculator";                                        code[n++] = M_CALC;
+        snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
+        items[n] = theme_item;                                          code[n++] = M_THEME;
         items[n] = "Export all saves";                                  code[n++] = M_SAVES;
         items[n] = "About / credits";                                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
@@ -1277,6 +1288,20 @@ static bool system_menu(void)
             return false;
         /* Only shows a box, so B comes back to the SYSTEM menu, redrawn over the browser. */
         case M_ABOUT: show_credits(); break;
+        case M_ALARM:
+            alarm_menu();
+            return false;
+        case M_CALC:
+            calc_run();
+            return false;
+        case M_THEME: {
+            const char *names[16];
+            int nt = colors_count();
+            for (int t = 0; t < nt && t < 16; t++) names[t] = colors_name(t);
+            int pick = ui_menu("THEME", names, NULL, nt, colors_current());
+            if (pick >= 0) colors_apply(pick, true);
+            break;
+        }
         case M_LIGHT:
             wiilight_set_enabled(!wiilight_enabled());    /* saved on the card (sd:/apps/GodModeWii/light_off) */
             status(C_GREEN, wiilight_enabled() ? "Disc slot light on." : "Disc slot light off (saved on the card).");
@@ -1386,6 +1411,14 @@ int app_run(void)
             }
             if ((p & WPAD_BUTTON_A) && hit >= 0 && base + hit < count)
                 *cur = base + hit;
+        }
+        if (alarm_ringing()) {
+            const char *opts[] = { "Stop", "Snooze (5 minutes)" };
+            int r = ui_menu("ALARM", opts, NULL, 2, 0);
+            if (r == 1) alarm_snooze(5);
+            else alarm_stop();
+            dirty = true;
+            continue;
         }
         if (!p)
             continue;

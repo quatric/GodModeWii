@@ -225,6 +225,13 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii: Nintendo's light patterns and a breathing glow
   while something loads). Each can be turned off in HOME; the choice is saved on the SD card
   (`sd:/apps/GodModeWii/sfx_off`, `light_off`).
+* **Alarm clock**, after MoonShell's Morning Timer: set a time (L/R pick hour, minute or on/off, U/D change); when it comes the
+  sound and the disc slot light go off (even with the sounds turned off) until you stop it or snooze it for five minutes.
+  Kept on the card (`sd:/apps/GodModeWii/alarm`).
+* **Calculator**, after MoonCalc: a scientific calculator with on-screen keys (sin / cos / tan and their inverses, ln, log, sqrt,
+  powers, percent, pi, e, the last answer, DEG / RAD) that the pointer or mouse clicks and the D-Pad moves between.
+* **Themes**, after macOS Terminal's default profiles: Basic, Grass, Homebrew, Man Page, Novel, Ocean, Pro, Red Sands and
+  Silver Aerogel (or the original colours). Chosen in HOME, kept on the card (`sd:/apps/GodModeWii/theme`).
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * A clock (HH:MM, from the console's own clock) in the top bar of the browser.
 * Lock the NAND again, remount drives, credits, exit.
@@ -563,6 +570,8 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 
 ### Inspiration
 
+* **[MoonCalc](https://www.gamebrew.org/wiki/MoonCalc)** and **Morning Timer** (for MoonShell) — the calculator and the alarm clock.
+* **Terminal** on macOS — the default profiles the themes follow.
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modeled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
 * **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.

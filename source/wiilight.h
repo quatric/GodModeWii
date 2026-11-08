@@ -11,6 +11,7 @@
 enum { WL_BUSH_WARBLER = 0, WL_DISC_OPEN = 2, WL_DISC_CLOSE = 3, WL_BLINK3 = 4 };
 
 void wiilight_init(void);
+void wiilight_load_setting(void);           /* once the SD card is mounted */
 void wiilight_shutdown(void);               /* light off, thread stopped */
 
 void wiilight_off(void);

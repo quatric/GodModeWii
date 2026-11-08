@@ -101,6 +101,13 @@ void ui_wipe(void)
     ui_clear();
 }
 
+void ui_wipe_with(unsigned color)
+{
+    ptr_hide();
+    VIDEO_ClearFrameBuffer(rmode, xfb, color);
+    ui_clear();
+}
+
 void ui_bg(int bg)
 {
     cur_bg = bg;

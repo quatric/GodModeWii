@@ -119,7 +119,6 @@ static void request(int m)
 
 void wiilight_init(void)
 {
-    enabled = access(SETTING, F_OK) != 0;
     usable = !g_is_dolphin && !g_is_vwii;   /* neither has a light */
     if (!usable || running) return;
     running = true;
@@ -128,6 +127,11 @@ void wiilight_init(void)
         running = false;
         usable = false;
     }
+}
+
+void wiilight_load_setting(void)
+{
+    enabled = access(SETTING, F_OK) != 0;
 }
 
 void wiilight_shutdown(void)

@@ -13,6 +13,8 @@ enum { SFX_CLICK, SFX_OPEN, SFX_NOTIFY, SFX_POWEROFF, SFX_MOVEPAGE, SFX_LONGTAP,
 /* Starts ASND if nothing has yet. The audio player calls this where it used to call ASND_Init. */
 void sfx_asnd_acquire(void);
 void sfx_play(int id);
+/* Plays even when the sounds are turned off: the alarm. */
+void sfx_play_force(int id);
 /* Waits for what is playing to end (a moment): before powering off. */
 void sfx_wait(void);
 bool sfx_enabled(void);

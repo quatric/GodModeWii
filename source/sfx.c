@@ -46,9 +46,9 @@ static unsigned be32(const unsigned char *p)
     return (unsigned)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
 }
 
-void sfx_play(int id)
+static void play(int id)
 {
-    if (!enabled || id < 0 || id >= SFX_COUNT) return;
+    if (id < 0 || id >= SFX_COUNT) return;
     const unsigned char *b = sfx_bin;
     if (memcmp(b, "SFX0", 4) || (int)be32(b + 4) <= id) return;
     sfx_asnd_acquire();
@@ -57,6 +57,13 @@ void sfx_play(int id)
     unsigned off = be32(b + 8 + id * 8), len = be32(b + 12 + id * 8);
     ASND_SetVoice(v, VOICE_STEREO_16BIT, 48000, 0, (void *)(b + off), len, 200, 200, NULL);
 }
+
+void sfx_play(int id)
+{
+    if (enabled) play(id);
+}
+
+void sfx_play_force(int id) { play(id); }
 
 void sfx_wait(void)
 {
