@@ -386,6 +386,42 @@ static uint8_t *load_banner(const wad_t *w, uint32_t *len, const uint8_t **icon,
     return NULL;
 }
 
+/* ---------------------------------------------------------------- the AP signature */
+
+bool w2b_ap_sign(const w2b_keys_t *k, const uint8_t digest[20], uint8_t r[30], uint8_t s[30], uint8_t ap[0x180])
+{
+    const uint8_t *dev = k->device_cert;
+    uint8_t ap_priv[30], seed[20];
+    {
+        sha1_t c;                                         /* an AP key of its own, made from the NG key */
+        sha1_init(&c);
+        sha1_update(&c, "GodModeWii AP key", 17);
+        sha1_update(&c, k->ng_priv, 30);
+        sha1_final(&c, seed);
+        memset(ap_priv, 0, sizeof(ap_priv));
+        memcpy(ap_priv + 10, seed, 20);
+        ap_priv[10] &= 0x7F;
+    }
+    memset(ap, 0, 0x180);
+    wb32(ap, 0x00010002);
+    snprintf((char *)ap + 0x80, 0x40, "%.26s-%.10s", (const char *)dev + 0x80, (const char *)dev + 0xC4);
+    wb32(ap + 0xC0, 2);
+    snprintf((char *)ap + 0xC4, 0x40, "AP%08x%08x", 1u, 2u);
+    ecc233_public_key(ap_priv, ap + 0x108);
+    uint8_t apdig[20];
+    {
+        sha1_t c;
+        sha1_init(&c);
+        sha1_update(&c, ap + 0x80, 0x100);
+        sha1_final(&c, apdig);
+    }
+    ecc233_sign(k->ng_priv, apdig, ap + 4, ap + 4 + 30);
+    ecc233_sign(ap_priv, digest, r, s);
+    memset(ap_priv, 0, sizeof(ap_priv));
+    memset(seed, 0, sizeof(seed));
+    return ecc233_verify(dev + 0x108, apdig, ap + 4, ap + 34) && ecc233_verify(ap + 0x108, digest, r, s);
+}
+
 /* ---------------------------------------------------------------- channels: content.bin */
 
 static int make_content_bin(const wad_t *w, const char *root, const w2b_keys_t *k, const w2b_io_t *io,
@@ -508,36 +544,8 @@ static int make_content_bin(const wad_t *w, const char *root, const w2b_keys_t *
     /* Part F */
     uint8_t digest[20], f[0x340] = { 0 };
     sha1_final(&signed_area, digest);
-    uint8_t *dev = f + 0x40, *ap = f + 0x1C0;
-    memcpy(dev, k->device_cert, 0x180);
-    uint8_t ap_priv[30], seed[20];
-    {
-        sha1_t c;                                         /* an AP key of its own, made from the NG key */
-        sha1_init(&c);
-        sha1_update(&c, "GodModeWii AP key", 17);
-        sha1_update(&c, k->ng_priv, 30);
-        sha1_final(&c, seed);
-        memset(ap_priv, 0, sizeof(ap_priv));
-        memcpy(ap_priv + 10, seed, 20);
-        ap_priv[10] &= 0x7F;
-    }
-    wb32(ap, 0x00010002);
-    snprintf((char *)ap + 0x80, 0x40, "%.26s-%.10s", (const char *)dev + 0x80, (const char *)dev + 0xC4);
-    wb32(ap + 0xC0, 2);
-    snprintf((char *)ap + 0xC4, 0x40, "AP%08x%08x", 1u, 2u);
-    ecc233_public_key(ap_priv, ap + 0x108);
-    uint8_t apdig[20];
-    {
-        sha1_t c;
-        sha1_init(&c);
-        sha1_update(&c, ap + 0x80, 0x100);
-        sha1_final(&c, apdig);
-    }
-    ecc233_sign(k->ng_priv, apdig, ap + 4, ap + 4 + 30);
-    ecc233_sign(ap_priv, digest, f + 2, f + 0x22);       /* r and s, each in 32 bytes */
-    memset(ap_priv, 0, sizeof(ap_priv));
-    memset(seed, 0, sizeof(seed));
-    if (!ecc233_verify(dev + 0x108, apdig, ap + 4, ap + 34) || !ecc233_verify(ap + 0x108, digest, f + 2, f + 0x22)) {
+    memcpy(f + 0x40, k->device_cert, 0x180);
+    if (!w2b_ap_sign(k, digest, f + 2, f + 0x22, f + 0x1C0)) {
         o_close(&o, false);
         err(r, "The console's key doesn't match its device certificate: content.bin not written");
         return -1;

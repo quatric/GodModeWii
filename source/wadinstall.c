@@ -749,7 +749,7 @@ int wad_install_paths(char **paths, int n)
 
 /* ---------------------------------------------------------------- to the SD card (wad2bin) */
 
-static bool console_keys(w2b_keys_t *k, char *why, size_t wn)
+bool wad_console_keys(w2b_keys_t *k, char *why, size_t wn)
 {
     memset(k, 0, sizeof(*k));
     u8 otp[OTP_SIZE] ATTRIBUTE_ALIGN(32);
@@ -864,7 +864,7 @@ int wad_install_sd(char **paths, int n)
     }
     char why[160];
     w2b_keys_t keys;
-    if (!console_keys(&keys, why, sizeof(why))) {
+    if (!wad_console_keys(&keys, why, sizeof(why))) {
         ui_message("INSTALL TO SD", C_RED, why);
         return 0;
     }

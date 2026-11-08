@@ -19,4 +19,8 @@ int wad_install_paths(char **paths, int n);
  * Returns how many were installed. */
 int wad_install_sd(char **paths, int n);
 
+/* This console's ID, NG key, PRNG key and device certificate (needs HW_AHBPROT off); false with `why`. */
+#include "wad2bin.h"
+bool wad_console_keys(w2b_keys_t *k, char *why, size_t wn);
+
 #endif

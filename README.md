@@ -229,7 +229,13 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 
 **HOME menu**
 
-* **Export all saves** of every disc game, channel and WiiWare title to `GodModeWii/save-export/<date-time>/<title id> <game id>/`.
+* **Export all saves** of every disc game, channel and WiiWare title to `GodModeWii/save-export/<date-time>/`: as plain folders
+  (`<title id> <game id>/`), as `data.bin` files, or both. A `data.bin` is the Wii's own encrypted, signed SD card backup, made the
+  way Dolphin exports one (the header and banner, the `Bk` header, every file and folder with its permissions, then an AP
+  signature with this console's device certificate, so it needs this Wii's keys: start from the Homebrew Channel). They go in
+  `private/wii/title/<ID>/data.bin`; copy that `private` folder to the SD card's root and the Wii Menu's Data Management copies
+  them back, on this Wii or another. As in Dolphin, the banner's "no copy" flag is cleared. A save without a `banner.bin` (which
+  Data Management couldn't show) is listed as not made.
 * **Miis**: the Wii's Miis, each drawn with its details, exported as `/savemiis/<Name>.miigx`, the files
   SaveGame Manager GX writes and installs. The Miis are drawn on the Wii by MiiKit, from the Wii Menu's face models and
   the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;

@@ -11,6 +11,9 @@
 #include "vfs.h"
 #include "ui.h"
 #include "ops.h"
+#include "databin.h"
+#include "wadinstall.h"
+#include "input.h"
 
 /* Title types that keep save data: disc games, channels, WiiWare / game channels. */
 static const char *const KINDS[] = { "00010000", "00010001", "00010004" };
@@ -135,14 +138,34 @@ void saves_export_all(void)
     ui_fmt_size(sz, sizeof(sz), total_bytes);
     snprintf(
         q, sizeof(q),
-        "Export the saves of %d title(s) (%u files, %s)?\n\nEach title's data folder is copied to "
-        "GodModeWii/save-export/<date>/ on the drive you choose next. The NAND is only read.",
+        "Export the saves of %d title(s) (%u files, %s)?\n\nThey go to GodModeWii/save-export/<date>/ on the "
+        "drive you choose next, as plain folders, as data.bin files (the Wii's own SD card backups), or both. "
+        "The NAND is only read.",
         n, (unsigned)total_files, sz);
     if (!ui_confirm("EXPORT ALL SAVES", C_CYAN, q))
         goto out;
-    int dev = pick_target();
-    if (dev < 0)
+    const char *fmts[] = { "Folders and data.bin files", "Folders of plain files (any tool, Dolphin)",
+                           "data.bin files (Wii Data Management)" };
+    int fmt = ui_menu("EXPORT SAVES AS", fmts, NULL, 3, 0);
+    if (fmt < 0)
         goto out;
+    bool want_dirs = fmt != 2, want_bins = fmt != 1;
+    w2b_keys_t keys;
+    memset(&keys, 0, sizeof(keys));
+    if (want_bins) {
+        char why[160];
+        if (!wad_console_keys(&keys, why, sizeof(why))) {
+            char msg[300];
+            snprintf(msg, sizeof(msg), "data.bin files are signed with this console's keys. %s", why);
+            ui_message("EXPORT SAVES", C_RED, msg);
+            goto out;
+        }
+    }
+    int dev = pick_target();
+    if (dev < 0) {
+        memset(&keys, 0, sizeof(keys));
+        goto out;
+    }
 
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
@@ -152,7 +175,7 @@ void saves_export_all(void)
              tm->tm_min, tm->tm_sec);
     char **dsts = calloc(n, sizeof(char *));
     bool ok = dsts != NULL;
-    for (int i = 0; ok && i < n; i++) {
+    for (int i = 0; ok && want_dirs && i < n; i++) {
         dsts[i] = malloc(VFS_PATH_MAX);
         if (!dsts[i]) {
             ok = false;
@@ -161,14 +184,52 @@ void saves_export_all(void)
         snprintf(dsts[i], VFS_PATH_MAX, "%s/%s", base, ids[i]);
         ok = mkdirs(dsts[i]);
     }
+    bool copied = false;
     if (!ok) {
         ui_message("EXPORT SAVES", C_RED,
                    "Could not create the export folder. Is the drive writable?");
-    } else if (ops_copy_each(srcs, dsts, n, "EXPORTING SAVES")) {
-        char done[VFS_PATH_MAX + 64];
-        snprintf(done, sizeof(done), "Exported the saves of %d title(s) to\n%s", n, base);
-        ui_message("SAVES EXPORTED", C_GREEN, done);
+    } else if (!want_dirs || (copied = ops_copy_each(srcs, dsts, n, "EXPORTING SAVES"))) {
+        /* data.bin: <base>/private/wii/title/<ID>/data.bin, ready to copy to the SD card's root */
+        int made = 0;
+        char report[1400] = "";
+        size_t rl = 0;
+        for (int i = 0; want_bins && i < n; i++) {
+            if (input_cancel_held()) break;
+            char sub[64], dir[VFS_PATH_MAX], outp[VFS_PATH_MAX + 16], err[160] = "", tid_s[20];
+            u64 tid = 0;
+            const char *t = strstr(srcs[i], "/title/");
+            if (t) {
+                snprintf(tid_s, sizeof(tid_s), "%.8s%.8s", t + 7, t + 16);
+                tid = strtoull(tid_s, NULL, 16);
+            }
+            databin_dir(tid, sub, sizeof(sub));
+            snprintf(dir, sizeof(dir), "%s/%s", base, sub);
+            snprintf(outp, sizeof(outp), "%s/data.bin", dir);
+            char status[96];
+            snprintf(status, sizeof(status), "data.bin %d of %d: %s  (hold B to stop)", i + 1, n, ids[i]);
+            ui_splash(status);
+            int rc = mkdirs(dir) ? databin_export(tid, srcs[i], outp, &keys, err, sizeof(err))
+                                 : (snprintf(err, sizeof(err), "Couldn't create the folder"), -1);
+            if (!rc) made++;
+            else if (rl < sizeof(report) - 1) {
+                rl += snprintf(report + rl, sizeof(report) - rl, "%s: %s\n", ids[i], err);
+                if (rl >= sizeof(report)) rl = sizeof(report) - 1;
+            }
+        }
+        char done[VFS_PATH_MAX + 1600];
+        int p = 0;
+        if (want_dirs)
+            p += snprintf(done + p, sizeof(done) - p, "Copied the save folders of %d title(s).\n", n);
+        if (want_bins)
+            p += snprintf(done + p, sizeof(done) - p,
+                          "Made %d data.bin file(s) of %d in private/wii/title/ (copy that private folder to the "
+                          "SD card's root to restore them in Data Management, on this Wii or another one).\n%s%s",
+                          made, n, report[0] ? "Not made:\n" : "", report);
+        snprintf(done + p, sizeof(done) - p, "\nIn %s", base);
+        ui_message("SAVES EXPORTED", (!want_bins || made == n) ? C_GREEN : C_YELLOW, done);
     }
+    (void)copied;
+    memset(&keys, 0, sizeof(keys));
     if (dsts)
         for (int i = 0; i < n; i++) free(dsts[i]);
     free(dsts);

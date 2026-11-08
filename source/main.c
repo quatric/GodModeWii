@@ -255,6 +255,14 @@ int main(int argc, char **argv)
                     waddump_autotest(src, dst);
                 continue;
             }
+            /* "@databin <title id> <out>": a save exported as data.bin with a test console's keys */
+            if (!strncmp(line, "@databin ", 9)) {
+                extern void databin_autotest(const char *tid, const char *out);
+                char t[32], dst[256];
+                if (sscanf(line + 9, "%31s %255s", t, dst) == 2)
+                    databin_autotest(t, dst);
+                continue;
+            }
             /* "@theme install|convert <path>": the Wii Menu theme installer, answering yes */
             if (!strncmp(line, "@theme ", 7)) {
                 extern void theme_autotest(const char *cmd, const char *path);

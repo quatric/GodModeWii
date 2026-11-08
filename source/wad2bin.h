@@ -50,6 +50,11 @@ typedef struct {
 int w2b_convert(const src_t *wad, const char *root, const w2b_keys_t *keys, const w2b_opts_t *opt,
                 const w2b_io_t *io, w2b_result_t *r);
 
+/* Signs `digest` the way the System Menu signs its SD card files: with an AP key (its certificate, issued by
+ * this console's device certificate and signed with the NG key, goes to `ap`). r and s are 30 bytes each.
+ * False when the NG key doesn't match the device certificate. */
+bool w2b_ap_sign(const w2b_keys_t *k, const uint8_t digest[20], uint8_t r[30], uint8_t s[30], uint8_t ap[0x180]);
+
 /* The title ID of an installable WAD; false when it isn't one. */
 bool w2b_peek(const src_t *wad, uint64_t *tid);
 
