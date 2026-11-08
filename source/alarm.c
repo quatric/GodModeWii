@@ -20,6 +20,10 @@ static struct { bool on; int h, m; bool noise; } al = { false, 7, 0, false };
 static bool ringing;
 static bool snoozing;
 static int snooze_h, snooze_m;
+static const int SLEEP_MIN[] = { 0, 15, 30, 60, 90 };
+#define NSLEEP ((int)(sizeof(SLEEP_MIN) / sizeof(SLEEP_MIN[0])))
+static int sleep_idx;                       /* sleep noise length: not kept, so it's never on at start-up */
+static u64 sleep_end;                       /* when the sleep noise stops (ms), 0 when it isn't playing */
 static long last_minute = -1;               /* the minute it last went off in (days * 1440 + minutes) */
 static u64 ring_began, last_sound, last_light, last_check;
 
@@ -56,6 +60,7 @@ void alarm_stop(void)
 {
     ringing = false;
     sfx_noise_stop();
+    sleep_end = 0;
     wiilight_off();
 }
 
@@ -76,6 +81,19 @@ static void start_ringing(void)
     ring_began = now_ms();
     last_sound = last_light = 0;
     if (al.noise) sfx_noise_start();
+    else sfx_noise_stop();                              /* the sleep noise gives way to the beep */
+    sleep_end = 0;
+}
+
+static void sleep_apply(void)
+{
+    if (SLEEP_MIN[sleep_idx]) {
+        sleep_end = now_ms() + (u64)SLEEP_MIN[sleep_idx] * 60000;
+        sfx_noise_start();
+    } else {
+        sleep_end = 0;
+        sfx_noise_stop();
+    }
 }
 
 void alarm_poll(void)
@@ -96,6 +114,11 @@ void alarm_poll(void)
         }
         return;
     }
+    if (sleep_end && now >= sleep_end) {
+        sfx_noise_stop();
+        sleep_end = 0;
+        sleep_idx = 0;
+    }
     if ((!al.on && !snoozing) || now - last_check < 1000) return;
     last_check = now;
     time_t t = time(NULL);
@@ -111,7 +134,7 @@ void alarm_poll(void)
     }
 }
 
-#define NFIELDS 5
+#define NFIELDS 6
 
 static void draw(int field)
 {
@@ -121,6 +144,7 @@ static void draw(int field)
     ui_reset();
     ui_color(C_WHITE, false);
     ui_field(2, 2, ui_cols() - 4, "At the set time the sound (a beep or white noise) and the disc slot light go off.");
+    ui_field(3, 2, ui_cols() - 4, "Sleep plays white noise now, then stops by itself.");
     ui_reset();
 
     int h12 = al.h % 12 ? al.h % 12 : 12;
@@ -130,15 +154,17 @@ static void draw(int field)
         else if (f == 1) snprintf(text, sizeof(text), " %02d ", al.m);
         else if (f == 2) snprintf(text, sizeof(text), " %s ", al.h < 12 ? "AM" : "PM");
         else if (f == 3) snprintf(text, sizeof(text), " %s ", al.on ? "ON " : "OFF");
-        else snprintf(text, sizeof(text), " %s ", al.noise ? "White noise" : "Beep       ");
-        static const int COL[NFIELDS] = { 6, 13, 19, 26, 33 };
+        else if (f == 4) snprintf(text, sizeof(text), " %s ", al.noise ? "White noise" : "Beep       ");
+        else if (SLEEP_MIN[sleep_idx]) snprintf(text, sizeof(text), " Sleep %2dm ", SLEEP_MIN[sleep_idx]);
+        else snprintf(text, sizeof(text), " Sleep off ");
+        static const int COL[NFIELDS] = { 6, 13, 19, 26, 33, 48 };
         if (f == field) {
             ui_bg(C_CYAN);
             ui_color(C_BLACK, false);
         } else {
             ui_color(f == 3 && !al.on ? C_RED : C_WHITE, true);
         }
-        ui_field(5, COL[f], f == 4 ? 13 : 5, "%s", text);
+        ui_field(5, COL[f], f == 4 ? 13 : f == 5 ? 11 : 5, "%s", text);
         ui_reset();
     }
     ui_color(C_WHITE, true);
@@ -168,7 +194,12 @@ void alarm_menu(void)
             else if (field == 1) al.m = ((al.m + step) % 60 + 60) % 60;
             else if (field == 2) al.h = (al.h + 12) % 24;
             else if (field == 3) al.on = !al.on;
-            else al.noise = !al.noise;
+            else if (field == 4) al.noise = !al.noise;
+            else {
+                int d = step > 0 ? 1 : -1;
+                sleep_idx = (sleep_idx + d + NSLEEP) % NSLEEP;
+                sleep_apply();
+            }
         }
         if (p & WPAD_BUTTON_A) al.on = !al.on;
         if (p & WPAD_BUTTON_1) start_ringing();
@@ -183,7 +214,7 @@ void alarm_menu(void)
         }
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
     }
-    alarm_stop();
+    if (ringing) alarm_stop();                      /* the sleep noise carries on after the menu */
     save();
     ui_clear();
 }
