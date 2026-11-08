@@ -135,7 +135,7 @@ $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
-$(BUILD): libwiiupdate-lib appboot-bin
+$(BUILD): libwiiupdate-lib appboot-bin res/tinyload.elf
 .PHONY: libwiiupdate-lib appboot-bin
 libwiiupdate-lib:
 	@$(MAKE) --no-print-directory -C libwiiupdate
@@ -146,6 +146,10 @@ appboot-bin:
 	@$(MAKE) --no-print-directory -C appboot
 	@mkdir -p data
 	@cmp -s appboot/appboot.bin data/appboot.bin || cp appboot/appboot.bin data/appboot.bin
+
+# TinyLoad (boots game discs), built on its own and linked in as res/tinyload.elf.
+res/tinyload.elf: $(wildcard tinyload/*.c tinyload/*.h tinyload/*.S tinyload/*.ld) tinyload/build.sh
+	@bash tinyload/build.sh
 
 clean:
 	@echo clean ...
