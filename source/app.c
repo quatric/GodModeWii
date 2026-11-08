@@ -124,7 +124,10 @@ static bool load_dir(const char *path, const char *select_name)
 {
     vfs_entry *list;
     int n;
-    if (!vfs_list_visible(path, &list, &n)) {
+    ui_busy_begin("Loading...");
+    bool listed = vfs_list_visible(path, &list, &n);
+    ui_busy_end();
+    if (!listed) {
         if (vfs_is_archive(path)) {
             char msg[128];
             snprintf(msg, sizeof(msg), "%s.", arcfs_error());

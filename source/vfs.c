@@ -1124,6 +1124,7 @@ bool vfs_list(const char *path, vfs_entry **out, int *count)
         struct dirent *de;
 
         while ((de = readdir(dir)) != NULL) {
+            ui_busy_tick();                         /* a big folder says "Loading..." */
             if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, ".."))
                 continue;
             if (n == cap) {

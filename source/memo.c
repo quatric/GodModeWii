@@ -23,28 +23,6 @@
 
 #define MAX_MEMOS 64
 
-/* A pmic_firm.bin on the SD card, to use instead of the one built in. */
-static u8 *load_firmware(u32 *size)
-{
-    static const char *const paths[] = { "sd:/apps/GodModeWii/pmic_firm.bin", "sd:/pmic_firm.bin" };
-    for (unsigned i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
-        FILE *f = fopen(paths[i], "rb");
-        if (!f) continue;
-        fseek(f, 0, SEEK_END);
-        long n = ftell(f);
-        rewind(f);
-        u8 *b = n > 0 && n < (1 << 20) ? malloc(n) : NULL;
-        if (b && fread(b, 1, n, f) == (size_t)n) {
-            fclose(f);
-            *size = n;
-            return b;
-        }
-        free(b);
-        fclose(f);
-    }
-    return NULL;
-}
-
 static void put32(u8 *p, u32 v) { for (int i = 0; i < 4; i++) p[i] = v >> (8 * i); }
 static void put16(u8 *p, u32 v) { p[0] = v; p[1] = v >> 8; }
 
@@ -68,14 +46,10 @@ typedef enum { SRC_NONE, SRC_SPEAK, SRC_USB } mic_src;
 /* The Wii Speak when there is one (and its firmware), else a USB microphone. */
 static mic_src mic_open(u32 *rate, char *why, size_t why_n)
 {
-    /* the firmware is built in; a pmic_firm.bin on the card takes its place */
-    u32 fsize = 0;
-    u8 *firm = load_firmware(&fsize);
-    if (!firm) {
-        fsize = pmic_firm_bin_size;
-        firm = malloc(fsize);
-        if (firm) memcpy(firm, pmic_firm_bin, fsize);
-    }
+    /* the Wii Speak's boot firmware is built in (res/pmic_firm.bin) */
+    u32 fsize = pmic_firm_bin_size;
+    u8 *firm = malloc(fsize);
+    if (firm) memcpy(firm, pmic_firm_bin, fsize);
 
     ui_splash("Looking for a microphone...");
     s32 r = firm ? WS_Open(firm, fsize) : WS_ENODEV;

@@ -86,10 +86,17 @@ void ui_goto(int row, int col)
 /* The "0" in "\x1b[30;0m" clears every attribute including the background,
  * so the current background is tracked and re-applied after each color. */
 static int cur_bg = -1;
+static int cur_fg = C_WHITE;
+static bool cur_bold;
+
+/* the footer hint lines ("A Open  B Back ..."), kept so the pointer can click them (see ui_hint_update) */
+static struct { bool on; int col; int fg; bool bold; char text[120]; } hint[2];
+static void hints_forget(void) { hint[0].on = hint[1].on = false; }
 
 void ui_clear(void)
 {
     ptr_hide();
+    hints_forget();
     cur_bg = -1;
     printf("\x1b[0m\x1b[2J");
 }
@@ -116,6 +123,8 @@ void ui_bg(int bg)
 
 void ui_color(int fg, bool bold)
 {
+    cur_fg = fg;
+    cur_bold = bold;
     printf("\x1b[%d;%dm", 30 + fg, bold ? 1 : 0);
     if (cur_bg >= 0)
         printf("\x1b[%dm", 40 + cur_bg);
@@ -123,6 +132,8 @@ void ui_color(int fg, bool bold)
 
 void ui_reset(void)
 {
+    cur_fg = C_WHITE;
+    cur_bold = false;
     cur_bg = -1;
     printf("\x1b[0m\x1b[37;0m\x1b[40m");
 }
@@ -208,6 +219,14 @@ void ui_field(int row, int col, int width, const char *fmt, ...)
     buf[width] = '\0';
     ui_goto(row, col);
     fputs(buf, stdout);
+    if (row >= g_rows - 2 && row < g_rows && col <= 1 && width >= 20) {
+        int k = row - (g_rows - 2);
+        hint[k].on = true;
+        hint[k].col = col;
+        hint[k].fg = cur_fg;
+        hint[k].bold = cur_bold;
+        snprintf(hint[k].text, sizeof(hint[k].text), "%s", buf);
+    }
 }
 
 void ui_fill(int row, int col, int width, char c)
@@ -335,6 +354,7 @@ static void win_strip(int row, int left, int w, const char *text)
 static int draw_window(const char *title, int color, int content_rows, int w,
                        const char *strip, int *out_left, int *out_strip_row)
 {
+    hints_forget();                           /* the screen under the window isn't reachable */
     int h = content_rows + 4;                 /* title, pad, content, pad, strip */
     int top = (g_rows - h) / 2;
     int left = (g_cols - w) / 2;
@@ -623,7 +643,6 @@ static bool busy_shown;
 void ui_busy_begin(const char *what)
 {
     if (busy_depth++) return;
-    wiilight_breathe(true);
     ui_ascii(busy_what, sizeof(busy_what), what ? what : "");
     busy_start = gettime();
     busy_last = 0;
@@ -634,7 +653,7 @@ void ui_busy_begin(const char *what)
 
 void ui_busy_end(void)
 {
-    if (busy_depth > 0 && --busy_depth == 0) wiilight_off();
+    if (busy_depth > 0 && --busy_depth == 0 && busy_shown) wiilight_off();
 }
 
 static void busy_draw(void)
@@ -690,6 +709,7 @@ void ui_busy_tick(void)
     if (ticks_to_millisecs(now - busy_start) < 400) return;         /* quick loads show nothing */
     if (busy_shown && ticks_to_millisecs(now - busy_last) < 100) return;
     busy_last = now;
+    if (!busy_shown) wiilight_breathe(true);       /* the light breathes with the box, not for quick loads */
     busy_shown = true;
     busy_frame++;
     busy_draw();
@@ -701,3 +721,102 @@ void ui_busy_progress(u64 done, u64 total)
     busy_pct = done >= total ? 100 : (int)(done * 100 / total);
     ui_busy_tick();
 }
+
+/* ---------------------------------------------------------------- clickable footer hints */
+
+typedef struct { int start, end; u32 btn; } hseg;
+
+static u32 key_button(const char *s, int n)
+{
+    if (n == 1 && s[0] == 'A') return WPAD_BUTTON_A;
+    if (n == 1 && s[0] == 'B') return WPAD_BUTTON_B;
+    if (n == 1 && s[0] == '1') return WPAD_BUTTON_1;
+    if (n == 1 && s[0] == '2') return WPAD_BUTTON_2;
+    if (n == 1 && s[0] == '+') return WPAD_BUTTON_PLUS;
+    if (n == 1 && s[0] == '-') return WPAD_BUTTON_MINUS;
+    if (n == 4 && !strncmp(s, "HOME", 4)) return WPAD_BUTTON_HOME;
+    return 0;
+}
+
+/* "A Pause  B Stop  1 Repeat": a hint is a key, a space and its meaning; two spaces end it. */
+static int hint_segments(int k, hseg *out, int max)
+{
+    const char *t = hint[k].text;
+    int n = 0, i = 0, len = (int)strlen(t);
+    while (i < len && n < max) {
+        while (i < len && t[i] == ' ') i++;
+        if (i >= len) break;
+        int st = i;
+        while (i < len && !(t[i] == ' ' && i + 1 < len && t[i + 1] == ' ')) i++;
+        int en = i;
+        while (en > st && t[en - 1] == ' ') en--;
+        int ke = st;
+        while (ke < en && t[ke] != ' ') ke++;
+        u32 b = key_button(t + st, ke - st);
+        if (b && ke < en) {
+            out[n].start = st;
+            out[n].end = en;
+            out[n].btn = b;
+            n++;
+        }
+    }
+    return n;
+}
+
+static int hov_row = -1, hov_start = -1;    /* the highlighted hint */
+static u32 hov_btn;
+
+static void hint_paint(int k, int start, int end, bool lit)
+{
+    int sbg = cur_bg, sfg = cur_fg;
+    bool sbold = cur_bold;
+    char seg[120];
+    snprintf(seg, sizeof(seg), "%.*s", end - start, hint[k].text + start);
+    ui_goto(g_rows - 2 + k, hint[k].col + start);
+    if (lit) {
+        ui_bg(C_CYAN);
+        ui_color(C_BLACK, false);
+    } else {
+        ui_reset();
+        ui_color(hint[k].fg, hint[k].bold);
+    }
+    fputs(seg, stdout);
+    ui_reset();
+    ui_color(sfg, sbold);
+    if (sbg >= 0) ui_bg(sbg);
+}
+
+void ui_hint_update(void)
+{
+    int k = -1, st = -1, en = 0;
+    u32 btn = 0;
+    int r, c;
+    if (ptr_cell(&r, &c) && r >= g_rows - 2 && r < g_rows && hint[r - (g_rows - 2)].on) {
+        hseg seg[12];
+        int kk = r - (g_rows - 2);
+        int n = hint_segments(kk, seg, 12);
+        for (int i = 0; i < n; i++)
+            if (c >= hint[kk].col + seg[i].start && c < hint[kk].col + seg[i].end) {
+                k = kk;
+                st = seg[i].start;
+                en = seg[i].end;
+                btn = seg[i].btn;
+            }
+    }
+
+    int old_row = hov_row, old_start = hov_start;
+    hov_btn = btn;
+    if (k == old_row - (g_rows - 2) && st == old_start && old_row >= 0 && k >= 0) return;
+    if (old_row >= 0 && hint[old_row - (g_rows - 2)].on) {
+        int ok = old_row - (g_rows - 2);
+        hseg seg[12];
+        int n = hint_segments(ok, seg, 12);
+        for (int i = 0; i < n; i++)
+            if (seg[i].start == old_start) hint_paint(ok, seg[i].start, seg[i].end, false);
+    }
+    hov_row = k >= 0 ? g_rows - 2 + k : -1;
+    hov_start = st;
+    if (k >= 0) hint_paint(k, st, en, true);
+}
+
+u32 ui_hint_under(void) { return hov_btn; }

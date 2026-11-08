@@ -30,6 +30,7 @@
 #include "vfs.h"
 #include "ui.h"
 #include "input.h"
+#include <input_wii.h>
 #include "archive.h"
 #include "audio_gen.h"
 #include "seqsynth.h"
@@ -959,6 +960,22 @@ static bool oq_drained(void)
     return oq.queued == oq.filled && oq.idle > 0;
 }
 
+/* Throws away what is queued and starts the output over (after a seek). */
+static void oq_reset(void)
+{
+    if (oq.started) ASND_StopVoice(oq.voice);
+    u32 level;
+    _CPU_ISR_Disable(level);
+    oq.filled = oq.queued = oq.idle = 0;
+    oq.started = false;
+    oq.drain = 0;
+    oq.part = 0;
+    oq.in_n = oq.ipos = RS_HALF - 1;
+    memset(oq.in, 0, (RS_HALF - 1) * 4);
+    oq.fpos = 0;
+    _CPU_ISR_Restore(level);
+}
+
 static void oq_pause(bool on) { if (oq.started) ASND_PauseVoice(oq.voice, on); }
 
 /* Source frames already heard, roughly: everything before the buffer now playing. */
@@ -1146,7 +1163,7 @@ static void draw_gen(const gen_info *in, const char *name, u64 played, bool paus
     }
 
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat on/off%s",
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat  Left/Right Rewind/Forward%s",
              in->channels > 2 ? "  +/- Channels" : "");
     ui_reset();
 }
@@ -1168,7 +1185,9 @@ static bool play_gen(const char *path)
         return true;
     }
     u32 fifo_n = 0;
-    u64 submitted = 0, decoded = 0, since_rewind = 0;
+    u64 submitted = 0, decoded = 0, since_rewind = 0, pos_base = 0, last_seek = 0;
+    int hold_steps = 0;
+    bool can_seek = true;
     bool repeat = false, paused = false, ended = false;
     int pair = 0, chans[2] = { 0, nch > 1 ? 1 : 0 }, frame = 0;
     const char *name = vfs_basename(path);
@@ -1219,6 +1238,41 @@ static bool play_gen(const char *path)
             paused = !paused;
             oq_pause(paused);
         }
+
+        /* Fast-forward / rewind: LEFT and RIGHT jump 5 s, and held they keep scrubbing (3 s, then 10 s
+         * a step), playing a short bit at each stop like a tape. */
+        u32 held = INPUT_ButtonsHeld();
+        int dir = (held & WPAD_BUTTON_RIGHT) ? 1 : (held & WPAD_BUTTON_LEFT) ? -1 : 0;
+        if (!dir) {
+            hold_steps = 0;
+        } else if (can_seek) {
+            u64 now = ticks_to_millisecs(gettime());
+            bool first = (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) != 0;
+            if (first || (hold_steps > 0 && now - last_seek >= 140) ||
+                (hold_steps == 0 && now - last_seek >= 400)) {
+                last_seek = now;
+                int secs = first ? 5 : hold_steps < 8 ? 3 : 10;
+                hold_steps = first ? 1 : hold_steps + 1;
+                u64 cur = pos_base + oq_played(submitted);
+                if (in->total) cur %= in->total + 1;
+                s64 target = (s64)cur + (s64)dir * secs * in->rate;
+                if (target < 0) target = 0;
+                if (in->total && target >= (s64)in->total) target = in->total ? in->total - 1 : 0;
+                if (gen_seek(g, (u64)target)) {
+                    oq_reset();
+                    fifo_n = 0;
+                    submitted = 0;
+                    pos_base = (u64)target;
+                    ended = false;
+                    since_rewind = 1;
+                    p |= 1;                     /* redraw */
+                } else if (!in->total && dir > 0) {
+                    /* a seek past the end of an MP3 (its length isn't known) just fails: leave it */
+                } else {
+                    can_seek = false;           /* this file can't seek (a module) */
+                }
+            }
+        }
         if (p & WPAD_BUTTON_1)
             repeat = !repeat;
         if ((p & (WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS)) && nch > 2) {
@@ -1228,7 +1282,7 @@ static bool play_gen(const char *path)
             chans[1] = pair * 2 + 1 < nch ? pair * 2 + 1 : pair * 2;
         }
         if (p || ++frame % 15 == 0) {
-            u64 played = oq_played(submitted);
+            u64 played = pos_base + oq_played(submitted);
             if (in->total) played %= in->total + 1;
             draw_gen(in, name, played, paused, repeat, pair, false);
         }

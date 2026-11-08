@@ -29,6 +29,7 @@
 #include <tremor/ivorbisfile.h>
 
 #include "audio_gen.h"
+#include "ui.h"
 #include "tracker.h"
 #include "vfs.h"
 #include "archive.h"
@@ -119,6 +120,8 @@ struct gen {
         trk_t *trk;
     } d;
     gen_info info;
+    drmp3_seek_point *mp3_pts;              /* the MP3 seek table, made at the first seek */
+    bool mp3_tried;
 };
 
 static size_t dr_read(void *u, void *out, size_t n) { return bio_read(u, out, n); }
@@ -225,7 +228,13 @@ gen_t *gen_open(const char *path)
         if (!ok) break;
         i->channels = (int)g->d.mp3.channels;
         i->rate = (int)g->d.mp3.sampleRate;
-        i->total = 0;                       /* finding it means reading the whole file */
+        /* the length means going through every frame header once (no decoding): a moment */
+        {
+            drmp3_uint64 pcm = 0;
+            ui_busy_begin("Reading MP3");
+            if (drmp3_get_mp3_and_pcm_frame_count(&g->d.mp3, NULL, &pcm)) i->total = (u64)pcm;
+            ui_busy_end();
+        }
         i->format = "MP3";
         i->codec = "MPEG audio";
         break;
@@ -336,9 +345,33 @@ bool gen_rewind(gen_t *g)
     return false;
 }
 
+bool gen_seek(gen_t *g, u64 frame)
+{
+    switch (g->kind) {
+    case K_WAV:  return drwav_seek_to_pcm_frame(&g->d.wav, frame);
+    case K_MP3:
+        if (!g->mp3_tried) {                /* without a table, seeking decodes from the start */
+            g->mp3_tried = true;
+            drmp3_uint32 n = 600;
+            drmp3_seek_point *pts = malloc(n * sizeof(*pts));
+            if (pts && drmp3_calculate_seek_points(&g->d.mp3, &n, pts) &&
+                drmp3_bind_seek_table(&g->d.mp3, n, pts))
+                g->mp3_pts = pts;
+            else
+                free(pts);
+        }
+        return drmp3_seek_to_pcm_frame(&g->d.mp3, frame);
+    case K_FLAC: return drflac_seek_to_pcm_frame(g->d.flac, frame);
+    case K_OGG:  return ov_pcm_seek(&g->d.ogg, (ogg_int64_t)frame) == 0;
+    case K_TRK:  return false;              /* modules are generated: no seeking */
+    }
+    return false;
+}
+
 void gen_close(gen_t *g)
 {
     if (!g) return;
+    free(g->mp3_pts);
     switch (g->kind) {
     case K_WAV:  drwav_uninit(&g->d.wav); break;
     case K_MP3:  drmp3_uninit(&g->d.mp3); break;

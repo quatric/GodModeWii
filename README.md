@@ -220,8 +220,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   sets the brush width): 16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as baseline `.jpg` files in
   `GodModeWii/drawings/` on the SD card. The tools follow PictoCard's doodle pad.
 * **Voice memos**: record with a Wii Speak or a USB (class-compliant) microphone into `GodModeWii/voice/memo_NNN.wav`, then play
-  or delete them. The Wii Speak's boot firmware is built in (`res/pmic_firm.bin`; a `pmic_firm.bin` at `sd:/apps/GodModeWii/` is used instead if
-  there is one). USB microphones need nothing.
+  or delete them. The Wii Speak's boot firmware is built in (`res/pmic_firm.bin`). USB microphones need nothing.
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii: Nintendo's light patterns and a breathing glow
   while something loads). Each can be turned off in HOME; the choice is saved on the SD card
   (`sd:/apps/GodModeWii/sfx_off`, `light_off`).
@@ -232,6 +231,9 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   powers, percent, pi, e, the last answer, DEG / RAD) that the pointer or mouse clicks and the D-Pad moves between.
 * **Themes**, after macOS Terminal's default profiles: Basic, Grass, Homebrew, Man Page, Novel, Ocean, Pro, Red Sands and
   Silver Aerogel (or the original colours). Chosen in HOME, kept on the card (`sd:/apps/GodModeWii/theme`).
+* **Fast-forward / rewind** in the audio player (WAV, MP3, FLAC, Ogg): Left / Right jump 5 s, and held they keep scrubbing.
+* The hints along the bottom of a screen ("A Pause", "B Stop", ...) can be clicked with the pointer or mouse: pointing at one
+  highlights it, and A presses that button.
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * A clock (HH:MM, from the console's own clock) in the top bar of the browser.
 * Lock the NAND again, remount drives, credits, exit.

@@ -93,7 +93,7 @@ u32 ptr_ui_buttons(void)
 {
     int dx, dy, wheel;
     u32 b = 0;
-    if (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT) b |= WPAD_BUTTON_A;
+    if ((INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT) && !ui_hint_under()) b |= WPAD_BUTTON_A;
     INPUT_MouseDelta(&dx, &dy, &wheel);
     if (wheel > 0) b |= WPAD_BUTTON_DOWN;
     if (wheel < 0) b |= WPAD_BUTTON_UP;

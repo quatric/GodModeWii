@@ -20,6 +20,8 @@ const gen_info *gen_get_info(const gen_t *g);
 /* interleaved, info.channels per frame; 0 at the end */
 u32 gen_read(gen_t *g, s16 *out, u32 frames);
 bool gen_rewind(gen_t *g);
+/* To a frame (false when this kind of file can't, or it is past the end): fast-forward / rewind. */
+bool gen_seek(gen_t *g, u64 frame);
 void gen_close(gen_t *g);
 
 #endif

@@ -54,6 +54,11 @@ void ui_busy_end(void);
 void ui_busy_tick(void);
 void ui_busy_progress(u64 done, u64 total);
 
+/* The footer hint lines ("A Open  B Back ...") can be clicked with the pointer or mouse: a poll highlights
+ * the one under it and ui_hint_under() says which button it stands for (0: none). */
+void ui_hint_update(void);
+u32 ui_hint_under(void);
+
 /* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
 void *ui_framebuffer(int *w, int *h);
 

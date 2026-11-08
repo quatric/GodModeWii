@@ -201,13 +201,13 @@ static volatile bool poll_run, poll_hit;
 static volatile int poll_progress;
 static volatile u64 poll_last_ms;      /* when the last code button went in */
 static lwp_t poll_thread = LWP_THREAD_NULL;
-static u8 poll_stack[8192] __attribute__((aligned(32)));
+static u8 poll_stack[16384] __attribute__((aligned(32)));
 
 static void *poll_main(void *arg)
 {
     int progress = 0;
     while (poll_run) {
-        u32 p = input_poll_nowait() & KONAMI_MASK;
+        u32 p = input_poll_raw() & KONAMI_MASK;
         if (p) {
             progress = konami_step(progress, p);
             poll_progress = progress;

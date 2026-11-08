@@ -4,6 +4,7 @@
 
 #include "input.h"
 #include "pointer.h"
+#include "ui.h"
 #include "sfx.h"
 #include "wiilight.h"
 #include "alarm.h"
@@ -34,9 +35,17 @@ static u32 detect(u8 DownOrHeld, bool wait)
         VIDEO_WaitVSync();
 
     INPUT_Update();
+    ui_hint_update();
     ptr_overlay_update();
     alarm_poll();
-    return DownOrHeld == IN_DOWN ? INPUT_ButtonsDown() : INPUT_ButtonsHeld();
+    if (DownOrHeld != IN_DOWN)
+        return INPUT_ButtonsHeld();
+    u32 down = INPUT_ButtonsDown();
+    /* a click on a footer hint ("B Stop") is that button */
+    u32 hint = ui_hint_under();
+    if (hint && ((down & WPAD_BUTTON_A) || (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT)))
+        down = (down & ~WPAD_BUTTON_A) | hint;
+    return down;
 }
 
 u32 DetectInput(u8 DownOrHeld)
@@ -47,6 +56,13 @@ u32 DetectInput(u8 DownOrHeld)
 u32 input_poll_nowait(void)
 {
     return detect(IN_DOWN, false);
+}
+
+/* For the start-up code reader, which runs in its own small thread: no cursor, hint or alarm work. */
+u32 input_poll_raw(void)
+{
+    INPUT_Update();
+    return INPUT_ButtonsDown();
 }
 
 #define DPAD (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)

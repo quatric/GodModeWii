@@ -20,6 +20,10 @@ u32 input_pressed(void);
 /* Like DetectInput(IN_DOWN) but without waiting for vsync. */
 u32 input_poll_nowait(void);
 
+/* A bare poll (no vsync wait, no cursor, hint or alarm handling) for the thread that reads the
+ * start-up code. */
+u32 input_poll_raw(void);
+
 /* Drops presses made while the program was busy (so they don't act on what comes next). */
 void input_flush(void);
 
