@@ -247,6 +247,14 @@ int main(int argc, char **argv)
                     wad2bin_autotest(wad, keyf, !strcmp(nk, "null"));
                 continue;
             }
+            /* "@waddump <title folder or content.bin> <out.wad>": a WAD backup */
+            if (!strncmp(line, "@waddump ", 9)) {
+                extern void waddump_autotest(const char *src, const char *out);
+                char src[400], dst[256];
+                if (sscanf(line + 9, "%399s %255s", src, dst) == 2)
+                    waddump_autotest(src, dst);
+                continue;
+            }
             /* "@theme install|convert <path>": the Wii Menu theme installer, answering yes */
             if (!strncmp(line, "@theme ", 7)) {
                 extern void theme_autotest(const char *cmd, const char *path);

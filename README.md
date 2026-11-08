@@ -9,6 +9,7 @@ No fancy GUI: just a console, a cursor and a lot of power.
 * Open archives, disc images, saves and WADs like folders.
 * View images, 3D models, banners and layouts; play music, sequences and videos.
 * Install WADs and Wii Menu themes (`.csm`, `.mym`), launch homebrew, and install apps and WADs over the network (FTP or `wiiload`).
+* Back up installed titles (or a `content.bin` from the SD card) as installable WADs, the way YABDM makes them.
 * And, only if you really mean it, change the NAND.
 
 > [!CAUTION]
@@ -186,6 +187,20 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   left for other WAD managers. The files only work on the Wii that made them. A ticket that isn't for this console needs a System
   Menu IOS with the signing bug (a cIOS for DLC), as with wad2bin. Every content is checked against its TMD hash and both
   signatures are verified before the file is kept. System titles (IOS, System Menu …) can't run from the SD card and are refused.
+* **Back up installed titles as WADs (YABDM style):** in `nand:/title/<type>/` (or the same folder inside a BootMii `nand.bin`), put
+  the cursor on a title's folder, or mark several, and pick *Back up as WAD* from the actions menu (also offered inside a title's
+  folder, and on a `content.bin` the System Menu wrote to `private/wii/title/<ID>/`). The WAD is put together the way
+  [Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod) does it: the CA / CP / XS certificates from
+  `/sys/cert.sys`, the ticket, the TMD, every content encrypted again with the title key (shared contents found through
+  `/shared1/content.map`) and the first content as the footer, so it matches a NUS Downloader WAD. A System Menu with Priiloader is
+  dumped from Priiloader's copy of the original (`title_or.tmd`, `1xxxxxxx.app`). The **ticket is always fakesigned**: its console
+  ID and ECDH data are wiped and a Korean or vWii title key is encrypted again with the Wii common key (common key index 0), so the
+  WAD installs on any Wii whose IOS has the signing bug. The **TMD is never fakesigned**: it stays exactly as Nintendo signed it.
+  Every content is checked against its TMD hash, and a title with a damaged or missing content is refused, as is DLC with pieces
+  that were never downloaded (leaving them out would mean changing the TMD). A `content.bin` needs the keys of the Wii that made
+  it (run on that console), and its ticket and shared contents come from this console's NAND. Disc games have no ticket on the
+  NAND and boot2 isn't stored as files, so neither can be backed up. The WADs go in `GodModeWii/wad-dump/` on the SD card or a USB
+  drive, named `<title id>-<ID>-v<version>.wad`. The NAND is only read.
 * **Install Wii Menu themes (DANGEROUS):** **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces
   the System Menu's layout archive on the NAND, and a bad one stops the Wii Menu from starting, so the checks of
   [csm-installer](https://github.com/Naim2000/csm-installer) apply: Priiloader must be installed (it is how you get back to
@@ -570,6 +585,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
   OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
+* **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader System Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
 * **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.

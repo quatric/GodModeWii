@@ -19,6 +19,7 @@
 #include "clock.h"
 #include "vfs.h"
 #include "ops.h"
+#include "waddump.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -876,6 +877,7 @@ enum {
     A_DELETE,
     A_RENAME,
     A_MKDIR,
+    A_WADDUMP,
     A_INFO,
     A_USAGE,
     A_HEX,
@@ -1046,6 +1048,24 @@ static void actions_menu(void)
     en[n] = !ro && !card;
     code[n++] = A_MKDIR;
 
+    /* an installed title's folder (or a content.bin) -> WAD, as YABDM makes them */
+    bool dumpable = false;
+    if (nmarks) {
+        for (int i = 0; i < nents && !dumpable; i++) {
+            char p[VFS_PATH_MAX];
+            dumpable = marks[i] && vfs_join(p, sizeof(p), cwd, ents[i].name) && waddump_is_source(p, NULL);
+        }
+    } else if (on_entry) {
+        char p[VFS_PATH_MAX];
+        dumpable = vfs_join(p, sizeof(p), cwd, ents[e].name) && waddump_is_source(p, NULL);
+    }
+    if (!dumpable && !nmarks) dumpable = waddump_is_source(cwd, NULL);
+    if (dumpable) {
+        items[n] = "Back up as WAD (YABDM style)";
+        en[n] = true;
+        code[n++] = A_WADDUMP;
+    }
+
     items[n] = "Info / folder size";
     en[n] = on_entry || nmarks;
     code[n++] = A_INFO;
@@ -1115,6 +1135,20 @@ static void actions_menu(void)
             free_paths(tp, t);
         }
         break;
+    case A_WADDUMP: {
+        tp = targets(&t);
+        bool any = false;
+        for (int i = 0; i < t; i++) any = any || waddump_is_source(tp[i], NULL);
+        if (any) {
+            waddump_paths(tp, t);
+        } else {
+            char *here = cwd;
+            waddump_paths(&here, 1);
+        }
+        if (tp) free_paths(tp, t);
+        reload_keep();
+        break;
+    }
     case A_USAGE:
         usage_browse(cwd);
         reload_keep();
