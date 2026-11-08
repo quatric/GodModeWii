@@ -226,6 +226,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   while something loads). Each can be turned off in HOME; the choice is saved on the SD card
   (`sd:/apps/GodModeWii/sfx_off`, `light_off`).
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
+* A clock (HH:MM, from the console's own clock) in the top bar of the browser.
 * Lock the NAND again, remount drives, credits, exit.
 * **Restart Wii**; on a Wii U it returns to the Wii U Menu.
 

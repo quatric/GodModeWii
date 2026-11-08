@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -166,14 +167,28 @@ static bool here_risky(void)
     return risk_unlocked() && (!cwd[0] || vfs_dev_of(cwd) == DEV_NAND);
 }
 
+/* The console's clock, "HH:MM" (Moonshell puts one in its top corner too). */
+static int clock_minute(char *out, size_t n)
+{
+    time_t t = time(NULL);
+    struct tm tmv;
+    if (t < 1000000000 || !localtime_r(&t, &tmv)) {     /* the clock isn't set */
+        snprintf(out, n, "--:--");
+        return -1;
+    }
+    snprintf(out, n, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    return tmv.tm_hour * 60 + tmv.tm_min;
+}
+
 static void draw_header(void)
 {
     int cols = ui_cols();
-    char left[64], right[48];
+    char left[64], right[64], clk[8];
+    clock_minute(clk, sizeof(clk));
     bool risky = here_risky();
     snprintf(left, sizeof(left), " GodModeWii v%s", GMW_VERSION);
-    snprintf(right, sizeof(right), "%s%s ", g_is_vwii ? "vWii  " : "",
-             risky ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]");
+    snprintf(right, sizeof(right), "%s%s  %s ", g_is_vwii ? "vWii  " : "",
+             risky ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]", clk);
     ui_bg(risky ? C_RED : C_BLUE);
     ui_color(C_WHITE, true);
     int gap = cols - 1 - (int)strlen(left) - (int)strlen(right);
@@ -1332,7 +1347,7 @@ static void open_drive(int dev)
 int app_run(void)
 {
     bool dirty = true;
-    int last_hover = -1;
+    int last_hover = -1, shown_minute = -2;
 
     while (!g_quit_request && !launch_requested) {
         if (dirty) {
@@ -1343,6 +1358,14 @@ int app_run(void)
             dirty = false;
         }
         u32 p = input_pressed() | ptr_ui_buttons();
+        {
+            char clk[8];
+            int minute = clock_minute(clk, sizeof(clk));
+            if (minute != shown_minute) {                  /* keep the clock in the header current */
+                shown_minute = minute;
+                draw_header();
+            }
+        }
         {
             /* the pointer / mouse: hovering a row selects it, A (or a click) on it acts on it */
             int devs_tmp[DEV_COUNT];
