@@ -423,7 +423,7 @@ in Dolphin with those files on a temporary SD card image and turns the screensho
 renders the GX viewers, `AUDIO=True` dumps the sound, and `@wiiload` waits for a wiiload upload.
 `@theme install <path>` / `@theme convert <path>` run the theme installer with every question answered yes (log in
 `gmwtest.log`); give it a copy of an emulated NAND with `NAND=~/Library/Application\ Support/Dolphin/Wii` and put files on the
-card with `@put:LOCAL:/SDPATH`. `scripts/mym_host_test.sh theme.mym menu.app [mym-to-csm]` builds the mym converter for the PC
+card with `@put:LOCAL:/SDPATH`. `@colors <n>` applies colour theme n (0 is Classic) and saves a sample screen. `scripts/mym_host_test.sh theme.mym menu.app [mym-to-csm]` builds the mym converter for the PC
 and compares its csm with mym-to-csm's.
 
 ### CI

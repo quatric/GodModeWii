@@ -95,7 +95,7 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
     int cols = ui_cols(), rows = ui_rows();
     if (full) ui_clear();
     ui_bg(C_GREEN);
-    ui_color(C_WHITE, true);
+    ui_color(C_BLACK, false);
     ui_field(0, 0, cols - 1, " GodModeWii v%s  -  WIILOAD", GMW_VERSION);
     ui_reset();
     ui_color(C_GREEN, true);

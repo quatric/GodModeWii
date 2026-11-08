@@ -255,6 +255,28 @@ int main(int argc, char **argv)
                     theme_autotest(cmd, tp);
                 continue;
             }
+            /* "@colors <n>": theme n, then a sample screen saved like a viewer's */
+            if (!strncmp(line, "@colors ", 8)) {
+                extern void colors_autotest(int i);
+                extern bool ui_test_dump(void);
+                colors_autotest(atoi(line + 8));
+                ui_clear();
+                ui_bg(C_BLUE);
+                ui_color(C_WHITE, true);
+                ui_field(0, 0, ui_cols() - 1, " GodModeWii  theme test");
+                ui_reset();
+                ui_goto(2, 2); ui_color(C_CYAN, true); printf("Heading");
+                ui_goto(3, 2); ui_color(C_WHITE, false); printf("normal text");
+                ui_goto(4, 2); ui_bg(C_CYAN); ui_color(C_BLACK, false); printf(" selected row ");
+                ui_reset();
+                ui_goto(5, 2); ui_color(C_GREEN, true); printf("done");
+                ui_goto(6, 2); ui_color(C_YELLOW, true); printf("warning");
+                ui_goto(7, 2); ui_color(C_RED, true); printf("error");
+                ui_goto(8, 0); ui_bg(C_GREEN); ui_color(C_BLACK, false); printf(" green bar ");
+                ui_reset();
+                ui_test_dump();
+                continue;
+            }
             /* one wiiload upload (sent from the PC), logged */
             if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);

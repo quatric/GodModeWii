@@ -1370,7 +1370,8 @@ static void draw_seq(seq_t *sq, const char *name, bool paused, int mode, bool fu
         for (int k = 0; k < 16; k++) meter[k] = k < m ? '#' : '.';
         meter[16] = 0;
         if (i == sel) ui_bg(C_CYAN);
-        ui_color(off ? C_RED : !st ? C_BLUE : C_WHITE, off || st == 1);
+        if (i == sel) ui_color(C_BLACK, false);   /* the selection's own text colour, in every theme */
+        else ui_color(off ? C_RED : !st ? C_BLUE : C_WHITE, off || st == 1);
         if (st)
             ui_field(top + i, 2, cols - 4, "%c Track %2d  [%s]  program %3d  %-8s  %2d notes  %s",
                      i == sel ? '>' : ' ', i, off ? "off" : " on", prg,
@@ -1659,7 +1660,8 @@ static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, boo
         m->level[ch] *= 0.7f;
         ui_ascii(pname, sizeof(pname), pn ? pn : "");
         if (ch == sel) ui_bg(C_CYAN);
-        ui_color(off ? C_RED : !used ? C_BLUE : C_WHITE, off || used);
+        if (ch == sel) ui_color(C_BLACK, false);
+        else ui_color(off ? C_RED : !used ? C_BLUE : C_WHITE, off || used);
         ui_field(top + ch, 2, cols - 4, "%c Ch %2d  [%s]  %3d %-20.20s %2d notes  %s",
                  ch == sel ? '>' : ' ', ch + 1, off ? "off" : " on",
                  tsf_channel_get_preset_number(m->f, ch), ch == 9 ? "(drums)" : pname, m->notes[ch],

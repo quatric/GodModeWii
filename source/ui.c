@@ -9,6 +9,7 @@
 #include <sys/iosupport.h>
 
 #include "ui.h"
+#include "colors.h"
 #include "input.h"
 #include "pointer.h"
 #include "sfx.h"
@@ -96,7 +97,7 @@ void ui_goto(int row, int col)
     goto_raw(row, col);
 }
 
-/* The "0" in "\x1b[30;0m" clears every attribute including the background,
+/* The "0" that starts each colour ("\x1b[0;31m") clears every attribute including the background,
  * so the current background is tracked and re-applied after each color. */
 static int cur_bg = -1;
 static int cur_fg = C_WHITE;
@@ -143,7 +144,10 @@ void ui_color(int fg, bool bold)
 {
     cur_fg = fg;
     cur_bold = bold;
-    printf("\x1b[%d;%dm", 30 + fg, bold ? 1 : 0);
+    /* reset first: the console's "0" also puts the text colour back to white, so "30;0" drew black
+     * as white (and every highlight's text in the plain text colour) */
+    if (!bold && colors_current() == 0) fg = C_WHITE;  /* Classic keeps how it always looked */
+    printf("\x1b[0;%s%dm", bold ? "1;" : "", 30 + fg);
     if (cur_bg >= 0)
         printf("\x1b[%dm", 40 + cur_bg);
 }

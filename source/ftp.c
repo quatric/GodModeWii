@@ -1428,7 +1428,7 @@ static void draw(u32 ip, bool full)
     if (full)
         ui_clear();
     ui_bg(C_GREEN);
-    ui_color(C_WHITE, true);
+    ui_color(C_BLACK, false);                 /* as on the green dialog title bars */
     ui_field(0, 0, cols - 1, " GodModeWii v%s  -  FTP SERVER", GMW_VERSION);
     ui_reset();
 

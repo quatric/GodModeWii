@@ -31,9 +31,10 @@ static const ctheme THEMES[] = {
     { "Grass",          0x13773D, 0xFFF0A5, 0xFFFFFF,
       PAL(0x8E1A12, 0xB4FF4D, 0xFFE066, 0x0A4A22, 0x7A2A6A, 0xE8D36B,
           0xFFB8A8, 0x8CFF8C, 0xFFE066, 0x9CC4FF, 0xFFB0E0, 0xB4FF4D) },
-    { "Homebrew",       0x000000, 0x28FE14, 0x28FE14,
-      PAL(0x5A0000, 0x28FE14, 0xC8C800, 0x0A3A0A, 0x4A004A, 0x1ED010,
-          0xFF5050, 0x60FF60, 0xE5E54D, 0x5C9CFF, 0xFF5CFF, 0xB0FFA0) },
+    /* green on black, but bold text, "done" and the bars are other shades so nothing green sits on green */
+    { "Homebrew",       0x000000, 0x28FE14, 0xC8FFC0,
+      PAL(0x6A0000, 0x28FE14, 0xC8C800, 0x0A3A0A, 0x4A004A, 0x28FE14,
+          0xFF5A5A, 0xF0FFF0, 0xFFD24D, 0x6AA8FF, 0xFF6AFF, 0x7CF0FF) },
     { "Man Page",       0xFEF49C, 0x000000, 0x000000,
       PAL(0xF2B8A0, 0x2E6B00, 0x7A5A00, 0xE8DC80, 0xE8C0E0, 0x1A1A7A,
           0xCC0000, 0x007A00, 0x8A5A00, 0x0000CC, 0xA000A0, 0x00008A) },
@@ -104,6 +105,7 @@ static bool find_table(void)
     const u32 *end = (const u32 *)0x81800000 - 24;
     for (; p < end && ntables < MAX_TABLES; p++) {
         if (p[0] != key[0] || p[1] != key[1] || p[2] != key[2]) continue;
+        if (p == orig) continue;                    /* the saved original (copied below) is not a table */
         if (p[7] != 0xc080c080 || p[15] != 0xf080f080 || p[23] != 0x70807080) continue;
         if (!ntables) memcpy(orig, p, sizeof(orig));
         tables[ntables++] = (u32 *)p;
@@ -166,3 +168,20 @@ void colors_load(void)
             return;
         }
 }
+
+#ifdef GMW_AUTOTEST
+/* "@colors <n>": applies theme n and notes where the colour table was found and what it holds. */
+void colors_autotest(int i)
+{
+    colors_apply(i, false);
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (!lg) return;
+    fprintf(lg, "theme %d (%s): current %d, %d table(s)\n", i, colors_name(i), current, ntables);
+    for (int k = 0; k < ntables; k++)
+        fprintf(lg, "  %p: %08x %08x %08x .. %08x\n", (void *)tables[k], (unsigned)tables[k][0],
+                (unsigned)tables[k][1], (unsigned)tables[k][6], (unsigned)tables[k][7]);
+    fprintf(lg, "  orig: %08x %08x %08x .. %08x\n", (unsigned)orig[0], (unsigned)orig[1],
+            (unsigned)orig[6], (unsigned)orig[7]);
+    fclose(lg);
+}
+#endif
