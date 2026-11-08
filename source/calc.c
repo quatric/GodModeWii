@@ -145,8 +145,12 @@ static bool evaluate(const char *text, double *out)
 #define KROWS 6
 #define KEY_W 10
 #define KEY_H 2
-#define KEY_ROW0 9
-#define KEY_COL0 2
+#define KEY_ROW_OFF 9                               /* keys start this far below the top of the block */
+#define BLOCK_W (KCOLS * KEY_W - 1)
+#define BLOCK_H (KEY_ROW_OFF + KROWS * KEY_H)
+static int ox0, oy0;                                /* top-left of the centred block */
+#define KEY_ROW0 (oy0 + KEY_ROW_OFF)
+#define KEY_COL0 ox0
 
 typedef struct { const char *label, *insert; } key_t_;
 static const key_t_ KEYS[KROWS][KCOLS] = {
@@ -166,21 +170,20 @@ static bool fresh;                                  /* the expression is the las
 
 static void show(void)
 {
-    int cols = ui_cols();
     ui_color(C_CYAN, true);
-    ui_field(0, 1, cols - 2, "Calculator");
+    ui_field(oy0, ox0, BLOCK_W, "Calculator");
     ui_color(C_WHITE, false);
-    ui_field(1, cols - 12, 10, "%s", degrees ? "DEG" : "RAD");
+    ui_field(oy0 + 1, ox0 + BLOCK_W - 10, 10, "%s", degrees ? "DEG" : "RAD");
     ui_reset();
     for (int i = 0; i < 3; i++) {
         ui_color(C_WHITE, false);
-        ui_field(2 + i, 2, cols - 4, "%s", hist[i]);
+        ui_field(oy0 + 2 + i, ox0, BLOCK_W, "%s", hist[i]);
     }
     ui_reset();
     ui_color(C_WHITE, true);
-    ui_field(5, 2, cols - 4, "> %s_", expr);
+    ui_field(oy0 + 5, ox0, BLOCK_W, "> %s_", expr);
     ui_color(C_GREEN, true);
-    ui_field(7, 2, cols - 4, "%s", result);
+    ui_field(oy0 + 7, ox0, BLOCK_W, "%s", result);
     ui_reset();
 }
 
@@ -207,6 +210,10 @@ static void draw_key(int r, int c, bool sel)
 
 static void draw_all(void)
 {
+    ox0 = (ui_cols() - BLOCK_W) / 2;
+    oy0 = (ui_rows() - 2 - BLOCK_H) / 2;
+    if (ox0 < 0) ox0 = 0;
+    if (oy0 < 0) oy0 = 0;
     ui_clear();
     show();
     for (int r = 0; r < KROWS; r++)
