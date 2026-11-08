@@ -389,7 +389,7 @@ static bool command(int cmd)
             snprintf(last_saved, sizeof(last_saved), "%s", name);
             snprintf(msg, sizeof(msg), "Saved GodModeWii/drawings/%s", name);
             say(msg);
-            sfx_play(SFX_NOTIFY);
+            sfx_play(SFX_CLICK);
             wiilight_pattern(WL_BUSH_WARBLER);
         } else {
             ui_message("SKETCHPAD", C_RED, "Could not save: is a drive with room for it inserted?");

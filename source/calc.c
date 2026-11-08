@@ -248,17 +248,25 @@ static void press(const char *ins)
             memmove(hist[1], hist[2], sizeof(hist[0]));
             snprintf(hist[2], sizeof(hist[2]), "%s %s", expr, result);
             ans = v;
-            snprintf(expr, sizeof(expr), "%.10g", v);   /* go on from the answer */
-            fresh = true;
+            fresh = true;                               /* an operation next continues from Ans */
         } else {
             snprintf(result, sizeof(result), "Error");
             sfx_play(SFX_LONGTAP);
         }
         return;
     }
-    if (fresh && !strchr("+-*/^%", ins[0])) {            /* not an operator: a new sum */
-        expr[0] = '\0';
-        n = 0;
+    if (fresh) {
+        if (strchr("+-*/^%", ins[0])) {                     /* an operation after an answer: it's Ans's */
+            snprintf(expr, sizeof(expr), "ans");
+        } else if (!strcmp(ins, "1/(")) {                    /* 1/x of the answer */
+            snprintf(expr, sizeof(expr), "1/(ans)");
+            fresh = false;
+            result[0] = '\0';
+            return;
+        } else {                                            /* anything else starts a new sum */
+            expr[0] = '\0';
+        }
+        n = strlen(expr);
     }
     fresh = false;
     if (n + strlen(ins) < sizeof(expr)) strcat(expr, ins);

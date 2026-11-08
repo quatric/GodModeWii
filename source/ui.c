@@ -428,7 +428,7 @@ void ui_message(const char *title, int color, const char *text)
 {
     int left;
     draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
-    sfx_play(SFX_NOTIFY);
+    sfx_play(SFX_CLICK);
     if (color == C_RED) wiilight_pattern(WL_BLINK3);
     else wiilight_pulse();
     for (;;) {

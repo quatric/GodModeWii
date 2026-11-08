@@ -194,7 +194,7 @@ static void record(void)
     if (failed || !ok)
         ui_message("VOICE MEMO", C_RED, "The card is full or could not be written.");
     else if (save && samples) {
-        sfx_play(SFX_NOTIFY);
+        sfx_play(SFX_CLICK);
         wiilight_pattern(WL_BUSH_WARBLER);
         snprintf(why, sizeof(why), "Saved GodModeWii/voice/%s", name);
         ui_message("VOICE MEMO", C_GREEN, why);
