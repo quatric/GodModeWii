@@ -1,6 +1,6 @@
 # GodModeWii
 
-**Version:** 0.12.0 · **By:** quatric & cmyksoda
+**Version:** 0.13.0 · **By:** quatric & cmyksoda
 
 A text-mode file manager for the **Wii** and the **Wii U's vWii mode**, in the style of [GodMode9](https://github.com/d0k3/GodMode9).
 No fancy GUI: just a console, a cursor and a lot of power.
