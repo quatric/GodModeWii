@@ -322,7 +322,7 @@ It appears by itself the first time you try to change the NAND. On the D-Pad, th
 HOME cancels. Once entered, the NAND stays unlocked for the rest of the session.
 
 **Always allow dangerous actions:** enter the same code **while the "Looking for drives..." screen is up** at start-up. That flips
-a switch (a `force.cfg` file in `apps/GodModeWii/` on the SD card): from then on every start announces *Risky mode forced on* and
+a switch (a `force.cfg` file in `apps/GodModeWii/` on the SD card): it says *Risky mode forced on* once, and from then on
 nothing asks for a warning or the code again. Enter the code at start-up once more to turn it off. The reader is forgiving: take
 your time (a code that is part way in keeps the screen up for up to 15 seconds), a wrong button only drops what no longer
 matches, and extra buttons held at the same time are ignored.

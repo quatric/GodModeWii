@@ -216,10 +216,8 @@ int main(int argc, char **argv)
         else
             ui_message("RISKY MODE OFF", C_GREEN,
                        "Dangerous permissions are no longer forced. Risky changes ask for the warning and code again.");
-    } else if (risk_forced()) {
-        ui_message("RISKY MODE FORCED ON", C_RED,
-                   "Dangerous permissions are ALWAYS enabled. Nothing will ask for a warning or code first.");
     }
+    /* already forced on from an earlier start: no dialog again (it was shown when it was turned on) */
 
 #ifdef GMW_AUTOTEST
     /* Test builds only: open each path listed in sd:/gmwtest.txt (the viewers dump the screen),
