@@ -345,7 +345,7 @@ static int backup_device(void)
 
 /* Copies nand:/title/hi/lo/data to <drive>:/GodModeWii/save-backups/<tid>-<time>/data.
  * Returns 1 when backed up, 0 when there is nothing to back up, -1 on failure. */
-static int backup_save(u64 tid, char *where, size_t wsz, u32 *files_before)
+int wad_backup_save(u64 tid, char *where, size_t wsz, u32 *files_before)
 {
     char data[96];
     snprintf(data, sizeof(data), "nand:/title/%08x/%08x/data", TID_HI(tid), TID_LO(tid));
@@ -540,7 +540,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     u32 files_before = 0;
     bool had_title = title_installed(tid);
     if (had_title && TID_HI(tid) != 1 && !sd_mode) {
-        int b = backup_save(tid, backup, sizeof(backup), &files_before);
+        int b = wad_backup_save(tid, backup, sizeof(backup), &files_before);
         if (b < 0) {
             char q[300];
             snprintf(q, sizeof(q),

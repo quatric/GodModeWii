@@ -18,6 +18,14 @@
 int databin_export(u64 tid, const char *data_dir, const char *out_path, const w2b_keys_t *keys, char *err,
                    size_t errsz);
 
+/* True when the file at `path` is a data.bin (by its contents, whatever its name). */
+bool databin_is_file(const char *path);
+
+/* Copies the save in a data.bin back to the NAND, as Data Management does: asks first (and for the Konami
+ * code), backs up the save that is there, replaces it, and gives every file the title's owner and the
+ * permissions kept in the data.bin. The title has to be installed (or the game started once). */
+void databin_import(const char *path);
+
 /* "private/wii/title/RMGE" for a title (its last four bytes as letters, as the System Menu names it). */
 void databin_dir(u64 tid, char *out, size_t n);
 

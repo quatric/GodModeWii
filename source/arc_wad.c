@@ -438,11 +438,13 @@ bool arc_databin_probe(const src_t *file, const char *name)
 {
     const char *base = strrchr(name ? name : "", '/');
     base = base ? base + 1 : (name ? name : "");
-    if (strcasecmp(base, "data.bin") || file->size < DB_HEADER + DB_BK) return false;
+    (void)base;                                 /* any name: the Bk header at its fixed place is checked */
+    if (file->size < DB_HEADER + DB_BK) return false;
     uint8_t bk[DB_BK];
     if (!src_read_full(file, DB_HEADER, bk, sizeof(bk))) return false;
     return be32(bk) == 0x70 && be32(bk + 4) == BK_MAGIC &&
-           be32(bk + 0x10) + DB_CERTS == be32(bk + 0x1C);
+           be32(bk + 0x10) + DB_CERTS == be32(bk + 0x1C) &&
+           (uint64_t)DB_HEADER + DB_BK + be32(bk + 0x10) <= file->size;
 }
 
 archive_t *arc_databin_open(const src_t *file, const char *name)

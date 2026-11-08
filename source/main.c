@@ -263,6 +263,14 @@ int main(int argc, char **argv)
                     databin_autotest(t, dst);
                 continue;
             }
+            /* "@dbimport <data.bin>": a save copied back to the NAND */
+            if (!strncmp(line, "@dbimport ", 10)) {
+                extern void databin_import_autotest(const char *path);
+                char src[400];
+                if (sscanf(line + 10, "%399s", src) == 1)
+                    databin_import_autotest(src);
+                continue;
+            }
             /* "@theme install|convert <path>": the Wii Menu theme installer, answering yes */
             if (!strncmp(line, "@theme ", 7)) {
                 extern void theme_autotest(const char *cmd, const char *path);

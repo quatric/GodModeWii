@@ -20,6 +20,7 @@
 #include "vfs.h"
 #include "ops.h"
 #include "waddump.h"
+#include "databin.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -967,6 +968,22 @@ static void wad_menu(const vfs_entry *en)
     }
 }
 
+/* A on a data.bin (a Wii save backup, any name): copy it back to the NAND or look inside. */
+static void databin_menu(const vfs_entry *en)
+{
+    const char *items[] = { "Import save to the NAND", "Browse contents (decrypted)", "More actions..." };
+    int r = ui_menu(en->name, items, NULL, 3, 0);
+    char path[VFS_PATH_MAX];
+    if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
+        databin_import(path);
+        reload_keep();
+    } else if (r == 1) {
+        open_archive(en);
+    } else if (r == 2) {
+        actions_menu();
+    }
+}
+
 /* A on a .csm / .mym: install it as the Wii Menu's theme, or look inside. */
 static void theme_menu(const vfs_entry *en)
 {
@@ -1578,6 +1595,9 @@ int app_run(void)
                         theme_menu(en);
                     else if (ft == FT_PROGRAM)
                         do_launch(en);
+                    else if (joined && !vfs_is_archive(cwd) && arc_name_has_ext(en->name, ".bin") &&
+                             databin_is_file(path))
+                        databin_menu(en);
                     else if (ftype_is_media(ft) && media_open_type(path, ft))
                         ;
                     else if (joined && arcfs_can_open(path))

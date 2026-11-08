@@ -23,4 +23,8 @@ int wad_install_sd(char **paths, int n);
 #include "wad2bin.h"
 bool wad_console_keys(w2b_keys_t *k, char *why, size_t wn);
 
+/* Copies nand:/title/<hi>/<lo>/data to <SD or USB>/GodModeWii/save-backups/<tid>-<time>/data (where says
+ * which). 1 when backed up, 0 when there is nothing to back up, -1 on failure. */
+int wad_backup_save(u64 tid, char *where, size_t wsz, u32 *files_before);
+
 #endif

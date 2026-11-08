@@ -347,3 +347,299 @@ void databin_autotest(const char *tid_s, const char *outp)
     }
 }
 #endif
+
+/* ---------------------------------------------------------------- import */
+
+#include "ui.h"
+#include "risk.h"
+#include "wadinstall.h"
+
+static bool read_at(vfs_file *f, u64 off, u8 *buf, u32 n)
+{
+    if (!vfs_seek(f, off)) return false;
+    u32 got = 0;
+    while (got < n) {
+        s32 r = vfs_read(f, buf + got, n - got);
+        if (r <= 0) return false;
+        got += (u32)r;
+    }
+    return true;
+}
+
+bool databin_is_file(const char *path)
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return false;
+    bool ok = false;
+    u8 *bk = memalign(32, BK_SIZE);
+    if (bk && f.size >= HDR_SIZE + BK_SIZE && read_at(&f, HDR_SIZE, bk, BK_SIZE))
+        ok = be32(bk) == 0x70 && be32(bk + 4) == 0x426B0001 && be32(bk + 0x10) + CERTS_SIZE == be32(bk + 0x1C) &&
+             (u64)HDR_SIZE + BK_SIZE + be32(bk + 0x10) <= f.size;
+    free(bk);
+    vfs_close(&f);
+    return ok;
+}
+
+/* Everything inside the NAND folder `dir` goes, the folder stays. */
+static bool empty_dir(const char *dir)
+{
+    vfs_entry *e;
+    int cnt;
+    if (!vfs_list(dir, &e, &cnt)) return false;
+    bool ok = true;
+    for (int i = 0; i < cnt; i++) {
+        char p[VFS_PATH_MAX];
+        snprintf(p, sizeof(p), "%s/%s", dir, e[i].name);
+        if (e[i].is_dir && !empty_dir(p)) ok = false;
+        if (!vfs_remove(p, e[i].is_dir)) ok = false;
+    }
+    free(e);
+    return ok;
+}
+
+static void set_owner(const char *path, u32 uid, u16 gid, u8 mode)
+{
+    ISFS_SetAttr(path + 5, uid, gid, 0, (mode >> 4) & 3, (mode >> 2) & 3, mode & 3);   /* past "nand:" */
+}
+
+typedef struct {
+    u64 tid;
+    u32 banner_size;
+    u8 banner_mode;
+    u32 nfiles, files_size;
+    char name[64];                      /* the banner's title, for the question */
+} dbinfo_t;
+
+static bool parse_header(vfs_file *f, u8 *hdr, dbinfo_t *d, char *err, size_t en)
+{
+    if (!read_at(f, 0, hdr, HDR_SIZE)) {
+        seterr(err, en, "Can't read the data.bin");
+        return false;
+    }
+    aes128_t c;
+    aes128_init_dec(&c, ARC_SD_KEY);
+    aes128_cbc_decrypt(&c, ARC_SD_IV, hdr, hdr, HDR_SIZE);
+    u8 md[16], h[16];
+    memcpy(md, hdr + 14, 16);
+    memcpy(hdr + 14, MD5_BLANKER, 16);
+    md5(hdr, HDR_SIZE, h);
+    if (memcmp(md, h, 16)) {
+        seterr(err, en, "The data.bin's header is damaged (its MD5 doesn't match)");
+        return false;
+    }
+    d->tid = be64(hdr);
+    d->banner_size = be32(hdr + 8);
+    d->banner_mode = hdr[12];
+    if (d->banner_size < BNR_MIN || d->banner_size > BNR_MAX || (d->banner_size - BNR_SZ) % ICON_SZ) {
+        seterr(err, en, "The data.bin's banner has an odd size");
+        return false;
+    }
+    /* the title, UTF-16 at 0x20 of the banner, as ASCII */
+    int k = 0;
+    for (int i = 0; i < 32 && k < (int)sizeof(d->name) - 1; i++) {
+        u16 ch = (u16)(hdr[0x20 + 0x20 + i * 2] << 8 | hdr[0x20 + 0x21 + i * 2]);
+        if (!ch) break;
+        d->name[k++] = ch >= 0x20 && ch < 0x7F ? (char)ch : '?';
+    }
+    d->name[k] = 0;
+    u8 *bk = memalign(32, BK_SIZE);
+    bool ok = bk && read_at(f, HDR_SIZE, bk, BK_SIZE) && be32(bk) == 0x70 && be32(bk + 4) == 0x426B0001;
+    if (ok) {
+        d->nfiles = be32(bk + 0x0C);
+        d->files_size = be32(bk + 0x10);
+        ok = d->nfiles <= MAX_FILES && (u64)HDR_SIZE + BK_SIZE + d->files_size <= f->size;
+    }
+    free(bk);
+    if (!ok) seterr(err, en, "The data.bin's file list is damaged");
+    return ok;
+}
+
+/* Writes the banner and every file under `data` (emptied first). */
+static bool import_files(vfs_file *f, const u8 *hdr, const dbinfo_t *d, const char *data, u32 uid, u16 gid,
+                         char *err, size_t en)
+{
+    u8 *buf = memalign(32, CHUNK + 64);
+    if (!buf) {
+        seterr(err, en, "Out of memory");
+        return false;
+    }
+    bool ok = false;
+    char path[VFS_PATH_MAX + 80];
+    vfs_file o;
+    if (!empty_dir(data)) {
+        seterr(err, en, "Couldn't clear the old save from the NAND");
+        goto out;
+    }
+    snprintf(path, sizeof(path), "%s/banner.bin", data);
+    memcpy(buf, hdr + 0x20, d->banner_size);
+    if (!vfs_open_write(&o, path)) {
+        seterr(err, en, "Couldn't create banner.bin on the NAND");
+        goto out;
+    }
+    bool w = vfs_write(&o, buf, d->banner_size) == (s32)d->banner_size;
+    if (!vfs_close_checked(&o) || !w) {
+        seterr(err, en, "Couldn't write banner.bin on the NAND");
+        goto out;
+    }
+    set_owner(path, uid, gid, d->banner_mode ? d->banner_mode : 0x3C);
+
+    aes128_t c;
+    aes128_init_dec(&c, ARC_SD_KEY);
+    u64 pos = HDR_SIZE + BK_SIZE;
+    for (u32 i = 0; i < d->nfiles; i++) {
+        u8 fh[FHDR_SIZE] __attribute__((aligned(32)));
+        if (!read_at(f, pos, fh, FHDR_SIZE) || be32(fh) != FILE_MAGIC) {
+            seterr(err, en, "The data.bin's file list is damaged (entry %u)", (unsigned)i);
+            goto out;
+        }
+        pos += FHDR_SIZE;
+        char name[NAME_MAX_ + 1];
+        memcpy(name, fh + 11, NAME_MAX_);
+        name[NAME_MAX_] = 0;
+        if (!name[0] || name[0] == '/' || strstr(name, "..") || (fh[10] != 1 && fh[10] != 2)) {
+            seterr(err, en, "The data.bin has an entry it shouldn't (%s)", name);
+            goto out;
+        }
+        snprintf(path, sizeof(path), "%s/%s", data, name);
+        u8 mode = fh[8] ? fh[8] : 0x3C;
+        if (fh[10] == 2) {
+            bool isd;
+            if (!vfs_mkdir(path) && !(vfs_stat(path, &isd, NULL) && isd)) {
+                seterr(err, en, "Couldn't create the folder %s on the NAND", name);
+                goto out;
+            }
+            set_owner(path, uid, gid, mode);
+            continue;
+        }
+        u32 size = be32(fh + 4);
+        u8 iv[16];
+        memcpy(iv, fh + 0x50, 16);
+        if (!vfs_open_write(&o, path)) {
+            seterr(err, en, "Couldn't create %s on the NAND", name);
+            goto out;
+        }
+        u32 left = size;
+        bool good = true;
+        while (left && good) {
+            u32 n = left > CHUNK ? CHUNK : left, p = (n + 15) & ~15u;
+            good = read_at(f, pos, buf, p);
+            if (!good) break;
+            u8 next[16];
+            memcpy(next, buf + p - 16, 16);
+            aes128_cbc_decrypt(&c, iv, buf, buf, p);
+            memcpy(iv, next, 16);
+            good = vfs_write(&o, buf, n) == (s32)n;
+            pos += p;
+            left -= n;
+        }
+        pos = pos - ((size + 15) & ~15u) + a64(size);   /* each file is padded to 64 bytes */
+        if (!vfs_close_checked(&o) || !good) {
+            seterr(err, en, "Couldn't copy %s to the NAND (read error, or the NAND is full)", name);
+            goto out;
+        }
+        set_owner(path, uid, gid, mode);
+    }
+    ok = true;
+out:
+    free(buf);
+    return ok;
+}
+
+void databin_import(const char *path)
+{
+    char err[200] = "";
+    vfs_file f;
+    u8 *hdr = memalign(32, HDR_SIZE);
+    dbinfo_t d;
+    memset(&d, 0, sizeof(d));
+    if (!hdr || !vfs_open_read(&f, path)) {
+        free(hdr);
+        ui_message("IMPORT SAVE", C_RED, "Can't open the data.bin.");
+        return;
+    }
+    vfs_unbuffered(&f);
+    if (!parse_header(&f, hdr, &d, err, sizeof(err))) goto fail;
+
+    char data[96];
+    snprintf(data, sizeof(data), "nand:/title/%08x/%08x/data", (unsigned)(d.tid >> 32), (unsigned)d.tid);
+    u32 uid;
+    u16 gid;
+    u8 attr, op, gp, ot;
+    if (ISFS_GetAttr(data + 5, &uid, &gid, &attr, &op, &gp, &ot) < 0) {
+        seterr(err, sizeof(err),
+               "Title %08x-%08x has no save folder on this Wii yet. Install it, or start the game once, then "
+               "import the save.", (unsigned)(d.tid >> 32), (unsigned)d.tid);
+        goto fail;
+    }
+
+    char id[5], q[600];
+    w2b_tid_ascii(d.tid, id);
+    snprintf(q, sizeof(q),
+             "Copy this save to the NAND?\n\n%s%s%s%08x-%08x (%s), %u file(s) and folder(s).\n\n"
+             "The save that is there now is replaced. It is copied to GodModeWii/save-backups/ on the SD card or "
+             "a USB drive first.",
+             d.name[0] ? "\"" : "", d.name, d.name[0] ? "\"\n" : "", (unsigned)(d.tid >> 32), (unsigned)d.tid, id,
+             (unsigned)d.nfiles);
+    if (!ui_confirm("IMPORT SAVE", C_YELLOW, q)) goto done;
+    if (!risk_ensure_unlocked()) goto done;
+
+    char where[VFS_PATH_MAX] = "";
+    u32 before = 0;
+    ui_splash("Backing up the save that is there...");
+    int b = wad_backup_save(d.tid, where, sizeof(where), &before);
+    if (b < 0) {
+        seterr(err, sizeof(err), "Couldn't back up the save that is there (no writable SD card or USB drive?), so "
+               "nothing was changed.");
+        goto fail;
+    }
+    ui_splash("Copying the save to the NAND...");
+    if (!import_files(&f, hdr, &d, data, uid, gid, err, sizeof(err))) {
+        char e2[400];
+        snprintf(e2, sizeof(e2), "%s%s%s", err, b > 0 ? "\n\nThe old save is in " : "", b > 0 ? where : "");
+        snprintf(err, sizeof(err), "%s", e2);
+        goto fail;
+    }
+    char msg[VFS_PATH_MAX + 200];
+    snprintf(msg, sizeof(msg), "The save of %08x-%08x is on the NAND.%s%s", (unsigned)(d.tid >> 32), (unsigned)d.tid,
+             b > 0 ? "\n\nThe one it replaced is in " : "", b > 0 ? where : "");
+    ui_message("SAVE IMPORTED", C_GREEN, msg);
+    goto done;
+fail:
+    ui_message("IMPORT SAVE FAILED", C_RED, err);
+done:
+    vfs_close(&f);
+    free(hdr);
+}
+
+#ifdef GMW_AUTOTEST
+/* Test builds: "@dbimport <data.bin>", answering yes, logged. */
+void databin_import_autotest(const char *path)
+{
+    char err[200] = "";
+    vfs_file f;
+    u8 *hdr = memalign(32, HDR_SIZE);
+    dbinfo_t d;
+    memset(&d, 0, sizeof(d));
+    int rc = -1;
+    if (hdr && vfs_open_read(&f, path)) {
+        if (parse_header(&f, hdr, &d, err, sizeof(err))) {
+            char data[96];
+            snprintf(data, sizeof(data), "nand:/title/%08x/%08x/data", (unsigned)(d.tid >> 32), (unsigned)d.tid);
+            u32 uid;
+            u16 gid;
+            u8 attr, op, gp, ot;
+            if (ISFS_GetAttr(data + 5, &uid, &gid, &attr, &op, &gp, &ot) < 0)
+                snprintf(err, sizeof(err), "no save folder");
+            else if (import_files(&f, hdr, &d, data, uid, gid, err, sizeof(err)))
+                rc = 0;
+        }
+        vfs_close(&f);
+    }
+    free(hdr);
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (lg) {
+        fprintf(lg, "dbimport %s: %s %s (%s, %u files)\n", path, rc ? "FAILED" : "ok", err, d.name, (unsigned)d.nfiles);
+        fclose(lg);
+    }
+}
+#endif

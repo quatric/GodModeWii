@@ -236,6 +236,12 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   `private/wii/title/<ID>/data.bin`; copy that `private` folder to the SD card's root and the Wii Menu's Data Management copies
   them back, on this Wii or another. As in Dolphin, the banner's "no copy" flag is cleared. A save without a `banner.bin` (which
   Data Management couldn't show) is listed as not made.
+* **Import data.bin saves:** **A** on a `data.bin` (any file whose contents are one, whatever its name ends `.bin`) →
+  *Import save to the NAND*, or *Browse contents* to look inside (decrypted). Copies the save back the way Data Management does,
+  from any Wii's `data.bin` (only the SD key is needed, which every Wii shares): the header's MD5 is checked, the save that is on
+  the NAND is first copied to `GodModeWii/save-backups/`, then replaced, and every file and folder gets the title's owner and the
+  permissions kept in the `data.bin`. The title must have a save folder already (install it, or start the game once). Needs the
+  Konami code.
 * **Miis**: the Wii's Miis, each drawn with its details, exported as `/savemiis/<Name>.miigx`, the files
   SaveGame Manager GX writes and installs. The Miis are drawn on the Wii by MiiKit, from the Wii Menu's face models and
   the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;
