@@ -8,7 +8,7 @@
  * first writable USB drive). Made if missing; false when no drive can be written. */
 bool pda_dir(const char *sub, char *out, size_t n);
 
-/* The drawing board: pointer, mouse, pen tablet or uDraw. Saves 24-bit .bmp files. */
+/* The drawing board: pointer, mouse, pen tablet or uDraw. Saves baseline .jpg files. */
 void draw_run(void);
 
 /* Voice memos: record with a Wii Speak or a USB microphone, play them back. */

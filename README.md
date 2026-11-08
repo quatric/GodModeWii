@@ -217,11 +217,11 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;
   **2** changes their expression. In Dolphin, they need Graphics > Hacks > "Store EFB Copies to Texture Only" turned off.
 * **Sketchpad**: draw with the Wii Remote pointer, a USB mouse, a USB pen tablet or a uDraw GameTablet (pressure
-  sets the brush width): 16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as 24-bit `.bmp` files in
+  sets the brush width): 16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as baseline `.jpg` files in
   `GodModeWii/drawings/` on the SD card. The tools follow PictoCard's doodle pad.
 * **Voice memos**: record with a Wii Speak or a USB (class-compliant) microphone into `GodModeWii/voice/memo_NNN.wav`, then play
-  or delete them. The Wii Speak needs Nintendo's boot firmware, which isn't included: put `pmic_firm.bin` (see
-  [libwiiinput](libwiiinput/README.md#wii-speak)) at `sd:/apps/GodModeWii/pmic_firm.bin`. USB microphones need nothing.
+  or delete them. The Wii Speak's boot firmware is built in (`res/pmic_firm.bin`; a `pmic_firm.bin` at `sd:/apps/GodModeWii/` is used instead if
+  there is one). USB microphones need nothing.
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii: Nintendo's light patterns and a breathing glow
   while something loads). Each can be turned off in HOME; the choice is saved on the SD card
   (`sd:/apps/GodModeWii/sfx_off`, `light_off`).

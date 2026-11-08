@@ -19,10 +19,11 @@
 #include "wiilight.h"
 #include "ui.h"
 #include "vfs.h"
+#include "pmic_firm_bin.h"
 
 #define MAX_MEMOS 64
 
-/* Nintendo's Wii Speak boot firmware isn't part of this program: put pmic_firm.bin on the SD card. */
+/* A pmic_firm.bin on the SD card, to use instead of the one built in. */
 static u8 *load_firmware(u32 *size)
 {
     static const char *const paths[] = { "sd:/apps/GodModeWii/pmic_firm.bin", "sd:/pmic_firm.bin" };
@@ -67,14 +68,13 @@ typedef enum { SRC_NONE, SRC_SPEAK, SRC_USB } mic_src;
 /* The Wii Speak when there is one (and its firmware), else a USB microphone. */
 static mic_src mic_open(u32 *rate, char *why, size_t why_n)
 {
+    /* the firmware is built in; a pmic_firm.bin on the card takes its place */
     u32 fsize = 0;
     u8 *firm = load_firmware(&fsize);
     if (!firm) {
-        const u8 *b = WS_BuiltinFirmware(&fsize);
-        if (b) {
-            firm = malloc(fsize);
-            if (firm) memcpy(firm, b, fsize);
-        }
+        fsize = pmic_firm_bin_size;
+        firm = malloc(fsize);
+        if (firm) memcpy(firm, pmic_firm_bin, fsize);
     }
 
     ui_splash("Looking for a microphone...");
@@ -101,10 +101,7 @@ static mic_src mic_open(u32 *rate, char *why, size_t why_n)
     }
 
     snprintf(why, why_n, "%s",
-             firm || r != WS_ENODEV
-                 ? "No microphone found. Plug in a Wii Speak or a USB microphone and try again."
-                 : "No microphone found. Plug in a USB microphone, or a Wii Speak with Nintendo's "
-                   "firmware file (pmic_firm.bin) on the SD card.");
+             "No microphone found. Plug in a Wii Speak or a USB microphone and try again.");
     return SRC_NONE;
 }
 

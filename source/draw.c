@@ -1,11 +1,12 @@
 /* Sketchpad: draw with the Wii Remote pointer, a USB mouse, a pen tablet or a uDraw. The palette,
  * brush sizes and tools (draw, fill, erase, undo, clear) follow PictoCard's doodle pad. The picture
- * is kept as 0x00RRGGBB and painted into the console framebuffer (YUY2); saved as a 24-bit .bmp. */
+ * is kept as 0x00RRGGBB and painted into the console framebuffer (YUY2); saved as a baseline JPEG. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <jpeglib.h>
 #include <wiiuse/wpad.h>
 #include <input_wii.h>
 #include <input_tablet.h>
@@ -221,44 +222,46 @@ static void flood_fill(int sx, int sy)
     mark_all();
 }
 
-/* 24-bit bottom-up .bmp, the next free drawing_NNN.bmp. */
+/* Baseline JPEG (quality 92), the next free drawing_NNN.jpg. */
 static bool save(char *name, size_t n)
 {
-    char dir[VFS_PATH_MAX], path[VFS_PATH_MAX + 32];
+    char dir[VFS_PATH_MAX], path[VFS_PATH_MAX + 80];
     if (!pda_dir("drawings", dir, sizeof(dir))) return false;
     for (int i = 1; i < 1000; i++) {
-        snprintf(name, n, "drawing_%03d.bmp", i);
+        snprintf(name, n, "drawing_%03d.jpg", i);
         snprintf(path, sizeof(path), "%s/%s", dir, name);
         if (access(path, F_OK) != 0) break;
     }
 
     FILE *f = fopen(path, "wb");
     if (!f) return false;
-    u32 bytes = CW * CH * 3;
-    u8 h[54] = { 'B', 'M' };
-    u32 total = 54 + bytes, off = 54, dib = 40, planes_bpp = 1 | 24 << 16;
-    /* little-endian fields, written byte by byte: this CPU is big-endian */
-    for (int k = 0; k < 4; k++) h[2 + k] = total >> (8 * k);
-    for (int k = 0; k < 4; k++) h[10 + k] = off >> (8 * k);
-    for (int k = 0; k < 4; k++) h[14 + k] = dib >> (8 * k);
-    for (int k = 0; k < 4; k++) h[18 + k] = (u32)CW >> (8 * k);
-    for (int k = 0; k < 4; k++) h[22 + k] = (u32)CH >> (8 * k);
-    for (int k = 0; k < 4; k++) h[26 + k] = planes_bpp >> (8 * k);
-    for (int k = 0; k < 4; k++) h[34 + k] = bytes >> (8 * k);
-    for (int k = 0; k < 4; k++) h[38 + k] = 2835 >> (8 * k);      /* 72 dpi */
-    for (int k = 0; k < 4; k++) h[42 + k] = 2835 >> (8 * k);
-    bool ok = fwrite(h, 1, 54, f) == 54;
-    u8 row[CW * 3];
-    for (int y = CH - 1; y >= 0 && ok; y--) {
+    struct jpeg_compress_struct cinfo;
+    struct jpeg_error_mgr jerr;
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_compress(&cinfo);
+    jpeg_stdio_dest(&cinfo, f);
+    cinfo.image_width = CW;
+    cinfo.image_height = CH;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_RGB;
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 92, TRUE);
+    cinfo.optimize_coding = FALSE;                  /* baseline, standard Huffman tables */
+    jpeg_start_compress(&cinfo, TRUE);
+    static u8 row[CW * 3];
+    while (cinfo.next_scanline < cinfo.image_height) {
+        const u32 *src = cv + cinfo.next_scanline * CW;
         for (int x = 0; x < CW; x++) {
-            u32 p = cv[y * CW + x];
-            row[x * 3] = p & 255;
-            row[x * 3 + 1] = p >> 8 & 255;
-            row[x * 3 + 2] = p >> 16 & 255;
+            row[x * 3] = src[x] >> 16 & 255;
+            row[x * 3 + 1] = src[x] >> 8 & 255;
+            row[x * 3 + 2] = src[x] & 255;
         }
-        ok = fwrite(row, 1, sizeof(row), f) == sizeof(row);
+        JSAMPROW rp = row;
+        jpeg_write_scanlines(&cinfo, &rp, 1);
     }
-    ok = fclose(f) == 0 && ok;
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+    bool ok = fclose(f) == 0;
     if (!ok) unlink(path);
     return ok;
 }
