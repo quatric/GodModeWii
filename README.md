@@ -242,6 +242,15 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   the NAND is first copied to `GodModeWii/save-backups/`, then replaced, and every file and folder gets the title's owner and the
   permissions kept in the `data.bin`. The title must have a save folder already (install it, or start the game once). Needs the
   Konami code.
+* **Back up the NAND / keys (nanddumper@IOS):** *Whole NAND* writes a 1:1 BootMii-format `nand.bin` (every page with its spare
+  / ECC data, about 529 MB, then `keys.bin`) to `/wii/backups/<YYMMDD>_<serial>_nand_<NN>.bin` on the SD card or a USB drive,
+  with `<serial>_keys.bin`, a `.sha1` and a line in `sha1sums.txt` beside it, exactly as
+  [nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios) does: mkwcat's `/dev/sha` exploit runs code inside IOS, which
+  patches the FS module so `/dev/flash` can be read (no patched IOS or BootMii needed; works on a Wii, a Wii mini and vWii).
+  Bad blocks are written as zeros, and ECC corrections are counted and shown at the end. Takes about 5 minutes; hold B to stop
+  (the unfinished file is deleted). *Console keys only* writes just `<serial>_keys.bin` (BootMii's layout: OTP and SEEPROM; on
+  a Wii U the SEEPROM data comes from the copy c2w leaves in SRAM). Keep both private. IOS stays patched until it is next
+  reloaded, so booting a game disc is refused until GodModeWii has been restarted. Not available in Dolphin.
 * **Miis**: the Wii's Miis, each drawn with its details, exported as `/savemiis/<Name>.miigx`, the files
   SaveGame Manager GX writes and installs. The Miis are drawn on the Wii by MiiKit, from the Wii Menu's face models and
   the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;
@@ -601,6 +610,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
 * **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader System Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
+* **[nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios)** by thepikachugamer (GPL-2.0; with mkwcat's `/dev/sha` exploit) — the NAND backup: its IOS stages (`nanddumper/`, prebuilt in `res/nd_*.bin`), the `/dev/flash` FS patch, the page / bad block reading, the `keys.bin` and `setting.txt` handling and the file layout, ported in `source/nanddump.c`.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
 * **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.

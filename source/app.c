@@ -21,6 +21,7 @@
 #include "ops.h"
 #include "waddump.h"
 #include "databin.h"
+#include "nanddump.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -1238,6 +1239,7 @@ static bool system_menu(void)
         M_THEME,
         M_GAME,
         M_SAVES,
+        M_NAND,
         M_ABOUT,
         M_LOADER,
         M_WIIMENU,
@@ -1283,6 +1285,7 @@ static bool system_menu(void)
         snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
         items[n] = theme_item;                                          code[n++] = M_THEME;
         items[n] = "Export all saves";                                  code[n++] = M_SAVES;
+        items[n] = "Back up the NAND / keys (nanddumper@IOS)";          code[n++] = M_NAND;
         items[n] = "About / credits";                                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
         items[n] = "Exit to Wii Menu";                                  code[n++] = M_WIIMENU;
@@ -1330,6 +1333,12 @@ static bool system_menu(void)
             return false;
         }
         case M_GAME:
+            if (nanddump_ios_busy()) {
+                ui_message("BOOT GAME DISC", C_YELLOW,
+                           "IOS is still patched from the NAND backup, and booting a disc now would crash it. Exit to "
+                           "the Homebrew Channel, start GodModeWii again, then boot the disc.");
+                return false;
+            }
             if (!ui_confirm("BOOT GAME DISC", C_CYAN,
                             "Start the Wii game disc in the drive with TinyLoad? It ignores the disc's region, loads the IOS the "
                             "game asks for and doesn't install updates. GodModeWii closes.")) {
@@ -1359,6 +1368,10 @@ static bool system_menu(void)
             return false;
         case M_SAVES:
             saves_export_all();
+            reload_keep_safe();
+            return false;
+        case M_NAND:
+            nanddump_menu();
             reload_keep_safe();
             return false;
         /* Only shows a box, so B comes back to the SYSTEM menu, redrawn over the browser. */

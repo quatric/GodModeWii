@@ -97,7 +97,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=
 sFILES		:=
 SFILES		:=
-BINFILES	:=	appboot.bin gmsf2.bin sfx.bin pmic_firm.bin tinyload.elf
+BINFILES	:=	appboot.bin gmsf2.bin sfx.bin pmic_firm.bin tinyload.elf nd_stage1.bin nd_realcode.bin
 # MiiKit (source/miikit) builds under its own names: its mii.c would land on mii.o beside ours.
 MIIKIT		:=	mii miidraw miibody miifx miinand
 export MIIKIT_DIR	:=	$(CURDIR)/source/miikit
@@ -187,6 +187,7 @@ miikit_%.o: $(MIIKIT_DIR)/%.c
 launch.o: appboot_bin.h
 midisynth.o: gmsf2_bin.h
 app.o: tinyload_elf.h
+nanddump.o: nd_stage1_bin.h nd_realcode_bin.h
 
 %.bin.o %_bin.h : %.bin
 	@echo $(notdir $<)
