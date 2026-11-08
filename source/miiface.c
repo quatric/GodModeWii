@@ -13,6 +13,7 @@
 #include "miikit/miidraw.h"
 #include "media.h"
 #include "ui.h"
+#include "pointer.h"
 #include "vfs.h"
 
 #define CACHE_MAX 64
@@ -172,6 +173,7 @@ bool miiface_draw(const u8 *rec, int expression, int x, int y)
 {
     int fw, fh;
     u8 *fb = ui_framebuffer(&fw, &fh);
+    ptr_hide();
     const entry_t *e = have_res ? face(rec, expression) : NULL;
     const u32 *src = e ? e->yuy2 : NULL;
     if (!fb) return false;

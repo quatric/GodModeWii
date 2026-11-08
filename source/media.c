@@ -10,11 +10,24 @@
 #include "media.h"
 #include "vfs.h"
 #include "ui.h"
+#include "pointer.h"
 #include "archive.h"
 #include "mc_player.h"
 #include "mii.h"
 
+static bool media_open_type_(const char *path, ftype_t t);
+
+/* Video and layouts draw straight into the framebuffer: no arrow over them. */
 bool media_open_type(const char *path, ftype_t t)
+{
+    bool own = t == FT_VIDEO || t == FT_LAYOUT || t == FT_ANIM;
+    if (own) ptr_overlay(false);
+    bool ok = media_open_type_(path, t);
+    if (own) ptr_overlay(true);
+    return ok;
+}
+
+static bool media_open_type_(const char *path, ftype_t t)
 {
     switch (t) {
     case FT_STREAM: case FT_AUDIO: case FT_MIDI: case FT_SEQ:

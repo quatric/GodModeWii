@@ -19,9 +19,12 @@ static u32 saved[AH][SW];
 /* where the saved block is (sx < 0: nothing saved) */
 static int sx = -1, sy, sw_n, sh_n;
 
+static bool overlay = true;
+
 void ptr_begin(void)
 {
     int w, h;
+    ptr_hide();
     ui_framebuffer(&w, &h);
     INPUT_SetScreenSize(w, h);
     INPUT_SetCursorMode(INPUT_CURSOR_IR | INPUT_CURSOR_MOUSE);
@@ -45,6 +48,56 @@ void ptr_hide(void)
         for (int k = 0; k < sw_n; k++) row[k] = saved[r][k];
     }
     sx = -1;
+}
+
+void ptr_overlay(bool on)
+{
+    if (!on) ptr_hide();
+    overlay = on;
+}
+
+void ptr_overlay_update(void)
+{
+    if (overlay) ptr_show();
+}
+
+bool ptr_cell(int *row, int *col)
+{
+    int x, y;
+    if (!ptr_get(&x, &y) || x < 16 || y < 16) return false;
+    *col = (x - 16) / 8;                        /* the console: 16 pixels in, 8 x 16 cells */
+    *row = (y - 16) / 16;
+    return true;
+}
+
+int ptr_item_at(int top, int n, int c0, int c1)
+{
+    int r, c;
+    if (!ptr_cell(&r, &c) || r < top || r >= top + n || c < c0 || c >= c1) return -1;
+    return r - top;
+}
+
+int ptr_hover_item(int top, int n, int c0, int c1, int *last)
+{
+    int r, c;
+    if (!ptr_cell(&r, &c)) {
+        *last = -1;
+        return -1;
+    }
+    if (r == *last) return -1;
+    *last = r;
+    return c >= c0 && c < c1 && r >= top && r < top + n ? r - top : -1;
+}
+
+u32 ptr_ui_buttons(void)
+{
+    int dx, dy, wheel;
+    u32 b = 0;
+    if (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT) b |= WPAD_BUTTON_A;
+    INPUT_MouseDelta(&dx, &dy, &wheel);
+    if (wheel > 0) b |= WPAD_BUTTON_DOWN;
+    if (wheel < 0) b |= WPAD_BUTTON_UP;
+    return b;
 }
 
 void ptr_show(void)

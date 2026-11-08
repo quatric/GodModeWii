@@ -8,6 +8,7 @@
 #include "app.h"
 #include "ui.h"
 #include "input.h"
+#include "pointer.h"
 #include "vfs.h"
 #include "ops.h"
 #include "editor.h"
@@ -1299,6 +1300,7 @@ static void open_drive(int dev)
 int app_run(void)
 {
     bool dirty = true;
+    int last_hover = -1;
 
     while (!g_quit_request && !launch_requested) {
         if (dirty) {
@@ -1308,7 +1310,28 @@ int app_run(void)
                 draw_home();
             dirty = false;
         }
-        u32 p = input_pressed();
+        u32 p = input_pressed() | ptr_ui_buttons();
+        {
+            /* the pointer / mouse: hovering a row selects it, A (or a click) on it acts on it */
+            int devs_tmp[DEV_COUNT];
+            bool in_dir = cwd[0] != '\0';
+            int vis = in_dir ? list_rows() : home_rows();
+            int count = in_dir ? nents + (clip_n ? 1 : 0) : home_list(devs_tmp);
+            int *cur = in_dir ? &cursor : &home_cursor;
+            int base = in_dir ? scroll : home_scroll;
+            int hov = ptr_hover_item(3, vis, 0, ui_cols(), &last_hover);
+            int hit = ptr_item_at(3, vis, 0, ui_cols());
+            if (hov >= 0 && base + hov < count && base + hov != *cur) {
+                *cur = base + hov;
+                if (!p) {
+                    dirty = true;
+                    cursor_only = true;
+                    continue;
+                }
+            }
+            if ((p & WPAD_BUTTON_A) && hit >= 0 && base + hit < count)
+                *cur = base + hit;
+        }
         if (!p)
             continue;
         status_msg[0] = '\0';

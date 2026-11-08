@@ -3,6 +3,7 @@
 #include <input_wii.h>
 
 #include "input.h"
+#include "pointer.h"
 
 /* Controllers, keyboard and the optional Wii U / DualShock 3 backends are
  * handled by libwiiinput; everything arrives as WPAD_BUTTON_* bits. */
@@ -11,6 +12,7 @@ void input_init(void)
 {
     /* the pointer and mouse drive the viewers' cursor */
     INPUT_InitEx(0);
+    ptr_begin();
 
     INPUT_KeyboardMapSet(0x4C, 0);                  /* Delete: unused here */
     INPUT_KeyboardMapSet(0x06, WPAD_BUTTON_PLUS);   /* C: copy */
@@ -28,6 +30,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
         VIDEO_WaitVSync();
 
     INPUT_Update();
+    ptr_overlay_update();
     return DownOrHeld == IN_DOWN ? INPUT_ButtonsDown() : INPUT_ButtonsHeld();
 }
 

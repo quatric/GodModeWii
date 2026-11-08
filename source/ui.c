@@ -10,6 +10,7 @@
 
 #include "ui.h"
 #include "input.h"
+#include "pointer.h"
 
 static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
@@ -74,7 +75,11 @@ int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
-void ui_goto(int row, int col) { printf("\x1b[%d;%dH", row + 1, col + 1); }
+void ui_goto(int row, int col)
+{
+    ptr_hide();
+    printf("\x1b[%d;%dH", row + 1, col + 1);
+}
 
 /* The "0" in "\x1b[30;0m" clears every attribute including the background,
  * so the current background is tracked and re-applied after each color. */
@@ -82,12 +87,14 @@ static int cur_bg = -1;
 
 void ui_clear(void)
 {
+    ptr_hide();
     cur_bg = -1;
     printf("\x1b[0m\x1b[2J");
 }
 
 void ui_wipe(void)
 {
+    ptr_hide();
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
     ui_clear();
 }
@@ -363,7 +370,7 @@ void ui_message(const char *title, int color, const char *text)
     int left;
     draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
     for (;;) {
-        u32 p = DetectInput(IN_DOWN);
+        u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
         if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
             return;
     }
@@ -379,14 +386,14 @@ void ui_message_pages(const char *title, int color, const char *const *pages, in
         snprintf(strip, sizeof(strip), "L / R or - / +  Prev / Next    A  OK");
         draw_text_box(head, color, pages[i], strip, 0, NULL, &left);
         for (;;) {
-            u32 p = DetectInput(IN_DOWN);
+            u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
             if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
                 return;
-            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS)) {
+            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS | WPAD_BUTTON_DOWN)) {
                 i = (i + 1) % n;
                 break;
             }
-            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS)) {
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS | WPAD_BUTTON_UP)) {
                 i = (i + n - 1) % n;
                 break;
             }
@@ -399,7 +406,7 @@ bool ui_confirm(const char *title, int color, const char *text)
     int left;
     draw_text_box(title, color, text, "A  Yes        B  No", 0, NULL, &left);
     for (;;) {
-        u32 p = DetectInput(IN_DOWN);
+        u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
         if (p & WPAD_BUTTON_A) return true;
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) return false;
     }
@@ -426,6 +433,7 @@ int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n
     int scroll = 0;
     int left, row;
     bool first = true;
+    int last_hover = -1;
 
     for (;;) {
         if (sel < scroll) scroll = sel;
@@ -445,7 +453,14 @@ int ui_menu_ex(const char *title, const char **items, const bool *enabled, int n
         }
         ui_reset();
 
-        u32 p = input_pressed();
+        u32 p = input_pressed() | ptr_ui_buttons();
+        int hov = ptr_hover_item(row, view, left + 1, left + w - 1, &last_hover);
+        int hit = ptr_item_at(row, view, left + 1, left + w - 1);
+        if (hov >= 0 && scroll + hov != sel) {
+            sel = scroll + hov;
+            if (!p) continue;
+        }
+        if ((p & WPAD_BUTTON_A) && hit >= 0) sel = scroll + hit;
         if (p & WPAD_BUTTON_UP)   sel = (sel + n - 1) % n;
         if (p & WPAD_BUTTON_DOWN) sel = (sel + 1) % n;
         /* page up / down, like the file browser */
