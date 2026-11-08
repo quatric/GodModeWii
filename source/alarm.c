@@ -16,7 +16,7 @@
 #define SETTING "sd:/apps/GodModeWii/alarm"
 #define RING_MAX_MS (5 * 60 * 1000)
 
-static struct { bool on; int h, m; } al = { false, 7, 0 };
+static struct { bool on; int h, m; bool noise; } al = { false, 7, 0, false };
 static bool ringing;
 static bool snoozing;
 static int snooze_h, snooze_m;
@@ -31,7 +31,7 @@ static void save(void)
     mkdir("sd:/apps/GodModeWii", 0777);
     FILE *f = fopen(SETTING, "wb");
     if (!f) return;
-    fprintf(f, "%d %d %d\n", al.on ? 1 : 0, al.h, al.m);
+    fprintf(f, "%d %d %d %d\n", al.on ? 1 : 0, al.h, al.m, al.noise ? 1 : 0);
     fclose(f);
 }
 
@@ -39,11 +39,13 @@ void alarm_load(void)
 {
     FILE *f = fopen(SETTING, "rb");
     if (!f) return;
-    int on, h, m;
-    if (fscanf(f, "%d %d %d", &on, &h, &m) == 3 && h >= 0 && h < 24 && m >= 0 && m < 60) {
+    int on, h, m, noise = 0;
+    int n = fscanf(f, "%d %d %d %d", &on, &h, &m, &noise);
+    if (n >= 3 && h >= 0 && h < 24 && m >= 0 && m < 60) {
         al.on = on != 0;
         al.h = h;
         al.m = m;
+        al.noise = n == 4 && noise != 0;
     }
     fclose(f);
 }
@@ -53,6 +55,7 @@ bool alarm_ringing(void) { return ringing; }
 void alarm_stop(void)
 {
     ringing = false;
+    sfx_noise_stop();
     wiilight_off();
 }
 
@@ -72,6 +75,7 @@ static void start_ringing(void)
     ringing = true;
     ring_began = now_ms();
     last_sound = last_light = 0;
+    if (al.noise) sfx_noise_start();
 }
 
 void alarm_poll(void)
@@ -82,7 +86,7 @@ void alarm_poll(void)
             alarm_stop();
             return;
         }
-        if (now - last_sound >= 1300) {
+        if (!al.noise && now - last_sound >= 1300) {
             last_sound = now;
             sfx_play_force(SFX_NOTIFY);
         }
@@ -107,7 +111,7 @@ void alarm_poll(void)
     }
 }
 
-#define NFIELDS 4
+#define NFIELDS 5
 
 static void draw(int field)
 {
@@ -116,7 +120,7 @@ static void draw(int field)
     ui_field(0, 1, ui_cols() - 2, "Alarm clock");
     ui_reset();
     ui_color(C_WHITE, false);
-    ui_field(2, 2, ui_cols() - 4, "At the set time the sound and the disc slot light go off.");
+    ui_field(2, 2, ui_cols() - 4, "At the set time the sound (a beep or white noise) and the disc slot light go off.");
     ui_reset();
 
     int h12 = al.h % 12 ? al.h % 12 : 12;
@@ -125,15 +129,16 @@ static void draw(int field)
         if (f == 0) snprintf(text, sizeof(text), " %2d ", h12);
         else if (f == 1) snprintf(text, sizeof(text), " %02d ", al.m);
         else if (f == 2) snprintf(text, sizeof(text), " %s ", al.h < 12 ? "AM" : "PM");
-        else snprintf(text, sizeof(text), " %s ", al.on ? "ON " : "OFF");
-        static const int COL[NFIELDS] = { 6, 13, 19, 26 };
+        else if (f == 3) snprintf(text, sizeof(text), " %s ", al.on ? "ON " : "OFF");
+        else snprintf(text, sizeof(text), " %s ", al.noise ? "White noise" : "Beep       ");
+        static const int COL[NFIELDS] = { 6, 13, 19, 26, 33 };
         if (f == field) {
             ui_bg(C_CYAN);
             ui_color(C_BLACK, false);
         } else {
             ui_color(f == 3 && !al.on ? C_RED : C_WHITE, true);
         }
-        ui_field(5, COL[f], 5, "%s", text);
+        ui_field(5, COL[f], f == 4 ? 13 : 5, "%s", text);
         ui_reset();
     }
     ui_color(C_WHITE, true);
@@ -162,7 +167,8 @@ void alarm_menu(void)
                 al.h = (((al.h % 12) + step) % 12 + 12) % 12 + (al.h >= 12 ? 12 : 0);
             else if (field == 1) al.m = ((al.m + step) % 60 + 60) % 60;
             else if (field == 2) al.h = (al.h + 12) % 24;
-            else al.on = !al.on;
+            else if (field == 3) al.on = !al.on;
+            else al.noise = !al.noise;
         }
         if (p & WPAD_BUTTON_A) al.on = !al.on;
         if (p & WPAD_BUTTON_1) start_ringing();

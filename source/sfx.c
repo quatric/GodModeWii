@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <asndlib.h>
 #include <gccore.h>
+#include <malloc.h>
 
 #include "sfx.h"
 #include "sfx_bin.h"
@@ -83,4 +84,35 @@ void sfx_wait(void)
         if (!busy) break;
         VIDEO_WaitVSync();
     }
+}
+
+/* White noise: one second of it, made once, looped until stopped. Plays even when the sounds are off. */
+#define NOISE_FRAMES 48000
+static s16 *noise_buf;
+static int noise_voice = -1;
+
+void sfx_noise_start(void)
+{
+    if (noise_voice >= 0) return;
+    sfx_asnd_acquire();
+    if (!noise_buf) {
+        noise_buf = memalign(32, NOISE_FRAMES * 4);
+        if (!noise_buf) return;
+        unsigned seed = 0x2545F491u;
+        for (int i = 0; i < NOISE_FRAMES * 2; i++) {
+            seed = seed * 1664525u + 1013904223u;
+            noise_buf[i] = (s16)((int)(seed >> 16) - 32768) / 3;
+        }
+        DCFlushRange(noise_buf, NOISE_FRAMES * 4);
+    }
+    int v = ASND_GetFirstUnusedVoice();
+    if (v < 0) return;
+    ASND_SetInfiniteVoice(v, VOICE_STEREO_16BIT, 48000, 0, noise_buf, NOISE_FRAMES * 4, 220, 220);
+    noise_voice = v;
+}
+
+void sfx_noise_stop(void)
+{
+    if (noise_voice >= 0) ASND_StopVoice(noise_voice);
+    noise_voice = -1;
 }

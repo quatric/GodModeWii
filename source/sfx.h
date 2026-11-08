@@ -15,6 +15,9 @@ void sfx_asnd_acquire(void);
 void sfx_play(int id);
 /* Plays even when the sounds are turned off: the alarm. */
 void sfx_play_force(int id);
+/* Looping white noise (the alarm's option); plays even when the sounds are off. */
+void sfx_noise_start(void);
+void sfx_noise_stop(void);
 /* Waits for what is playing to end (a moment): before powering off. */
 void sfx_wait(void);
 /* Silences the sound that has just started (the click of the A that chose something slow). */
