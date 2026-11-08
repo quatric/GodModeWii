@@ -202,7 +202,7 @@ static bool wfs_key_provider(int index, uint8_t key[16])
     return true;
 }
 
-static bool prng_provider(uint8_t key[16]);
+static bool prng_provider(uint32_t console_id, uint8_t key[16]);
 static bool nand_provider(uint8_t key[16]);
 
 static bool open_src(const char *spec, size_t n, src_t *out, char *name, size_t namesz);
@@ -266,12 +266,53 @@ void arcfs_flush(void)
                 entry_free(&cache[i]);
 }
 
-static bool prng_provider(uint8_t key[16])
+/* The OTP inside a BootMii key dump: keys.bin (0x400 bytes, OTP at 0x100), a bare otp.bin, or the keys
+ * section at the end of a nand.bin. */
+static bool otp_from_file(const char *path, u8 otp[OTP_SIZE])
+{
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return false;
+    u64 at;
+    if (f.size == 0x400) at = 0x100;
+    else if (f.size == OTP_SIZE) at = 0;
+    else if (f.size == 0x21000400ull || f.size == 0x20000400ull) at = f.size - 0x400 + 0x100;
+    else { vfs_close(&f); return false; }
+    u8 *buf = memalign(32, OTP_SIZE);
+    bool ok = buf && vfs_seek(&f, at) && vfs_read(&f, buf, OTP_SIZE) == OTP_SIZE;
+    if (ok) memcpy(otp, buf, OTP_SIZE);
+    if (buf) { memset(buf, 0, OTP_SIZE); free(buf); }
+    vfs_close(&f);
+    return ok;
+}
+
+/* This console's PRNG key when it is the one that made the file (or console_id is 0); otherwise the key of
+ * that console out of its BootMii keys.bin / otp.bin / nand.bin, next to the file being opened, at the root of
+ * its drive or of the SD card (where YABDM looks for them too). */
+static bool prng_provider(uint32_t console_id, uint8_t key[16])
 {
     u8 *otp = memalign(32, OTP_SIZE);
     if (!otp) return false;
-    bool ok = otp_read_all(otp);
+    bool ok = otp_read_all(otp) && (!console_id || be32(((otp_t *)otp)->ng_id) == console_id);
     if (ok) memcpy(key, ((otp_t *)otp)->rng_key, 16);
+    static const char *const names[] = { "keys.bin", "otp.bin", "nand.bin" };
+    char dirs[3][VFS_PATH_MAX];
+    int nd = 0;
+    const char *slash = opening ? strrchr(opening, '/') : NULL;
+    if (slash && !strchr(opening, '|')) {
+        snprintf(dirs[nd++], VFS_PATH_MAX, "%.*s", (int)(slash - opening), opening);
+        int dev = vfs_dev_of(opening);
+        if (dev >= 0) snprintf(dirs[nd++], VFS_PATH_MAX, "%.*s", (int)strlen(vfs_dev_root(dev)) - 1, vfs_dev_root(dev));
+    }
+    snprintf(dirs[nd++], VFS_PATH_MAX, "sd:");
+    for (int d = 0; !ok && d < nd; d++) {
+        if (d && !strcmp(dirs[d], dirs[d - 1])) continue;
+        for (int i = 0; !ok && i < 3; i++) {
+            char p[VFS_PATH_MAX + 16];
+            snprintf(p, sizeof(p), "%s/%s", dirs[d], names[i]);
+            ok = otp_from_file(p, otp) && (!console_id || be32(((otp_t *)otp)->ng_id) == console_id);
+            if (ok) memcpy(key, ((otp_t *)otp)->rng_key, 16);
+        }
+    }
     memset(otp, 0, OTP_SIZE);
     free(otp);
     return ok;

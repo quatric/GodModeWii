@@ -380,7 +380,7 @@ archive_t *arc_contentbin_open(const src_t *file, const char *name)
     memset(&sd, 0, sizeof(sd));
 
     uint8_t prng[16];
-    bool have_key = arc_prng_key(prng);
+    bool have_key = arc_prng_key(be32(bk + 8), prng);    /* the console that made it */
     if (have_key) {
         aes128_init_dec(&p->ctx, prng);
         memset(prng, 0, sizeof(prng));

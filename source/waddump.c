@@ -411,7 +411,8 @@ int waddump_build(const char *src, const char *outpath, char *err, size_t en, wa
         }
         free(list);
         if (encrypted) {
-            seterr(err, en, "This content.bin can only be decrypted on the Wii that made it");
+            seterr(err, en, "This content.bin was made by another Wii: put that Wii's BootMii keys.bin (or otp.bin / "
+                   "nand.bin) next to it or at the root of the drive");
             goto out;
         }
         if (!tmd) {
@@ -446,8 +447,34 @@ int waddump_build(const char *src, const char *outpath, char *err, size_t en, wa
     /* --- the ticket, fakesigned */
     snprintf(path, sizeof(path), "%s/ticket/%08x/%08x.tik", d.nand, (unsigned)TID_HI(tid), (unsigned)TID_LO(tid));
     tik = read_all(path, &tik_sz, FILE_MAX);
+    if (!tik && d.cbin[0]) {
+        /* a content.bin of a title that isn't on this NAND: its ticket from beside it, or a tickets folder */
+        char dir[VFS_PATH_MAX], root[16];
+        int dev = vfs_dev_of(src);
+        if (!vfs_parent(src, dir, sizeof(dir))) dir[0] = 0;
+        snprintf(root, sizeof(root), "%s", dev >= 0 ? vfs_dev_root(dev) : "sd:/");
+        const char *const fmts[] = { "%s/%08x%08x.tik", "%s/%08x-%08x.tik", "%s/%08x.tik", "%s/ticket.tik",
+                                     "%sGodModeWii/tickets/%08x-%08x.tik", "%sYABDM/Tickets/%08x-%08x.tik" };
+        for (int i = 0; i < 6 && !tik; i++) {
+            const char *base = i < 4 ? dir : root;
+            if (!base[0]) continue;
+            if (i == 2) snprintf(path, sizeof(path), fmts[i], base, (unsigned)TID_LO(tid));
+            else if (i == 3) snprintf(path, sizeof(path), fmts[i], base);
+            else snprintf(path, sizeof(path), fmts[i], base, (unsigned)TID_HI(tid), (unsigned)TID_LO(tid));
+            tik = read_all(path, &tik_sz, FILE_MAX);
+            if (tik && (tik_sz < TIK_LEN || be64(tik + TIK_TID) != tid)) {
+                free(tik);
+                tik = NULL;
+            }
+        }
+    }
     if (!tik || tik_sz < TIK_LEN || be32(tik) != 0x00010001) {
-        seterr(err, en, "No ticket for %08x-%08x on the NAND", (unsigned)TID_HI(tid), (unsigned)TID_LO(tid));
+        if (d.cbin[0])
+            seterr(err, en, "No ticket for %08x-%08x: not on this NAND, nor as %08x-%08x.tik next to the content.bin "
+                   "or in GodModeWii/tickets/", (unsigned)TID_HI(tid), (unsigned)TID_LO(tid), (unsigned)TID_HI(tid),
+                   (unsigned)TID_LO(tid));
+        else
+            seterr(err, en, "No ticket for %08x-%08x on the NAND", (unsigned)TID_HI(tid), (unsigned)TID_LO(tid));
         goto out;
     }
     if (be64(tik + TIK_TID) != tid) {

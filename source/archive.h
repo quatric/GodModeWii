@@ -66,9 +66,11 @@ struct archive {
     void *priv;
 };
 
-/* The PRNG key that content.bin contents are encrypted with is specific to the console. */
 typedef bool (*archive_key_fn)(uint8_t key[16]);
-void archive_set_prng_key_provider(archive_key_fn fn);
+/* The PRNG key that content.bin contents are encrypted with is specific to the console: the key of the
+ * console with this ID (from its "Bk" header; 0 = any), this one's or out of a BootMii key dump. */
+typedef bool (*archive_prng_fn)(uint32_t console_id, uint8_t key[16]);
+void archive_set_prng_key_provider(archive_prng_fn fn);
 
 /* Candidate AES keys for WFS volumes (Wii U USB / MLC): index 0, 1, ... until false. */
 typedef bool (*archive_wfs_key_fn)(int index, uint8_t key[16]);
@@ -196,7 +198,7 @@ void archive_set_nand_key_provider(archive_key_fn fn);        /* the console's o
 
 /* keys shared by wad / content.bin / data.bin */
 extern const uint8_t ARC_SD_KEY[16], ARC_SD_IV[16];
-bool arc_prng_key(uint8_t key[16]);
+bool arc_prng_key(uint32_t console_id, uint8_t key[16]);
 bool arc_common_key(int index, uint8_t key[16]);
 
 #endif

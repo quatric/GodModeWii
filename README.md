@@ -197,8 +197,11 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   ID and ECDH data are wiped and a Korean or vWii title key is encrypted again with the Wii common key (common key index 0), so the
   WAD installs on any Wii whose IOS has the signing bug. The **TMD is never fakesigned**: it stays exactly as Nintendo signed it.
   Every content is checked against its TMD hash, and a title with a damaged or missing content is refused, as is DLC with pieces
-  that were never downloaded (leaving them out would mean changing the TMD). A `content.bin` needs the keys of the Wii that made
-  it (run on that console), and its ticket and shared contents come from this console's NAND. Disc games have no ticket on the
+  that were never downloaded (leaving them out would mean changing the TMD). A `content.bin` is decrypted with the keys of the Wii that made it
+  (found by the console ID in its header): this console's own, or, as with YABDM, that Wii's BootMii `keys.bin` (or `otp.bin` /
+  `nand.bin`) next to the `content.bin`, at the root of its drive or at the root of the SD card. Its ticket comes from this
+  console's NAND, or, for a title that isn't installed here, from `<title id>.tik` / `<hi>-<lo>.tik` next to the `content.bin` or
+  in `GodModeWii/tickets/` (or YABDM's `YABDM/Tickets/`); shared contents come from this console's NAND. Disc games have no ticket on the
   NAND and boot2 isn't stored as files, so neither can be backed up. The WADs go in `GodModeWii/wad-dump/` on the SD card or a USB
   drive, named `<title id>-<ID>-v<version>.wad`. The NAND is only read.
 * **Install Wii Menu themes (DANGEROUS):** **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces

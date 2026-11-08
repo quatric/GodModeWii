@@ -15,7 +15,7 @@
 #include "qlz.h"
 
 const char *g_archive_err;
-static archive_key_fn prng_provider;
+static archive_prng_fn prng_provider;
 static archive_wfs_key_fn wfs_provider;
 static int open_depth;
 
@@ -64,7 +64,7 @@ bool arc_common_key(int index, uint8_t key[16])
     return true;
 }
 
-void archive_set_prng_key_provider(archive_key_fn fn) { prng_provider = fn; }
+void archive_set_prng_key_provider(archive_prng_fn fn) { prng_provider = fn; }
 
 void archive_set_wfs_key_provider(archive_wfs_key_fn fn) { wfs_provider = fn; }
 
@@ -80,9 +80,9 @@ bool arc_wfs_key_at(int index, uint8_t key[16])
     return wfs_provider && wfs_provider(index, key);
 }
 
-bool arc_prng_key(uint8_t key[16])
+bool arc_prng_key(uint32_t console_id, uint8_t key[16])
 {
-    return prng_provider && prng_provider(key);
+    return prng_provider && prng_provider(console_id, key);
 }
 
 /* ---------------------------------------------------------------- sources */
