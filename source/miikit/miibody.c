@@ -607,7 +607,7 @@ static int read_model(buf *b, uint32_t m, mii_body *body, const char **env, cons
  * rotation, translation, 25-26 the rotation keys' format (1: a u32 of 8
  * bits frame, 12 bits angle in 4096ths of a turn, 12 bits signed slope in
  * 32nds of a degree a frame, as bodyWallow's; 2: u16 frame in 32nds, s16
- * angle and slope in 65536ths of a turn; 3: f32 frame, value, slope), each
+ * angle in 65536ths of a turn, slope in 256ths of a degree a frame; 3: f32 frame, value, slope), each
  * after a header of 8 bytes (u16 count). Translation and scale keys are f32
  * frame, value, slope. */
 static float key_f(const uint8_t *p);
@@ -653,9 +653,11 @@ static int read_anim(buf *b, uint32_t c, mii_body *body, const char *name, mii_a
 						return MII_E_FORMAT;
 				} else {
 					uint32_t k = e + rd32(b, p), j;
-					unsigned keys = rd16(b, k), fmt = comp == 1 ? (code >> 25 & 3) : 3;
+					unsigned keys = rd16(b, k), fmt = comp == 1 ? (code >> 25 & 7) : 3;
 
-					if (comp == 1 && !fmt)
+					/* 0 is constant floats; 4 is a baked rotation matrix of unknown
+					 * size, which can't be read. */
+					if (comp == 1 && (!fmt || fmt > 3))
 						return MII_E_FORMAT;
 					/* At most a key a frame (keys_at reads them each draw). */
 					if (!keys || keys > (unsigned) a->frames + 1 ||
@@ -709,7 +711,7 @@ static float keys_at(const uint8_t *k, unsigned fmt, int angle, float f) {
 
 			fi = (float) (e[0] << 8 | e[1]) / 32;
 			vi = (float) (int16_t) (e[2] << 8 | e[3]) * 360 / 65536;
-			ti = (float) (int16_t) (e[4] << 8 | e[5]) * 360 / 65536;
+			ti = (float) (int16_t) (e[4] << 8 | e[5]) / 256;
 		} else {
 			const uint8_t *e = k + 8 + 12 * i;
 
@@ -739,7 +741,7 @@ static float track_at(const mii_anim *a, int bone, int slot, float f) {
 
 	if (!k)
 		return a->track[bone].c[slot];
-	return keys_at(k, slot >= 3 && slot < 6 ? a->track[bone].code >> 25 & 3 : 3, slot >= 3 && slot < 6, f);
+	return keys_at(k, slot >= 3 && slot < 6 ? a->track[bone].code >> 25 & 7 : 3, slot >= 3 && slot < 6, f);
 }
 
 /* ---- Loading -------------------------------------------------------------- */
