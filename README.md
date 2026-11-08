@@ -216,6 +216,15 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   SaveGame Manager GX writes and installs. The Miis are drawn on the Wii by MiiKit, from the Wii Menu's face models and
   the Mii Channel's bodies (read from the NAND, or from `sd:/mii/` when the NAND can't be read), so nothing goes online;
   **2** changes their expression. In Dolphin, they need Graphics > Hacks > "Store EFB Copies to Texture Only" turned off.
+* **Sketchpad**: draw with the Wii Remote pointer, a USB mouse, a USB pen tablet or a uDraw GameTablet (pressure
+  sets the brush width): 16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as 24-bit `.bmp` files in
+  `GodModeWii/drawings/` on the SD card. The tools follow PictoCard's doodle pad.
+* **Voice memos**: record with a Wii Speak or a USB (class-compliant) microphone into `GodModeWii/voice/memo_NNN.wav`, then play
+  or delete them. The Wii Speak needs Nintendo's boot firmware, which isn't included: put `pmic_firm.bin` (see
+  [libwiiinput](libwiiinput/README.md#wii-speak)) at `sd:/apps/GodModeWii/pmic_firm.bin`. USB microphones need nothing.
+* **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii: Nintendo's light patterns and a breathing glow
+  while something loads). Each can be turned off in HOME; the choice is saved on the SD card
+  (`sd:/apps/GodModeWii/sfx_off`, `light_off`).
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * Lock the NAND again, remount drives, credits, exit.
 * **Restart Wii**; on a Wii U it returns to the Wii U Menu.
@@ -469,6 +478,12 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 
 ### Code included
 
+* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the interface sound effects
+  (`res/sfx.bin`, made by `scripts/make_sfx.py` from its `misctools/sndeff` folder).
+* **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
+  (`source/wiilight.c`, `source/wiilight_patterns.h`).
+* **[PictoCard](https://github.com/larsenv/PictoCard-Client)** (larsenv) — the doodle pad's palette, brush sizes and tools
+  (`source/draw.c`).
 * **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak
   (from Some YAWMM Mod, YAWMM and WAD Manager by Waninkoko; GPL-2.0) — the WAD installer (`source/wadinstall.c`: the ES install
   sequence, the vWii ticket fix-up and every brick check) and the `.dol` / `.elf` launcher (`source/launch.c` and its app booter in

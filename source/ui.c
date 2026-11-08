@@ -11,6 +11,8 @@
 #include "ui.h"
 #include "input.h"
 #include "pointer.h"
+#include "sfx.h"
+#include "wiilight.h"
 
 static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
@@ -369,6 +371,9 @@ void ui_message(const char *title, int color, const char *text)
 {
     int left;
     draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
+    sfx_play(SFX_NOTIFY);
+    if (color == C_RED) wiilight_pattern(WL_BLINK3);
+    else wiilight_pulse();
     for (;;) {
         u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
         if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
@@ -611,6 +616,7 @@ static bool busy_shown;
 void ui_busy_begin(const char *what)
 {
     if (busy_depth++) return;
+    wiilight_breathe(true);
     ui_ascii(busy_what, sizeof(busy_what), what ? what : "");
     busy_start = gettime();
     busy_last = 0;
@@ -621,7 +627,7 @@ void ui_busy_begin(const char *what)
 
 void ui_busy_end(void)
 {
-    if (busy_depth > 0) busy_depth--;
+    if (busy_depth > 0 && --busy_depth == 0) wiilight_off();
 }
 
 static void busy_draw(void)

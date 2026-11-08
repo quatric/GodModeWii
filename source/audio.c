@@ -22,6 +22,7 @@
 #include <malloc.h>
 #include <gccore.h>
 #include <asndlib.h>
+#include "sfx.h"
 #include <ogc/lwp_watchdog.h>
 #include <ogc/machine/processor.h>
 
@@ -844,8 +845,7 @@ static bool oq_open(u32 rate)
     for (int i = 0; i < OQ_BUFS; i++)
         if (!(oq.buf[i] = memalign(32, OUT_FRAMES * 4))) return false;
     if (!rs_init(oq.rate)) return false;
-    ASND_Init();
-    ASND_Pause(0);
+    sfx_asnd_acquire();                         /* shared with the interface sounds */
     oq.voice = ASND_GetFirstUnusedVoice();
     return true;
 }
@@ -853,7 +853,6 @@ static bool oq_open(u32 rate)
 static void oq_close(void)
 {
     if (oq.started) ASND_StopVoice(oq.voice);
-    ASND_End();
     for (int i = 0; i < OQ_BUFS; i++) free(oq.buf[i]);
     free(oq.coef);
     free(oq.in);

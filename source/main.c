@@ -17,6 +17,8 @@
 
 #include "app.h"
 #include "ui.h"
+#include "sfx.h"
+#include "wiilight.h"
 #include "input.h"
 #include "vfs.h"
 #include "risk.h"
@@ -177,6 +179,9 @@ int main(int argc, char **argv)
         g_nand_full = IosPatch_ISFS(false) > 0;
 
     input_init();
+    sfx_play(SFX_OPENING);
+    wiilight_init();
+    wiilight_pattern(WL_DISC_CLOSE);
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
 #ifdef GMW_AUTOTEST
     bool update = false;

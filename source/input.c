@@ -4,6 +4,8 @@
 
 #include "input.h"
 #include "pointer.h"
+#include "sfx.h"
+#include "wiilight.h"
 
 /* Controllers, keyboard and the optional Wii U / DualShock 3 backends are
  * handled by libwiiinput; everything arrives as WPAD_BUTTON_* bits. */
@@ -14,6 +16,7 @@ void input_init(void)
     INPUT_InitEx(0);
     ptr_begin();
 
+    sfx_load_setting();
     INPUT_KeyboardMapSet(0x4C, 0);                  /* Delete: unused here */
     INPUT_KeyboardMapSet(0x06, WPAD_BUTTON_PLUS);   /* C: copy */
     INPUT_KeyboardMapSet(0x19, WPAD_BUTTON_MINUS);  /* V: cut  */
@@ -21,6 +24,7 @@ void input_init(void)
 
 void input_shutdown(void)
 {
+    wiilight_shutdown();
     INPUT_Shutdown();
 }
 
@@ -53,6 +57,9 @@ u32 input_pressed(void)
 
     u32 down = DetectInput(IN_DOWN);
     u32 held = INPUT_ButtonsHeld() & DPAD;
+    if (down & WPAD_BUTTON_A) sfx_play(SFX_CLICK);
+    else if (down & WPAD_BUTTON_B) sfx_play(SFX_LONGTAP);
+    else if (down & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) sfx_play(SFX_MOVEPAGE);
 
     if (!held || (down & DPAD)) {
         hold_frames = 0;

@@ -12,14 +12,15 @@ SOURCES		:=	source source/mobiclip source/zstd source/ajpg libwiiinput/source $(
 DATA		:=	data res
 INCLUDES	:=	source source/mobiclip source/zstd source/ajpg $(UNARR)
 
-CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z
+# libwiiinput: pen tablets / uDraw (drawing) and Wii Speak / USB microphones (voice memos)
+CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE) -DHAVE_7Z -DHAVE_TABLET -DHAVE_MIC
 # make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1: a test build that opens the files listed
 # in sd:/gmwtest.txt at start and saves each viewer's screen to the SD card (see scripts/autotest.sh).
 ifeq ($(AUTOTEST),1)
 CFLAGS	+=	-DGMW_AUTOTEST
 endif
 CXXFLAGS	=	$(CFLAGS)
-LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free
+LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free -Wl,--wrap=classic_ctrl_handshake,--wrap=parse_event,--wrap=USB_GetDeviceList
 
 LIBS	:=	-lbz2 -lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -lvorbisidec -logg -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)
@@ -96,7 +97,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=
 sFILES		:=
 SFILES		:=
-BINFILES	:=	appboot.bin gmsf2.bin
+BINFILES	:=	appboot.bin gmsf2.bin sfx.bin
 # MiiKit (source/miikit) builds under its own names: its mii.c would land on mii.o beside ours.
 MIIKIT		:=	mii miidraw miibody miifx miinand
 export MIIKIT_DIR	:=	$(CURDIR)/source/miikit

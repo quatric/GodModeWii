@@ -9,6 +9,9 @@
 #include "ui.h"
 #include "input.h"
 #include "pointer.h"
+#include "pda.h"
+#include "sfx.h"
+#include "wiilight.h"
 #include "vfs.h"
 #include "ops.h"
 #include "editor.h"
@@ -1150,6 +1153,10 @@ static bool system_menu(void)
         M_FTP_USB,
         M_WIILOAD,
         M_MIIS,
+        M_DRAW,
+        M_MEMOS,
+        M_SFX,
+        M_LIGHT,
         M_SAVES,
         M_ABOUT,
         M_LOADER,
@@ -1164,8 +1171,8 @@ static bool system_menu(void)
         else
             draw_home();
 
-        const char *items[14];
-        int code[14];
+        const char *items[18];
+        int code[18];
         int n = 0;
 
         if (risk_unlocked() && !risk_forced()) {
@@ -1180,6 +1187,14 @@ static bool system_menu(void)
         items[n] = "FTP install server (archives to USB)";              code[n++] = M_FTP_USB;
         items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
         items[n] = "Miis";                                              code[n++] = M_MIIS;
+        items[n] = "Sketchpad (draw)";                                  code[n++] = M_DRAW;
+        items[n] = "Voice memos (record / play)";                       code[n++] = M_MEMOS;
+        items[n] = sfx_enabled() ? "Sound effects: ON (select to turn off)"
+                                 : "Sound effects: OFF (select to turn on)";
+                                                                        code[n++] = M_SFX;
+        items[n] = wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
+                                      : "Disc slot light: OFF (select to turn on)";
+                                                                        code[n++] = M_LIGHT;
         items[n] = "Export all saves";                                  code[n++] = M_SAVES;
         items[n] = "About / credits";                                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
@@ -1228,16 +1243,33 @@ static bool system_menu(void)
         case M_MIIS:
             mii_export();
             return false;
+        case M_DRAW:
+            draw_run();
+            reload_keep_safe();
+            return false;
+        case M_MEMOS:
+            memo_run();
+            reload_keep_safe();
+            return false;
+        case M_SFX:
+            sfx_set_enabled(!sfx_enabled());      /* saved on the card (sd:/apps/GodModeWii/sfx_off) */
+            sfx_play(SFX_CLICK);
+            status(C_GREEN, sfx_enabled() ? "Sound effects on." : "Sound effects off (saved on the card).");
+            return false;
         case M_SAVES:
             saves_export_all();
             reload_keep_safe();
             return false;
         /* Only shows a box, so B comes back to the SYSTEM menu, redrawn over the browser. */
         case M_ABOUT: show_credits(); break;
+        case M_LIGHT:
+            wiilight_set_enabled(!wiilight_enabled());    /* saved on the card (sd:/apps/GodModeWii/light_off) */
+            status(C_GREEN, wiilight_enabled() ? "Disc slot light on." : "Disc slot light off (saved on the card).");
+            return false;
         case M_LOADER: exit_req = EXIT_LOADER; return true;
         case M_WIIMENU: exit_req = EXIT_MENU; return true;
-        case M_RESTART: exit_req = EXIT_RESTART; return true;
-        default: exit_req = EXIT_POWEROFF; return true;
+        case M_RESTART: sfx_play(SFX_POWEROFF); wiilight_pulse(); sfx_wait(); exit_req = EXIT_RESTART; return true;
+        default: sfx_play(SFX_POWEROFF); wiilight_pulse(); sfx_wait(); exit_req = EXIT_POWEROFF; return true;
         }
     }
 }
@@ -1399,6 +1431,7 @@ int app_run(void)
                 vfs_entry *en = &ents[cursor - off];
                 if (en->is_dir) {
                     char path[VFS_PATH_MAX];
+                    sfx_play(SFX_OPEN);
                     if (vfs_join(path, sizeof(path), cwd, en->name))
                         load_dir(path, NULL);
                 } else {
