@@ -107,6 +107,8 @@ void alarm_poll(void)
     }
 }
 
+#define NFIELDS 4
+
 static void draw(int field)
 {
     ui_clear();
@@ -117,23 +119,25 @@ static void draw(int field)
     ui_field(2, 2, ui_cols() - 4, "At the set time the sound and the disc slot light go off.");
     ui_reset();
 
-    for (int f = 0; f < 3; f++) {
+    int h12 = al.h % 12 ? al.h % 12 : 12;
+    for (int f = 0; f < NFIELDS; f++) {
         char text[24];
-        if (f == 0) snprintf(text, sizeof(text), " %02d ", al.h);
+        if (f == 0) snprintf(text, sizeof(text), " %2d ", h12);
         else if (f == 1) snprintf(text, sizeof(text), " %02d ", al.m);
+        else if (f == 2) snprintf(text, sizeof(text), " %s ", al.h < 12 ? "AM" : "PM");
         else snprintf(text, sizeof(text), " %s ", al.on ? "ON " : "OFF");
-        int col = f == 0 ? 6 : f == 1 ? 13 : 22;
+        static const int COL[NFIELDS] = { 6, 13, 19, 26 };
         if (f == field) {
             ui_bg(C_CYAN);
             ui_color(C_BLACK, false);
         } else {
-            ui_color(al.on || f < 2 ? C_WHITE : C_RED, true);
+            ui_color(f == 3 && !al.on ? C_RED : C_WHITE, true);
         }
-        ui_field(5, col, 6, "%s", text);
+        ui_field(5, COL[f], 5, "%s", text);
         ui_reset();
     }
     ui_color(C_WHITE, true);
-    ui_field(5, 11, 2, ":");
+    ui_field(5, 10, 3, ":");
     ui_reset();
     ui_color(C_CYAN, true);
     ui_field(ui_rows() - 2, 1, ui_cols() - 2, "L/R Pick  U/D Change  +/- Jump  A On/Off  1 Test  B Back");
@@ -151,11 +155,13 @@ void alarm_menu(void)
         if (p & WPAD_BUTTON_DOWN) step = -1;
         if (p & WPAD_BUTTON_PLUS) step = 5;
         if (p & WPAD_BUTTON_MINUS) step = -5;
-        if (p & WPAD_BUTTON_LEFT) field = (field + 2) % 3;
-        if (p & WPAD_BUTTON_RIGHT) field = (field + 1) % 3;
+        if (p & WPAD_BUTTON_LEFT) field = (field + NFIELDS - 1) % NFIELDS;
+        if (p & WPAD_BUTTON_RIGHT) field = (field + 1) % NFIELDS;
         if (step) {
-            if (field == 0) al.h = ((al.h + step) % 24 + 24) % 24;
+            if (field == 0)                         /* 12-hour: round the AM or the PM half */
+                al.h = (((al.h % 12) + step) % 12 + 12) % 12 + (al.h >= 12 ? 12 : 0);
             else if (field == 1) al.m = ((al.m + step) % 60 + 60) % 60;
+            else if (field == 2) al.h = (al.h + 12) % 24;
             else al.on = !al.on;
         }
         if (p & WPAD_BUTTON_A) al.on = !al.on;

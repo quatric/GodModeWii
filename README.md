@@ -224,7 +224,9 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii: Nintendo's light patterns and a breathing glow
   while something loads). Each can be turned off in HOME; the choice is saved on the SD card
   (`sd:/apps/GodModeWii/sfx_off`, `light_off`).
-* **Alarm clock**, after MoonShell's Morning Timer: set a time (L/R pick hour, minute or on/off, U/D change); when it comes the
+* **Clock and calendar**, after MoonShell's: big digits with the seconds and AM / PM, the date, and the month with today marked
+  (Left / Right change the month, A returns to today). The top bar shows the time too.
+* **Alarm clock**, after MoonShell's Morning Timer: set a time in 12-hour AM / PM (L/R pick hour, minute, AM / PM or on/off, U/D change); when it comes the
   sound and the disc slot light go off (even with the sounds turned off) until you stop it or snooze it for five minutes.
   Kept on the card (`sd:/apps/GodModeWii/alarm`).
 * **Calculator**, after MoonCalc: a scientific calculator with on-screen keys (sin / cos / tan and their inverses, ln, log, sqrt,

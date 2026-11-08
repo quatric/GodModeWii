@@ -77,10 +77,23 @@ int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
+/* Fields already on screen: ui_field skips one that would draw exactly what is there (same text, same
+ * colours), which is most of a redraw after the cursor moves. The cache is thrown away whenever anything
+ * else draws (ui_goto, ui_clear), since it can't know what that covered. */
+#define FCACHE 512
+static struct { short row, col, width; u32 hash, gen; } fcache[FCACHE];
+static u32 row_gen[64] , clear_gen = 1;
+
+static void goto_raw(int row, int col)
+{
+    ptr_hide_range(16 + 16 * row, 32 + 16 * row);
+    printf("\x1b[%d;%dH", row + 1, col + 1);
+}
+
 void ui_goto(int row, int col)
 {
-    ptr_hide();
-    printf("\x1b[%d;%dH", row + 1, col + 1);
+    if (row >= 0 && row < 64) row_gen[row]++;        /* what follows may draw anything on this line */
+    goto_raw(row, col);
 }
 
 /* The "0" in "\x1b[30;0m" clears every attribute including the background,
@@ -97,6 +110,7 @@ void ui_clear(void)
 {
     ptr_hide();
     hints_forget();
+    memset(fcache, 0, sizeof(fcache));
     cur_bg = -1;
     printf("\x1b[0m\x1b[2J");
 }
@@ -217,8 +231,24 @@ void ui_field(int row, int col, int width, const char *fmt, ...)
     for (; len < width; len++)
         buf[len] = ' ';
     buf[width] = '\0';
-    ui_goto(row, col);
-    fputs(buf, stdout);
+    u32 hv = 2166136261u;
+    for (const char *q = buf; *q; q++) hv = (hv ^ (u8)*q) * 16777619u;
+    hv = (hv ^ (u32)(cur_fg * 16 + (cur_bold ? 8 : 0) + (cur_bg + 1))) * 16777619u;
+    int slot = (row * 37 + col) & (FCACHE - 1);
+    bool same = row >= 0 && row < 64 && fcache[slot].gen == row_gen[row] && fcache[slot].row == row + 1 &&
+                fcache[slot].col == col && fcache[slot].width == width && fcache[slot].hash == hv;
+    if (!same) {
+        goto_raw(row, col);
+        fputs(buf, stdout);
+        if (row >= 0 && row < 64) {
+            row_gen[row]++;                          /* this may cover another field on the line */
+            fcache[slot].row = row + 1;
+            fcache[slot].col = col;
+            fcache[slot].width = width;
+            fcache[slot].hash = hv;
+            fcache[slot].gen = row_gen[row];
+        }
+    }
     if (row >= g_rows - 2 && row < g_rows && col <= 1 && width >= 20) {
         int k = row - (g_rows - 2);
         hint[k].on = true;

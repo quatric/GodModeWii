@@ -39,13 +39,19 @@ static const ctheme THEMES[] = {
 };
 #define NTHEMES ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
 
-static u32 *table;                          /* libogc's colorTable in memory */
+#define MAX_TABLES 4
+static u32 *tables[MAX_TABLES];             /* libogc's colorTable in memory (and any stale copy of the image) */
+static int ntables;
+static u32 *table;
 static u32 orig[24];
 static int current;
 
 int colors_count(void) { return NTHEMES; }
 const char *colors_name(int i) { return i >= 0 && i < NTHEMES ? THEMES[i].name : ""; }
 int colors_current(void) { return current; }
+
+u32 colors_fg_rgb(void) { return current ? THEMES[current].fg : 0xE0E0E0; }
+u32 colors_bg_rgb(void) { return current ? THEMES[current].bg : 0x000000; }
 
 static void rgb_yuv(u32 rgb, int *y, int *u, int *v)
 {
@@ -72,45 +78,52 @@ static u32 mix(u32 a, u32 b, int pct_b)
     return out;
 }
 
-/* The console's table, found by its contents (it's static in libogc). */
+/* The console's table, found by its contents (it's static in libogc). The self-extracting .dol can leave
+ * a copy of the program lower in memory, so every match is kept and patched, not just the first. */
 static bool find_table(void)
 {
-    if (table) return true;
-    /* the first words are enough to look for; then all 24 must match */
+    if (ntables) return true;
     static const u32 key[3] = { 0x10801080, 0x317031b1, 0x51605157 };
     const u32 *p = (const u32 *)0x80003100;
-    const u32 *end = (const u32 *)0x80800000;
-    for (; p < end; p++) {
+    const u32 *end = (const u32 *)0x81800000 - 24;
+    for (; p < end && ntables < MAX_TABLES; p++) {
         if (p[0] != key[0] || p[1] != key[1] || p[2] != key[2]) continue;
         if (p[7] != 0xc080c080 || p[15] != 0xf080f080 || p[23] != 0x70807080) continue;
-        table = (u32 *)p;
-        memcpy(orig, p, sizeof(orig));
-        return true;
+        if (!ntables) memcpy(orig, p, sizeof(orig));
+        tables[ntables++] = (u32 *)p;
     }
-    return false;
+    table = ntables ? tables[0] : NULL;
+    return ntables > 0;
 }
+
+static u32 theme_bg_word;
 
 void colors_apply(int i, bool save)
 {
     if (i < 0 || i >= NTHEMES || !find_table()) return;
     const ctheme *t = &THEMES[i];
+    u32 w[24];
     if (i == 0) {
-        memcpy(table, orig, sizeof(orig));
+        memcpy(w, orig, sizeof(orig));
     } else {
         for (int set = 0; set < 2; set++) {
-            u32 *row = table + set * 8;
+            u32 *row = w + set * 8;
             row[0] = word(set ? mix(t->bg, t->fg, 45) : t->bg);
             for (int h = 0; h < 6; h++) row[1 + h] = word(t->hue[set][h]);
             row[7] = word(set ? t->bold : t->fg);
         }
         for (int c = 0; c < 8; c++) {                       /* the dim set: the colours, faded */
-            u32 n = table[c];
+            u32 n = w[c];
             int y = n >> 24, u = n >> 16 & 255, v = n & 255;
-            int by = table[0] >> 24;
-            table[16 + c] = (u32)((y + by) / 2) << 24 | (u32)u << 16 | (u32)((y + by) / 2) << 8 | (u32)v;
+            int by = w[0] >> 24;
+            w[16 + c] = (u32)((y + by) / 2) << 24 | (u32)u << 16 | (u32)((y + by) / 2) << 8 | (u32)v;
         }
     }
-    DCFlushRange(table, sizeof(orig));
+    for (int k = 0; k < ntables; k++) {
+        memcpy(tables[k], w, sizeof(w));
+        DCFlushRange(tables[k], sizeof(w));
+    }
+    theme_bg_word = w[0];
     current = i;
     if (save) {
         mkdir("sd:/apps", 0777);
@@ -121,7 +134,7 @@ void colors_apply(int i, bool save)
             fclose(f);
         }
     }
-    ui_wipe_with(table[0]);
+    ui_wipe_with(theme_bg_word);
 }
 
 void colors_load(void)

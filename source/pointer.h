@@ -32,6 +32,7 @@ static inline bool ptr_drag_owns_a(const ptr_drag *d) { return d->ptr_press; }
 /* The cursor in the file browser, menus and dialogs too: an input poll draws the arrow
  * (ptr_overlay_update) and any ui_* drawing takes it away first. Screens that draw straight into
  * the framebuffer (video, layouts) switch it off while they run. */
+void ptr_hide_range(int y0, int y1);
 void ptr_overlay(bool on);
 void ptr_overlay_update(void);
 /* The console cell (0-based, like ui_goto) under the cursor; false while nothing points at the

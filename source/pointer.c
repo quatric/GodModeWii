@@ -50,6 +50,13 @@ void ptr_hide(void)
     sx = -1;
 }
 
+/* Takes the arrow away only if it is over screen lines y0 .. y1 - 1: drawing elsewhere leaves it alone, so it
+ * doesn't blink whenever the text under the cursor changes. */
+void ptr_hide_range(int y0, int y1)
+{
+    if (sx >= 0 && sy < y1 && sy + sh_n > y0) ptr_hide();
+}
+
 void ptr_overlay(bool on)
 {
     if (!on) ptr_hide();

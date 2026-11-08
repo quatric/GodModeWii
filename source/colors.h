@@ -13,6 +13,9 @@ const char *colors_name(int i);
 int colors_current(void);
 /* Applies theme i and redraws the console's background; save: remember it on the card. */
 void colors_apply(int i, bool save);
+/* The current theme's text and background colours, 0xRRGGBB. */
+unsigned colors_fg_rgb(void);
+unsigned colors_bg_rgb(void);
 /* Applies the saved one (sd:/apps/GodModeWii/theme), once the SD card is mounted. */
 void colors_load(void);
 

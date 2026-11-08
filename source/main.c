@@ -202,7 +202,7 @@ int main(int argc, char **argv)
     wiilight_load_setting();
     colors_load();
     alarm_load();
-    sfx_play(SFX_OPENING);
+    sfx_play(SFX_CLICK);
     wiilight_pattern(WL_DISC_CLOSE);
 
     if (toggled) {

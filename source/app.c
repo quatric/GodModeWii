@@ -16,6 +16,7 @@
 #include "colors.h"
 #include "alarm.h"
 #include "calc.h"
+#include "clock.h"
 #include "vfs.h"
 #include "ops.h"
 #include "editor.h"
@@ -183,14 +184,15 @@ static int clock_minute(char *out, size_t n)
         snprintf(out, n, "--:--");
         return -1;
     }
-    snprintf(out, n, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    snprintf(out, n, "%d:%02d %s", tmv.tm_hour % 12 ? tmv.tm_hour % 12 : 12, tmv.tm_min,
+             tmv.tm_hour < 12 ? "AM" : "PM");
     return tmv.tm_hour * 60 + tmv.tm_min;
 }
 
 static void draw_header(void)
 {
     int cols = ui_cols();
-    char left[64], right[64], clk[8];
+    char left[64], right[64], clk[12];
     clock_minute(clk, sizeof(clk));
     bool risky = here_risky();
     snprintf(left, sizeof(left), " GodModeWii v%s", GMW_VERSION);
@@ -1181,6 +1183,7 @@ static bool system_menu(void)
         M_LIGHT,
         M_ALARM,
         M_CALC,
+        M_CLOCK,
         M_THEME,
         M_GAME,
         M_SAVES,
@@ -1198,8 +1201,8 @@ static bool system_menu(void)
             draw_home();
 
         char theme_item[48];
-        const char *items[24];
-        int code[24];
+        const char *items[26];
+        int code[26];
         int n = 0;
 
         if (risk_unlocked() && !risk_forced()) {
@@ -1225,6 +1228,7 @@ static bool system_menu(void)
                                                                         code[n++] = M_LIGHT;
         items[n] = "Alarm clock";                                       code[n++] = M_ALARM;
         items[n] = "Calculator";                                        code[n++] = M_CALC;
+        items[n] = "Clock and calendar";                                code[n++] = M_CLOCK;
         snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
         items[n] = theme_item;                                          code[n++] = M_THEME;
         items[n] = "Export all saves";                                  code[n++] = M_SAVES;
@@ -1310,6 +1314,9 @@ static bool system_menu(void)
         case M_ABOUT: show_credits(); break;
         case M_ALARM:
             alarm_menu();
+            return false;
+        case M_CLOCK:
+            clock_run();
             return false;
         case M_CALC:
             calc_run();
@@ -1404,7 +1411,7 @@ int app_run(void)
         }
         u32 p = input_pressed() | ptr_ui_buttons();
         {
-            char clk[8];
+            char clk[12];
             int minute = clock_minute(clk, sizeof(clk));
             if (minute != shown_minute) {                  /* keep the clock in the header current */
                 shown_minute = minute;

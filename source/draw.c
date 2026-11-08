@@ -103,7 +103,10 @@ static void paint(int x0, int y0, int x1, int y1)
 
 static void flush(void)
 {
-    if (dx0 < dx1 && dy0 < dy1) paint(dx0, dy0, dx1, dy1);
+    if (dx0 < dx1 && dy0 < dy1) {
+        paint(dx0, dy0, dx1, dy1);
+        ptr_overlay_update();                       /* paint took the arrow away: put it back at once */
+    }
     mark_none();
 }
 

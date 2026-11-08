@@ -46,27 +46,12 @@ typedef enum { SRC_NONE, SRC_SPEAK, SRC_USB } mic_src;
 /* The Wii Speak when there is one (and its firmware), else a USB microphone. */
 static mic_src mic_open(u32 *rate, char *why, size_t why_n)
 {
-    /* the Wii Speak's boot firmware is built in (res/pmic_firm.bin) */
-    u32 fsize = pmic_firm_bin_size;
-    u8 *firm = malloc(fsize);
-    if (firm) memcpy(firm, pmic_firm_bin, fsize);
-
     ui_splash("Looking for a microphone...");
-    s32 r = firm ? WS_Open(firm, fsize) : WS_ENODEV;
-    free(firm);
-    if (r == WS_OK) {
-        WS_SetFreq(WS_FREQ_16KHZ);
-        WS_SetSignalProcessing(false);
-        if (WS_Start() == WS_OK) {
-            *rate = WS_FreqToHz(WS_FREQ_16KHZ);
-            return SRC_SPEAK;
-        }
-        WS_Close();
-    }
 
+    /* a class-compliant USB microphone first, as RecordMii does */
     um_info info;
     if (UM_Open(&info) == UM_OK) {
-        if (info.has_volume) UM_SetVolume(80);
+        if (info.has_volume) UM_SetVolume(100);
         if (UM_Start() == UM_OK) {
             *rate = info.rate;
             return SRC_USB;
@@ -74,8 +59,29 @@ static mic_src mic_open(u32 *rate, char *why, size_t why_n)
         UM_Close();
     }
 
+    /* the Wii Speak's boot firmware is built in (res/pmic_firm.bin) */
+    u32 fsize = pmic_firm_bin_size;
+    u8 *firm = malloc(fsize);
+    if (firm) memcpy(firm, pmic_firm_bin, fsize);
+    s32 r = firm ? WS_Open(firm, fsize) : WS_ENOMEM;
+    free(firm);
+    if (r == WS_OK) {
+        /* The same settings RecordMii sends. The gain has to go out (libwiiinput adds the SDK's 0x0300 mask):
+         * without it the mic's sampler never starts, and it stays silent. */
+        WS_SetGain(WS_GAIN_30dB);
+        WS_SetFreq(WS_FREQ_16KHZ);
+        WS_SetSignalProcessing(false);
+        WS_SetMute(false);
+        if (WS_Start() == WS_OK) {
+            *rate = WS_FreqToHz(WS_FREQ_16KHZ);
+            return SRC_SPEAK;
+        }
+        WS_Close();
+    }
+
     snprintf(why, why_n, "%s",
-             "No microphone found. Plug in a Wii Speak or a USB microphone and try again.");
+             r == WS_ENODEV ? "No microphone found. Plug in a Wii Speak or a USB microphone and try again."
+                            : "The Wii Speak didn't start. Unplug it, plug it in again and retry.");
     return SRC_NONE;
 }
 
