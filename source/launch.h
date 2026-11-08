@@ -13,6 +13,9 @@
  * be started. On success the caller leaves the main loop with EXIT_LAUNCH. */
 bool launch_prepare(const char *path);
 
+/* A program built into this one (its bytes, and the name to pass as its own path). */
+bool launch_prepare_memory(const unsigned char *data, unsigned size, const char *name);
+
 /* Called last, after the drives and controllers are shut down. Doesn't return. */
 void launch_go(void);
 

@@ -150,6 +150,24 @@ bool launch_prepare(const char *path)
     return true;
 }
 
+/* The same, for a program that is built into this one (TinyLoad). */
+bool launch_prepare_memory(const u8 *data, u32 size, const char *name)
+{
+    free(app);
+    app = NULL;
+    if (size < 0x40 || !looks_runnable(data, size)) return false;
+    app_size = size;
+    app = memalign(32, (size + 31) & ~31u);
+    if (!app) {
+        ui_message("LAUNCH", C_RED, "Not enough memory.");
+        return false;
+    }
+    memcpy(app, data, size);
+    add_path_arg(name);
+    args[args_len++] = '\0';
+    return true;
+}
+
 void launch_go(void)
 {
     if (!app)

@@ -234,6 +234,8 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
 * **Fast-forward / rewind** in the audio player (WAV, MP3, FLAC, Ogg): Left / Right jump 5 s, and held they keep scrubbing.
 * The hints along the bottom of a screen ("A Pause", "B Stop", ...) can be clicked with the pointer or mouse: pointing at one
   highlights it, and A presses that button.
+* **Boot game disc**: starts the Wii game disc in the drive with TinyLoad (below), region free; GodModeWii closes and the game
+  runs. No patches, no updates, no burned discs.
 * **FTP server**, **FTP install server** and **Wiiload**; see [Network](#network-ftp-and-wiiload).
 * A clock (HH:MM, from the console's own clock) in the top bar of the browser.
 * Lock the NAND again, remount drives, credits, exit.
@@ -488,6 +490,9 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 
 ### Code included
 
+* **[TinyLoad](https://wiibrew.org/wiki/TinyLoad)** 0.2 by Hector Martin (marcan), with code by Segher Boessenkool, Andre Heider
+  and Nuke (GPL-2.0) — the game disc loader, built into `res/tinyload.elf` from `tinyload/` (`tinyload/build.sh`) and started
+  through the launcher.
 * **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the interface sound effects
   (`res/sfx.bin`, made by `scripts/make_sfx.py` from its `misctools/sndeff` folder).
 * **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns

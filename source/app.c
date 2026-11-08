@@ -32,6 +32,7 @@
 #include "media.h"
 #include "ftype.h"
 #include "wiiload.h"
+#include "tinyload_elf.h"
 #include "usage.h"
 
 volatile bool g_quit_request;
@@ -1181,6 +1182,7 @@ static bool system_menu(void)
         M_ALARM,
         M_CALC,
         M_THEME,
+        M_GAME,
         M_SAVES,
         M_ABOUT,
         M_LOADER,
@@ -1196,8 +1198,8 @@ static bool system_menu(void)
             draw_home();
 
         char theme_item[48];
-        const char *items[22];
-        int code[22];
+        const char *items[24];
+        int code[24];
         int n = 0;
 
         if (risk_unlocked() && !risk_forced()) {
@@ -1211,6 +1213,7 @@ static bool system_menu(void)
         items[n] = "FTP install server (archives to SD)";               code[n++] = M_FTP_SD;
         items[n] = "FTP install server (archives to USB)";              code[n++] = M_FTP_USB;
         items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
+        items[n] = "Boot game disc (TinyLoad)";                         code[n++] = M_GAME;
         items[n] = "Miis";                                              code[n++] = M_MIIS;
         items[n] = "Sketchpad (draw)";                                  code[n++] = M_DRAW;
         items[n] = "Voice memos (record / play)";                       code[n++] = M_MEMOS;
@@ -1271,6 +1274,18 @@ static bool system_menu(void)
             reload_keep_safe();
             return false;
         }
+        case M_GAME:
+            if (!ui_confirm("BOOT GAME DISC", C_CYAN,
+                            "Start the Wii game disc in the drive with TinyLoad? It ignores the disc's region, loads the IOS the "
+                            "game asks for and doesn't install updates. GodModeWii closes.")) {
+                return false;
+            }
+            if (launch_prepare_memory(tinyload_elf, tinyload_elf_size, "tinyload")) {
+                launch_requested = true;
+                exit_req = EXIT_LAUNCH;
+                return true;
+            }
+            return false;
         case M_MIIS:
             mii_export();
             return false;
