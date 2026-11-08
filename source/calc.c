@@ -251,7 +251,6 @@ static void press(const char *ins)
             fresh = true;                               /* an operation next continues from Ans */
         } else {
             snprintf(result, sizeof(result), "Error");
-            sfx_play(SFX_LONGTAP);
         }
         return;
     }

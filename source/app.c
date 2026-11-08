@@ -1514,7 +1514,6 @@ int app_run(void)
                 vfs_entry *en = &ents[cursor - off];
                 if (en->is_dir) {
                     char path[VFS_PATH_MAX];
-                    sfx_play(SFX_OPEN);
                     if (vfs_join(path, sizeof(path), cwd, en->name))
                         load_dir(path, NULL);
                 } else {

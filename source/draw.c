@@ -426,7 +426,6 @@ void draw_run(void)
     INPUT_SetCursorMode(INPUT_CURSOR_IR | INPUT_CURSOR_MOUSE | INPUT_CURSOR_STICK);
     TB_Init();
     chrome();
-    sfx_play(SFX_OPEN);
 
     bool was_a = false, stroke = false, tb_down = false;
     int lx = 0, ly = 0, tlx = 0, tly = 0, hover = -1;
