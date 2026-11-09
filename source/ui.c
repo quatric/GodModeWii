@@ -477,7 +477,15 @@ void ui_message(const char *title, int color, const char *text)
 bool ui_message_pages_code(const char *title, int color, const char *const *pages, int n,
                            const u32 *code, int code_n)
 {
-    int i = 0, got = 0;
+    /* The code is also taken with + and - the other way round, and the press that turns to the last page
+     * counts as its first button (so - from the first page, then A + 1 2 -, works too). */
+    u32 alt[16];
+    int got[2] = { 0, 0 };
+    if (code_n > 16) code_n = 16;
+    for (int k = 0; code && k < code_n; k++)
+        alt[k] = code[k] == WPAD_BUTTON_PLUS ? WPAD_BUTTON_MINUS : code[k] == WPAD_BUTTON_MINUS ? WPAD_BUTTON_PLUS : code[k];
+    const u32 *codes[2] = { code, alt };
+    int i = 0;
     for (;;) {
         char strip[64], head[96];
         int left;
@@ -490,24 +498,28 @@ bool ui_message_pages_code(const char *title, int color, const char *const *page
              * page or closing; the first one off the code works as usual (so a second + in a row
              * still turns the page). A slip partway through can start the code over. */
             if (p && code && i == n - 1) {
-                if (p == code[got] || (got > 1 && p == code[0])) {
-                    got = p == code[got] ? got + 1 : 1;
-                    if (got == code_n)
-                        return true;
-                    continue;
+                bool kept = false;
+                for (int c = 0; c < 2; c++) {
+                    const u32 *q = codes[c];
+                    if (p == q[got[c]] || (got[c] > 1 && p == q[0])) {
+                        got[c] = p == q[got[c]] ? got[c] + 1 : 1;
+                        if (got[c] == code_n) return true;
+                        kept = true;
+                    } else {
+                        got[c] = 0;
+                    }
                 }
-                got = 0;
+                if (kept) continue;
             }
             if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
                 return false;
-            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS | WPAD_BUTTON_DOWN)) {
-                i = (i + 1) % n;
-                got = 0;
-                break;
-            }
-            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS | WPAD_BUTTON_UP)) {
-                i = (i + n - 1) % n;
-                got = 0;
+            int to = -1;
+            if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS | WPAD_BUTTON_DOWN)) to = (i + 1) % n;
+            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS | WPAD_BUTTON_UP)) to = (i + n - 1) % n;
+            if (to >= 0) {
+                i = to;
+                for (int c = 0; c < 2; c++)     /* arriving on the last page with the code's first button */
+                    got[c] = code && i == n - 1 && i != 0 && p == codes[c][0] ? 1 : 0;
                 break;
             }
         }
