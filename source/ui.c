@@ -354,10 +354,18 @@ static int wrap_lines(const char *text, int width, char lines[][BOX_W_MAX + 2], 
 /* A problem summary turns its whole window red so it can't be missed. */
 static int win_body = WIN_BG;
 
+/* The rainbow flag's stripes, as the Pride theme's colours: red, orange (cyan's place), yellow, green, blue,
+ * violet. */
+static const int PRIDE_BG[6] = { C_RED, C_CYAN, C_YELLOW, C_GREEN, C_BLUE, C_MAGENTA };
+
+
 void ui_alert_window(bool on)
 {
     win_body = on ? C_RED : WIN_BG;
 }
+
+/* The dialog body: the Pride theme's dark background, so all six flag stripes show against it */
+static int body(void) { return win_body == WIN_BG && colors_is_pride() ? C_BLACK : win_body; }
 
 static int title_fg(int bar)
 {
@@ -375,7 +383,7 @@ static void win_blank(int row, int left, int w, int bg)
 /* Body text inside the window, padded to the window width. */
 static void win_text(int row, int left, int w, int fg, bool bold, const char *s)
 {
-    ui_bg(win_body);
+    ui_bg(body());
     ui_color(fg, bold);
     ui_field(row, left + 2, w - 4, "%s", s);
 }
@@ -403,13 +411,32 @@ static int draw_window(const char *title, int color, int content_rows, int w,
     ui_color(title_fg(color), true);
     ui_field(top, left + 2, w - 4, "%s", title ? title : "");
     for (int r = 1; r < h - 1; r++)
-        win_blank(top + r, left, w, win_body);
+        win_blank(top + r, left, w, body());
+    if (colors_is_pride()) {                  /* the flag under the title bar */
+        ui_goto(top + 1, left);
+        for (int x = 0; x < w; x++) {
+            ui_bg(PRIDE_BG[x * 6 / w]);
+            putchar(' ');
+        }
+    }
     win_strip(top + h - 1, left, w, strip);
     ui_reset();
     *out_left = left;
     if (out_strip_row)
         *out_strip_row = top + h - 1;
     return top + 2;
+}
+
+bool ui_pride_stripe(int i, int n)
+{
+    if (!colors_is_pride()) return false;
+    int s = n > 0 ? i * 6 / n : 0;
+    if (s < 0) s = 0;
+    if (s > 5) s = 5;
+    ui_bg(PRIDE_BG[s]);
+    if (s >= 1 && s <= 3) ui_color(C_BLACK, false);     /* dark text on orange, yellow and green */
+    else ui_color(C_WHITE, true);
+    return true;
 }
 
 static int box_width(void)
@@ -521,12 +548,12 @@ void ui_tivo_dialog(bool on, bool saved, bool sounds_on)
     char lines[16][BOX_W_MAX + 2];
     int n = wrap_lines(text, w - 4, lines, 16);
     ui_clear();                                 /* not the taller credits window around it */
-    int row = draw_window("", win_body, 6 + n, w, "A  OK", &left, NULL);
+    int row = draw_window("", body(), 6 + n, w, "A  OK", &left, NULL);
 
     /* the title bar: "TiVo" in its colours, then the state */
     static const char word[] = "TiVo";
     ui_goto(row - 2, left + 2);
-    ui_bg(win_body);
+    ui_bg(body());
     for (int k = 0; k < 4; k++) {
         ui_color(TIVO_LETTER_COLOR[k], true);
         putchar(word[k]);
@@ -538,7 +565,7 @@ void ui_tivo_dialog(bool on, bool saved, bool sounds_on)
     for (int r = 0; r < 5; r++)
         for (int x = 0; TIVO_ART[r][x]; x++) {
             if (TIVO_ART[r][x] != '#') continue;
-            ui_bg(win_body);
+            ui_bg(body());
             ui_color(TIVO_LETTER_COLOR[tivo_letter(x)], true);   /* bright: the full block glyph */
             ui_goto(row + r, x0 + x * 2);
             printf("\xdb\xdb");

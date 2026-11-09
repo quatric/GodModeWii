@@ -23,5 +23,7 @@ void colors_load(void);
 bool colors_pride_unlocked(void);
 bool colors_unlock_pride(void);
 int colors_pride(void);
+/* The Pride theme is the one in use: the lists and dialogs paint the rainbow flag. */
+bool colors_is_pride(void);
 
 #endif

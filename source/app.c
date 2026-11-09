@@ -270,23 +270,24 @@ static void draw_browser(void)
     for (int i = 0; i < L; i++) {
         int idx = scroll + i;
         int row = 3 + i;
+        bool flag = ui_pride_stripe(i, L);       /* the Pride theme paints the flag behind the rows */
         if (idx >= total) {
             ui_field(row, 0, cols - 1, "");
             if (total == 0 && i == 0) {
-                ui_color(C_WHITE, false);
+                if (!flag) ui_color(C_WHITE, false);
                 ui_field(row, 2, cols - 3, "(empty)");
-                ui_reset();
             }
+            ui_reset();
             continue;
         }
         bool sel = idx == cursor;
         if (sel) {
-            ui_bg(C_CYAN);
+            ui_bg(flag ? C_WHITE : C_CYAN);
             ui_color(C_BLACK, false);
         }
 
         if (off && idx == 0) {
-            if (!sel) ui_color(C_GREEN, true);
+            if (!sel && !flag) ui_color(C_GREEN, true);
             ui_field(row, 0, cols - 1, "> Paste %d item(s) here  [%s]", clip_n,
                      clip_cut ? "MOVE" : "COPY");
             ui_reset();
@@ -294,7 +295,7 @@ static void draw_browser(void)
         }
         int e = idx - off;
         vfs_entry *en = &ents[e];
-        if (!sel) {
+        if (!sel && !flag) {
             if (marks[e]) ui_color(C_GREEN, true);
             else if (en->is_dir) ui_color(C_YELLOW, true);
             else ui_color(C_WHITE, true);
@@ -413,15 +414,21 @@ static void draw_home(void)
     ui_fill(2, 0, cols - 1, '-');
     ui_reset();
 
-    for (int i = 0; i < vis && home_scroll + i < n; i++) {
+    for (int i = 0; i < vis; i++) {
         int idx = home_scroll + i;
-        vfs_dev *d = &g_devs[devs[idx]];
         int row = 3 + i;
+        bool flag = ui_pride_stripe(i, vis);     /* the Pride theme paints the flag behind the rows */
+        if (idx >= n) {
+            if (flag) ui_field(row, 0, cols - 1, "");
+            ui_reset();
+            continue;
+        }
+        vfs_dev *d = &g_devs[devs[idx]];
         bool sel = idx == home_cursor;
         if (sel) {
-            ui_bg(C_CYAN);
+            ui_bg(flag ? C_WHITE : C_CYAN);
             ui_color(C_BLACK, false);
-        } else
+        } else if (!flag)
             ui_color(d->mounted ? C_WHITE : C_RED, d->mounted);
         char note[56] = "";
         if (devs[idx] == DEV_NAND)
@@ -454,6 +461,24 @@ static void draw_home(void)
     ui_field(rows - 3, 1, cols - 2, "%s", status_msg);
     ui_reset();
 }
+
+#ifdef GMW_AUTOTEST
+/* "@pride": the drive list, the SD card's top folder and a dialog in the Pride theme, each saved like a viewer's
+ * screen. */
+void app_pride_autotest(void)
+{
+    extern bool ui_test_dump(void);
+    colors_apply(colors_pride(), false);
+    cwd[0] = '\0';
+    draw_home();
+    ui_test_dump();
+    load_dir("sd:/", NULL);
+    draw_browser();
+    ui_test_dump();
+    ui_tivo_dialog(true, true, true);
+    cwd[0] = '\0';
+}
+#endif
 
 /* ---------------------------------------------------------------- viewers */
 
@@ -746,9 +771,9 @@ static void show_credits(void)
 
         "Interface sounds: MoonShell 2.10 (Moonlight; GPL v2 or later).\n\n"
         "Thanks for using GodModeWii!\n\n"
-        "Psst... feeling nostalgic? Right here, enter Start A Select 1 2 Select.",
+        "Psst... feeling nostalgic? Right here, enter + A - 1 2 -.",
     };
-    /* the easter egg: Start (+) A Select (-) 1 2 Select (-) on the last page switches TiVo mode */
+    /* the easter egg: + A - 1 2 - on the last page switches TiVo mode */
     static const u32 code[] = { WPAD_BUTTON_PLUS, WPAD_BUTTON_A, WPAD_BUTTON_MINUS, WPAD_BUTTON_1,
                                 WPAD_BUTTON_2, WPAD_BUTTON_MINUS };
     int n = sizeof(pages) / sizeof(pages[0]);

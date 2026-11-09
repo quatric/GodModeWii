@@ -26,6 +26,9 @@ void ui_field(int row, int col, int width, const char *fmt, ...);
 void ui_fill(int row, int col, int width, char c);
 void ui_bar(int row, int col, int width, int pct, int color);
 void ui_fmt_size(char *out, size_t n, u64 bytes);
+/* Pride theme: row i of a list n rows tall gets its rainbow flag stripe as the background (six bands) and a
+ * text colour that reads on it. False, and nothing set, with any other theme. */
+bool ui_pride_stripe(int i, int n);
 
 /* Dialogs. All of them block and leave the screen for the caller to redraw. */
 void ui_message(const char *title, int color, const char *text);

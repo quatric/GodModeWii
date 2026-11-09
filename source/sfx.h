@@ -4,7 +4,7 @@
 /* Interface sounds: MoonShell 2.10's sound effects (GPL v2 or later), packed in res/sfx.bin by
  * scripts/make_sfx.py. Played through ASND, which the audio player shares (sfx_asnd_acquire).
  *
- * TiVo mode (the easter egg: Start A Select 1 2 Select on the last credits page) plays TiVo's own
+ * TiVo mode (the easter egg: + A - 1 2 - on the last credits page) plays TiVo's own
  * interface sounds instead, packed in res/tivo.bin by scripts/make_tivo.py. Each event below has a
  * MoonShell sound and a TiVo sound; some only sound in TiVo mode (the MoonShell set has no tick for
  * the cursor, for instance), so MoonShell mode sounds just as it always has. */

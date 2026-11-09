@@ -308,6 +308,12 @@ int main(int argc, char **argv)
                 ui_test_dump();
                 continue;
             }
+            /* "@pride": the Pride theme on the drive list, a folder and a dialog */
+            if (!strcmp(line, "@pride")) {
+                extern void app_pride_autotest(void);
+                app_pride_autotest();
+                continue;
+            }
             /* "@sweeper": Bad Block Sweeper's board, from the bad blocks of a nand.bin on the card */
             if (!strcmp(line, "@sweeper")) {
                 extern void sweeper_autotest(void);

@@ -53,12 +53,13 @@ static const ctheme THEMES[] = {
     { "Silver Aerogel", 0x929292, 0x000000, 0x000000,
       PAL(0xD8A0A0, 0x1E4A1E, 0x4A3A00, 0xB8B8B8, 0xC8A8C8, 0x202040,
           0x6A0000, 0x003800, 0x3A2600, 0x00008A, 0x6A006A, 0x101060) },
-    /* The easter egg (a file or folder named "pride" unlocks it): the six stripes of the rainbow flag for the
-     * bars and dialogs (red title bars, orange and green bars, royal blue dialogs, violet, and the trans flag's
-     * light blue for the selection), and its pink, light blue and the rainbow again for text, on a deep purple. */
-    { "Pride",          0x1A0B2E, 0xFFFFFF, 0xFFFFFF,
-      PAL(0xE40303, 0x4CD964, 0xFF8C00, 0x24408E, 0x732982, 0x5BCEFA,
-          0xFF5C5C, 0x7CFF8C, 0xFFED00, 0x8FB0FF, 0xF5A9B8, 0x5BCEFA) },
+    /* The easter egg (a file or folder named "pride" unlocks it). The six bar colours are the rainbow flag's
+     * stripes, red, orange (in cyan's place, so the selection bar is orange), yellow, green, blue and violet,
+     * which the file and drive lists also paint behind their rows as the flag (ui_pride_stripe), and dialogs
+     * under their title bar. Text colours: the rainbow again, lighter, with the trans flag's light blue. */
+    { "Pride",          0x140A1F, 0xFFFFFF, 0xFFFFFF,
+      PAL(0xE40303, 0x1FA84A, 0xFFED00, 0x1F4FE0, 0x8A1CB0, 0xFF8C00,
+          0xFF6B6B, 0x7CFF8C, 0xFFF27A, 0x8FB0FF, 0xE59CFF, 0x5BCEFA) },
 };
 #define NTHEMES ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
 #define PRIDE (NTHEMES - 1)                 /* the last one, listed only once it's unlocked */
@@ -75,6 +76,7 @@ static int current;
 int colors_count(void) { return pride_unlocked ? NTHEMES : NTHEMES - 1; }
 
 bool colors_pride_unlocked(void) { return pride_unlocked; }
+bool colors_is_pride(void) { return current == PRIDE; }
 int colors_pride(void) { return PRIDE; }
 
 bool colors_unlock_pride(void)
