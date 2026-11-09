@@ -1617,13 +1617,10 @@ int app_run(void)
             int n = home_list(devs);
             if (p & WPAD_BUTTON_UP)   home_cursor = (home_cursor + n - 1) % n;
             if (p & WPAD_BUTTON_DOWN) home_cursor = (home_cursor + 1) % n;
-            if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) {     /* a page of drives at a time */
-                int vis = home_rows(), page = home_cursor / vis, pages = (n + vis - 1) / vis;
-                page = (page + (p & WPAD_BUTTON_RIGHT ? 1 : pages - 1)) % pages;
-                home_cursor = page * vis + home_cursor % vis;
-                if (home_cursor >= n) home_cursor = n - 1;
-                home_scroll = page * vis;
-            }
+            /* several drives at a time, like a page of files */
+            int jump = home_rows() > 2 ? home_rows() - 1 : 1;
+            if (p & WPAD_BUTTON_LEFT)  { home_cursor -= jump; if (home_cursor < 0) home_cursor = 0; }
+            if (p & WPAD_BUTTON_RIGHT) { home_cursor += jump; if (home_cursor >= n) home_cursor = n - 1; }
             /* the easter egg: the Konami code (no START) here opens Bad Block Sweeper instead of the drive */
             static const u32 konami[] = { WPAD_BUTTON_UP, WPAD_BUTTON_UP, WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN,
                                           WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT, WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT,
@@ -1646,23 +1643,6 @@ int app_run(void)
 
         if (p & WPAD_BUTTON_UP)    { if (total) cursor = (cursor + total - 1) % total; }
         if (p & WPAD_BUTTON_DOWN)  { if (total) cursor = (cursor + 1) % total; }
-        if ((p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) && vfs_is_root(cwd)) {
-            /* at a drive's top level, left / right cycles through the mounted drives */
-            int devs[DEV_COUNT], idx[DEV_COUNT], n = 0, me = -1;
-            int all = home_list(devs);
-            for (int i = 0; i < all; i++) {
-                if (!g_devs[devs[i]].mounted) continue;
-                if (!strcmp(g_devs[devs[i]].root, cwd)) me = n;
-                idx[n] = i;
-                devs[n++] = devs[i];
-            }
-            if (me >= 0 && n > 1) {
-                me = (me + (p & WPAD_BUTTON_RIGHT ? 1 : n - 1)) % n;
-                home_cursor = idx[me];
-                open_drive(devs[me]);
-            }
-            continue;
-        }
         if (p & WPAD_BUTTON_LEFT) {
             cursor -= L - 1;
             if (cursor < 0) cursor = 0;
