@@ -17,6 +17,7 @@
 
 #include "app.h"
 #include "ui.h"
+#include "pda.h"
 #include "sfx.h"
 #include "wiilight.h"
 #include "colors.h"
@@ -312,6 +313,27 @@ int main(int argc, char **argv)
             if (!strcmp(line, "@pride")) {
                 extern void app_pride_autotest(void);
                 app_pride_autotest();
+                continue;
+            }
+            /* "@clock" / "@alarm": the clock and calendar, the alarm's screen, saved like a viewer's */
+            if (!strcmp(line, "@clock")) {
+                extern void clock_run(void);
+                clock_run();
+                continue;
+            }
+            if (!strcmp(line, "@draw")) {
+                draw_run();
+                continue;
+            }
+            if (!strcmp(line, "@alarm")) {
+                extern void alarm_menu(void);
+                alarm_menu();
+                continue;
+            }
+            /* "@calc KEY KEY ...": the calculator's keys by label, each answer logged, the screen saved */
+            if (!strncmp(line, "@calc ", 6)) {
+                extern void calc_autotest(const char *keys);
+                calc_autotest(line + 6);
                 continue;
             }
             /* "@sweeper": Bad Block Sweeper's board, from the bad blocks of a nand.bin on the card */

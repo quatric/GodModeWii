@@ -321,3 +321,31 @@ void calc_run(void)
     }
     ui_clear();
 }
+
+#ifdef GMW_AUTOTEST
+/* Test builds only: keys pressed in a row ("4", "2", "=", ...; "AC" / "DEL" by label), each "=" logged to
+ * sd:/gmwtest.log as "calc EXPR -> RESULT", then the screen saved like a viewer's. */
+void calc_autotest(const char *keys)
+{
+    extern bool ui_test_dump(void);
+    expr[0] = result[0] = '\0';
+    memset(hist, 0, sizeof(hist));
+    fresh = false;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s", keys);
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    for (char *k = strtok(buf, " "); k; k = strtok(NULL, " ")) {
+        const char *ins = k;
+        for (int r = 0; r < KROWS; r++)
+            for (int c = 0; c < KCOLS; c++)
+                if (!strcmp(KEYS[r][c].label, k)) ins = KEYS[r][c].insert;
+        char before[96];
+        snprintf(before, sizeof(before), "%s", expr);
+        press(ins);
+        if (lg && !strcmp(ins, "=")) fprintf(lg, "calc %s -> %s\n", before, result);
+    }
+    if (lg) fclose(lg);
+    draw_all();
+    ui_test_dump();
+}
+#endif

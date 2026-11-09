@@ -129,7 +129,7 @@ static void draw_time(const struct tm *t, bool full)
         x += 5 * S + G;
         glyph(x, y, t->tm_min % 10, S, fg, bg);
         ui_color(C_WHITE, true);
-        ui_field((y - 16) / 16 + 4, (x0 + big + 2 * S) / 8, 3, "%s", t->tm_hour < 12 ? "AM" : "PM");
+        ui_field((y + 7 * S - 16) / 16, (x0 + big + 2 * S) / 8, 3, "%s", t->tm_hour < 12 ? "AM" : "PM");
         ui_reset();
     }
     /* the seconds, small, beside it: ":SS" */
@@ -176,6 +176,7 @@ void clock_run(void)
             draw_time(&now, full);
         }
         full = false;
+        UI_TEST_SHOT();
 
         u32 p = input_pressed() | ptr_ui_buttons();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;

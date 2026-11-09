@@ -431,6 +431,7 @@ void draw_run(void)
     int lx = 0, ly = 0, tlx = 0, tly = 0, hover = -1;
 
     for (;;) {
+        UI_TEST_SHOT();
         u32 p = DetectInput(IN_DOWN);
         u32 h = INPUT_ButtonsHeld();
         int x, y;
