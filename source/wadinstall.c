@@ -843,9 +843,11 @@ static bool vio_progress(void *ctx, const char *what, uint64_t done, uint64_t to
 int wad_install_sd(char **paths, int n)
 {
     int wads = 0, dlcs = 0;
+    const char *one = NULL;             /* the first WAD: not always paths[0] */
     for (int i = 0; i < n; i++)
         if (ftype_detect(paths[i]) == FT_WAD) {
             wads++;
+            if (!one) one = paths[i];
             vfs_file f;
             if (vfs_open_read(&f, paths[i])) {
                 src_t s = { vsrc_read, vsrc_close, &f, f.size };
@@ -877,7 +879,7 @@ int wad_install_sd(char **paths, int n)
              "DLC becomes private/wii/data/<ID>/<index>.bin. The files only work on this Wii.\n\n"
              "Its ticket and TMD are then put on the NAND (asks for the Konami code). A WAD whose ticket "
              "isn't for this console needs a System Menu IOS with the signing bug (or a cIOS for DLC).",
-             wads == 1 ? "\"" : "", wads == 1 ? vfs_basename(paths[0]) : "these WADs", wads == 1 ? "\"" : "");
+             wads == 1 ? "\"" : "", wads == 1 ? vfs_basename(one) : "these WADs", wads == 1 ? "\"" : "");
     if (wads > 1) {
         char cnt[32];
         snprintf(cnt, sizeof(cnt), "%d WADs", wads);
@@ -913,7 +915,7 @@ int wad_install_sd(char **paths, int n)
         const char *name = vfs_basename(paths[i]);
         char line[400];
         w2b_result_t res;
-        int rc = -1;
+        int rc = -1, r2 = -1;
         vfs_file f;
         if (vfs_open_read(&f, paths[i])) {
             src_t s = { vsrc_read, vsrc_close, &f, f.size };
@@ -929,7 +931,7 @@ int wad_install_sd(char **paths, int n)
         } else {
             char msg[200] = "", note[300] = "";
             if (!unlocked) unlocked = risk_ensure_unlocked();
-            int r2 = unlocked ? install_one(paths[i], msg, sizeof(msg), note, sizeof(note), true) : -998;
+            r2 = unlocked ? install_one(paths[i], msg, sizeof(msg), note, sizeof(note), true) : -998;
             if (!unlocked) snprintf(msg, sizeof(msg), "Ticket not installed (NAND locked). Install %s with a WAD manager.",
                                     res.bogus[0] ? vfs_basename(res.bogus) : "its ticket");
             if (r2 == 0) ok++;
@@ -939,10 +941,12 @@ int wad_install_sd(char **paths, int n)
         if (wads == 1) {
             memset(&keys, 0, sizeof(keys));
             vfs_update_space(DEV_SD);
-            ui_message(rc ? "INSTALL TO SD FAILED" : "INSTALLED TO SD", rc ? C_RED : C_GREEN, line);
+            /* on the card but its ticket isn't on the NAND: not a plain success */
+            ui_message(rc ? "INSTALL TO SD FAILED" : r2 ? "ON THE SD CARD, TICKET NOT INSTALLED" : "INSTALLED TO SD",
+                       rc ? C_RED : r2 ? C_YELLOW : C_GREEN, line);
             return ok;
         }
-        if (rl < sizeof(report) - 1) rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", rc ? "FAIL" : "OK  ", line);
+        if (rl < sizeof(report) - 1) rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", rc ? "FAIL" : r2 ? "PART" : "OK  ", line);
         if (rl >= sizeof(report)) rl = sizeof(report) - 1;
     }
     memset(&keys, 0, sizeof(keys));

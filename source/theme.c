@@ -1046,8 +1046,6 @@ void theme_install(const char *path)
     char built[VFS_PATH_MAX] = "";
     if (mym) {
         csm = build_mym(path, &sm, &len, &res, why, sizeof(why));
-        if (csm && built_path(path, &sm, built, sizeof(built)) && !file_write_checked(built, csm, len))
-            built[0] = '\0';
     } else {
         progress("Reading the theme", 0, 1);
         csm = file_read_all(path, THEME_MAX, &len);
@@ -1064,7 +1062,12 @@ void theme_install(const char *path)
         msg("THEME REFUSED", C_RED, why);
         return;
     }
-    if (mym) show_skipped(&res);
+    if (mym) {
+        /* kept on the card only once it passed the checks, like "Build a .csm" */
+        if (built_path(path, &sm, built, sizeof(built)) && !file_write_checked(built, csm, len))
+            built[0] = '\0';
+        show_skipped(&res);
+    }
 
     int db = sm.platform == 'V' ? patch_43db(csm, len) : 0;
     u8 sha[20];

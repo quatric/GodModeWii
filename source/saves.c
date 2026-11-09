@@ -78,7 +78,8 @@ void saves_export_all(void)
     u32 total_files = 0;
     u64 total_bytes = 0;
 
-    for (int k = 0; k < 3 && srcs && ids; k++) {
+    bool oom = false;
+    for (int k = 0; k < 3 && srcs && ids && !oom; k++) {
         char dir[64];
         snprintf(dir, sizeof(dir), "nand:/title/%s", KINDS[k]);
         vfs_entry *list;
@@ -96,12 +97,16 @@ void saves_export_all(void)
                 continue;
 
             if (n == cap) {
-                cap *= 2;
-                char **ns = realloc(srcs, cap * sizeof(char *)),
-                     **ni = ns ? realloc(ids, cap * sizeof(char *)) : NULL;
+                /* cap only grows once both lists did: the lists stay usable up to n otherwise */
+                char **ns = realloc(srcs, (size_t)cap * 2 * sizeof(char *)),
+                     **ni = ns ? realloc(ids, (size_t)cap * 2 * sizeof(char *)) : NULL;
                 if (ns) srcs = ns;
                 if (ni) ids = ni;
-                if (!ns || !ni) break;
+                if (!ns || !ni) {
+                    oom = true;
+                    break;
+                }
+                cap *= 2;
             }
 
             char gid[5], label[64];
@@ -115,6 +120,7 @@ void saves_export_all(void)
             if (!srcs[n] || !ids[n]) {
                 free(srcs[n]);
                 free(ids[n]);
+                oom = true;
                 break;
             }
 

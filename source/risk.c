@@ -175,7 +175,9 @@ static bool force_store(bool on)
         }
         if (wrote)
             continue;
-        mkdir("sd:/apps", 0777);
+        char apps[32];                  /* "<drive>:/apps", on the drive being tried */
+        snprintf(apps, sizeof(apps), "%.*s", (int)(strrchr(FORCE_DIRS[i], '/') - FORCE_DIRS[i]), FORCE_DIRS[i]);
+        mkdir(apps, 0777);
         mkdir(FORCE_DIRS[i], 0777);
         FILE *f = fopen(p, "wb");
         if (f) {

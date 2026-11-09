@@ -288,6 +288,11 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
                     break;
                 }
                 dn = CHUNK - z.avail_out;
+                if (dn > size - wrote) {        /* more than the sender said: stop before it fills the drive */
+                    wl_log("Got more than the %u bytes expected", (unsigned)size);
+                    ok = false;
+                    break;
+                }
                 if (dn && vfs_write(&f, out, dn) != (s32)dn) {
                     wl_log("Write failed (drive full?)");
                     ok = false;
