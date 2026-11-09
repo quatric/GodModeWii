@@ -38,6 +38,7 @@
 #include "wiiload.h"
 #include "tinyload_elf.h"
 #include "usage.h"
+#include "sweeper.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -802,6 +803,45 @@ static void do_paste(void)
     status_msg[0] = 0;
 }
 
+/* ---------------------------------------------------------------- easter eggs */
+
+/* A file or folder named "pride" (in any case) unlocks the Pride theme for good. */
+static void pride_check(const char *name)
+{
+    if (strcasecmp(name, "pride")) return;
+    bool first = !colors_pride_unlocked();
+    bool saved = colors_unlock_pride();
+    if (!first && colors_current() == colors_pride()) return;
+    char msg[400];
+    snprintf(msg, sizeof(msg), "%s%s\n\nSwitch to it now?",
+             first ? "Happy Pride! You've unlocked the Pride theme: the colours of the rainbow flag (with the trans flag's "
+                     "pink and light blue), in the HOME menu's Theme list from now on."
+                   : "Happy Pride! The Pride theme is waiting in the HOME menu's Theme list.",
+             saved ? "" : "\n\n(It couldn't be saved on the SD card, so it's here until GodModeWii exits.)");
+    if (ui_confirm("HAPPY PRIDE!", C_MAGENTA, msg))
+        colors_apply(colors_pride(), true);
+}
+
+/* On the game disc, or inside a disc image: nothing there can be deleted, as the Wii Menu would put it. */
+static bool on_game_disc(const char *path)
+{
+    if (vfs_dev_of(path) == DEV_DISC) return true;
+    if (!vfs_is_archive(path)) return false;
+    char outer[VFS_PATH_MAX];
+    snprintf(outer, sizeof(outer), "%s", path);
+    char *bar = strstr(outer, "|/");
+    if (bar) *bar = '\0';
+    static const char *const exts[] = { ".iso", ".rvz", ".wbfs", ".wia", ".gcm", ".ciso", ".gcz", ".wdf", ".wud", ".wux" };
+    for (unsigned i = 0; i < sizeof(exts) / sizeof(exts[0]); i++)
+        if (arc_name_has_ext(outer, exts[i])) return true;
+    return false;
+}
+
+static void game_disc_message(void)
+{
+    ui_message("", C_CYAN, "The Game Disc could not be deleted. Please refer to the Wii Operations Manual for more information.");
+}
+
 static void do_delete(void)
 {
     int n;
@@ -839,8 +879,10 @@ static void do_rename(void)
         ui_message("ERROR", C_RED, "Something with that name already exists.");
     else if (!vfs_rename(old, dst))
         ui_message("ERROR", C_RED, "Rename failed.");
-    else
+    else {
         status(C_GREEN, "Renamed.");
+        pride_check(name);
+    }
     load_dir(cwd, name);
 }
 
@@ -858,8 +900,34 @@ static void do_mkdir(void)
         ui_message("ERROR", C_RED, "Something with that name already exists.");
     else if (!vfs_mkdir(dst))
         ui_message("ERROR", C_RED, "Could not create the folder.");
-    else
+    else {
         vfs_update_space(dev);
+        pride_check(name);
+    }
+    load_dir(cwd, name);
+}
+
+static void do_mkfile(void)
+{
+    if (!risk_authorize(cwd, "create a file"))
+        return;
+    char name[VFS_NAME_MAX] = "";
+    int dev = vfs_dev_of(cwd);
+    if (!ui_text_input("NEW FILE", name, dev == DEV_NAND ? NAND_NAME_MAX : 120))
+        return;
+    char dst[VFS_PATH_MAX];
+    vfs_join(dst, sizeof(dst), cwd, name);
+    vfs_file f;
+    if (vfs_exists(dst))
+        ui_message("ERROR", C_RED, "Something with that name already exists.");
+    else if (!vfs_open_write(&f, dst))
+        ui_message("ERROR", C_RED, "Could not create the file.");
+    else if (!vfs_close_checked(&f))
+        ui_message("ERROR", C_RED, "Could not create the file.");
+    else {
+        vfs_update_space(dev);
+        pride_check(name);
+    }
     load_dir(cwd, name);
 }
 
@@ -890,6 +958,7 @@ enum {
     A_DELETE,
     A_RENAME,
     A_MKDIR,
+    A_MKFILE,
     A_WADDUMP,
     A_INFO,
     A_USAGE,
@@ -1077,6 +1146,10 @@ static void actions_menu(void)
     en[n] = !ro && !card;
     code[n++] = A_MKDIR;
 
+    items[n] = "New file";
+    en[n] = !ro && !card;
+    code[n++] = A_MKFILE;
+
     /* an installed title's folder (or a content.bin) -> WAD, as YABDM makes them */
     bool dumpable = false;
     if (nmarks) {
@@ -1139,7 +1212,9 @@ static void actions_menu(void)
     if (r < 0)
         return;
     if (!en[r]) {
-        if (ro)
+        if (code[r] == A_DELETE && on_entry && on_game_disc(cwd))
+            game_disc_message();
+        else if (ro)
             ui_message("READ-ONLY", C_YELLOW,
                        "This is read-only. Copy its files to the SD card or a USB drive instead.");
         return;
@@ -1157,6 +1232,7 @@ static void actions_menu(void)
     case A_DELETE:  do_delete(); break;
     case A_RENAME:  do_rename(); break;
     case A_MKDIR:   do_mkdir(); break;
+    case A_MKFILE:  do_mkfile(); break;
     case A_INFO:
         tp = targets(&t);
         if (t) {
@@ -1548,6 +1624,18 @@ int app_run(void)
                 if (home_cursor >= n) home_cursor = n - 1;
                 home_scroll = page * vis;
             }
+            /* the easter egg: the Konami code (no START) here opens Bad Block Sweeper instead of the drive */
+            static const u32 konami[] = { WPAD_BUTTON_UP, WPAD_BUTTON_UP, WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN,
+                                          WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT, WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT,
+                                          WPAD_BUTTON_B, WPAD_BUTTON_A };
+            static int konami_got;
+            konami_got = p == konami[konami_got] ? konami_got + 1 : p == konami[0] ? 1 : 0;
+            if (konami_got == 10) {
+                konami_got = 0;
+                sweeper_run();
+                cursor_only = false;
+                continue;
+            }
             if (p & WPAD_BUTTON_A)    open_drive(devs[home_cursor]);
             continue;
         }
@@ -1642,6 +1730,8 @@ int app_run(void)
             if (e >= 0 && e < nents) {
                 marks[e] = !marks[e];
                 nmarks += marks[e] ? 1 : -1;
+                if (marks[e] && !strcasecmp(ents[e].name, "mark"))
+                    ui_message("MARK", C_CYAN, "Oh hi Mark.");
                 if (cursor + 1 < total) cursor++;
             } else if (off && cursor == 0) {
                 do_clip_clear();
@@ -1650,7 +1740,9 @@ int app_run(void)
         if (p & WPAD_BUTTON_2)     actions_menu();
         if (p & WPAD_BUTTON_PLUS)  do_copy_cut(false);
         if (p & WPAD_BUTTON_MINUS) {
-            if (vfs_is_readonly(cwd))
+            if (on_game_disc(cwd))
+                game_disc_message();            /* a cut deletes the originals */
+            else if (vfs_is_readonly(cwd))
                 ui_message("READ-ONLY", C_YELLOW,
                            "Nothing can be cut from a read-only location. Use + to copy instead.");
             else

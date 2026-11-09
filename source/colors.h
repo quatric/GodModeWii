@@ -18,5 +18,10 @@ unsigned colors_fg_rgb(void);
 unsigned colors_bg_rgb(void);
 /* Applies the saved one (sd:/apps/GodModeWii/theme), once the SD card is mounted. */
 void colors_load(void);
+/* The Pride theme: an easter egg, listed once a file or folder named "pride" has been made (saved on the
+ * card as sd:/apps/GodModeWii/pride, so it stays). colors_unlock_pride returns false if that couldn't be saved. */
+bool colors_pride_unlocked(void);
+bool colors_unlock_pride(void);
+int colors_pride(void);
 
 #endif

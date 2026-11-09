@@ -308,9 +308,17 @@ int main(int argc, char **argv)
                 ui_test_dump();
                 continue;
             }
+            /* "@sweeper": Bad Block Sweeper's board, from the bad blocks of a nand.bin on the card */
+            if (!strcmp(line, "@sweeper")) {
+                extern void sweeper_autotest(void);
+                sweeper_autotest();
+                continue;
+            }
             /* "@tivo": TiVo mode on (its dialog saved like a viewer's), a few of its sounds, then off again */
-            if (!strcmp(line, "@tivo")) {
-                for (int k = 0; k < 2; k++) {
+            if (!strcmp(line, "@tivo") || !strcmp(line, "@tivo once")) {
+                FILE *lg = fopen("sd:/gmwtest.log", "a");   /* as loaded at start (it's saved on the card) */
+                if (lg) { fprintf(lg, "tivo at start: %d\n", sfx_tivo()); fclose(lg); }
+                for (int k = 0; k < (line[5] ? 1 : 2); k++) {
                     bool saved = sfx_tivo_toggle();
                     ui_tivo_dialog(sfx_tivo(), saved, sfx_enabled());
                     sfx_wait();

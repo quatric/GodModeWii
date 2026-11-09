@@ -167,7 +167,7 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   and **hold B to cancel**. Half-written files are removed.
 * Summaries keep the result line (files, size, time); page through every problem with **L / R** (**-** / **+**).
 * Copying from a disc keeps going on read errors: bad sectors become zeros, listed in `<file>.errors.txt`.
-* Multi-select, select all / invert, rename, new folder, folder size and info.
+* Multi-select, select all / invert, rename, new folder, new (empty) file, folder size and info.
 * Disk usage: Actions > Disk usage lists a folder's entries by total size with a share bar. A opens a folder, B goes up, 1 flips size / name order, 2 deletes, B while measuring stops.
 * Text viewer, hex viewer, and in-place editors (*Edit as text*, *Edit as hex*). Edits are only written when you save.
 * Read-only FAT files and folders can be deleted.
@@ -291,7 +291,7 @@ The NAND is only read by the exports.
 | **+** | Copy the marked items (or the one under the cursor) |
 | **-** | Cut the marked items |
 | **1** | Mark / unmark and move down / clear the clipboard on the `Paste` row |
-| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, viewers, editors, selection tools …) |
+| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, new file, info, viewers, editors, selection tools …) |
 | **A** | Open a folder, archive or file / paste on the green `Paste` row |
 | **B** | Up one folder (back to the drive list at the top) |
 | D-Pad Left / Right | Page up / down (on the drive list too, when the drives fill more than one page) |
