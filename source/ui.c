@@ -464,7 +464,7 @@ void ui_message(const char *title, int color, const char *text)
     int left;
     draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
     /* an error, a "can't do that here" or a success; TiVo mode tells them apart */
-    sfx_play(color == C_RED ? SFX_ERROR : color == C_YELLOW ? SFX_BONK : color == C_GREEN ? SFX_DONE : SFX_CLICK);
+    sfx_play(color == C_RED ? SFX_ERROR : color == C_YELLOW ? SFX_BONK : color == C_GREEN ? SFX_DONE : SFX_DIALOG);
     if (color == C_RED) wiilight_pattern(WL_BLINK3);
     else wiilight_pulse();
     for (;;) {
@@ -602,6 +602,7 @@ bool ui_confirm(const char *title, int color, const char *text)
 {
     int left;
     draw_text_box(title, color, text, "A  Yes        B  No", 0, NULL, &left);
+    sfx_play(SFX_ASK);                                  /* TiVo mode: alert */
     for (;;) {
         u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
         if (p & WPAD_BUTTON_A) { sfx_play(SFX_YES); return true; }          /* TiVo mode: thumbs up */

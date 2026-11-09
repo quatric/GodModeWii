@@ -35,18 +35,18 @@ static const signed char moonshell[SFX_COUNT] = {
     [SFX_BONK] = -1,                [SFX_ERROR] = MS_CLICK,         [SFX_DONE] = MS_CLICK,
     [SFX_YES] = -1,                 [SFX_NO] = -1,                  [SFX_SPEED1] = -1,
     [SFX_SPEED2] = -1,              [SFX_SPEED3] = -1,              [SFX_SPEED4] = -1,
-    [SFX_SLOWDOWN] = -1,
+    [SFX_SLOWDOWN] = -1,            [SFX_DIALOG] = MS_CLICK,        [SFX_ASK] = -1,
 };
 static const signed char tivo_set[SFX_COUNT] = {
     [SFX_CLICK] = TV_SELECT,        [SFX_OPEN] = TV_SELECT,         [SFX_NOTIFY] = TV_ALERT,
     [SFX_POWEROFF] = TV_SC_RETURN,  [SFX_MOVEPAGE] = TV_PAGEDOWN,   [SFX_LONGTAP] = TV_DESELECT,
     [SFX_MEMOERASE] = TV_THUMBSDOWN, [SFX_PENDOWN] = TV_UPDOWN,     [SFX_UNDO] = TV_SLOWDOWN1,
     [SFX_OPENING] = TV_TIVO,        [SFX_STARTUP] = TV_TIVO,        [SFX_PAGEUP] = TV_PAGEUP,
-    [SFX_PAGEDOWN] = TV_PAGEDOWN,   [SFX_UPDOWN] = TV_UPDOWN,       [SFX_MENU] = TV_SC_ENTER,
+    [SFX_PAGEDOWN] = TV_PAGEDOWN,   [SFX_UPDOWN] = TV_UPDOWN,       [SFX_MENU] = TV_SELECT,
     [SFX_BONK] = TV_BONK,           [SFX_ERROR] = TV_BONK,           [SFX_DONE] = TV_TAGUP,
     [SFX_YES] = TV_THUMBSUP,        [SFX_NO] = TV_THUMBSDOWN,       [SFX_SPEED1] = TV_SPEEDUP1,
     [SFX_SPEED2] = TV_SPEEDUP2,     [SFX_SPEED3] = TV_SPEEDUP3,     [SFX_SPEED4] = TV_SPEEDUP4,
-    [SFX_SLOWDOWN] = TV_SLOWDOWN1,
+    [SFX_SLOWDOWN] = TV_SLOWDOWN1,  [SFX_DIALOG] = TV_ALERT,        [SFX_ASK] = TV_ALERT,
 };
 
 void sfx_asnd_acquire(void)

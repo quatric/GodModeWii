@@ -26,7 +26,7 @@ enum {
     SFX_PAGEUP,     /* D-Pad Left: page up              TiVo: pageup */
     SFX_PAGEDOWN,   /* D-Pad Right: page down           TiVo: pagedown */
     SFX_UPDOWN,     /* D-Pad Up / Down: cursor moved    TiVo only */
-    SFX_MENU,       /* the HOME menu opens              TiVo only: SC_Enter */
+    SFX_MENU,       /* the HOME menu opens              TiVo only: select */
     SFX_BONK,       /* that can't be done here, a list's end  TiVo only */
     SFX_ERROR,      /* an error message                 TiVo: bonk */
     SFX_DONE,       /* a success message                TiVo: tagup */
@@ -37,6 +37,8 @@ enum {
     SFX_SPEED3,
     SFX_SPEED4,
     SFX_SLOWDOWN,   /* back to playing after a scrub    TiVo only: slowdown1 */
+    SFX_DIALOG,     /* a dialog pops up (a plain message)  TiVo: alert */
+    SFX_ASK,        /* a yes / no question pops up      TiVo only: alert */
     SFX_COUNT
 };
 
