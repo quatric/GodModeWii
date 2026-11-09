@@ -1517,10 +1517,38 @@ static bool scn_load_one(model_t *m, const u8 *f, u32 flen, u32 at, const char *
     return true;
 }
 
-/* Every animation folder of the BRRES: CHR0 (needs bones), VIS0, SRT0, CLR0, PAT0, SCN0. */
-static void chr_load(model_t *m, const u8 *f, u32 flen)
+static int brres_models(const u8 *b, u32 len, u32 *offs, char names[][64], int max);
+
+#define MAX_MODELS 512
+
+/* Whose animation `anim` is: the model whose name is the longest one it starts with (followed by '_' or
+ * nothing), so "fg_treeA_1_t_cut0_L" is fg_treeA_1_t's and not fg_treeA_1's. -1 if none. */
+static int anim_owner(const char *anim, char names[][64], int n)
+{
+    int best = -1;
+    size_t bl = 0;
+    for (int i = 0; i < n; i++) {
+        size_t l = strlen(names[i]);
+        if (l > bl && !strncmp(anim, names[i], l) && (anim[l] == '\0' || anim[l] == '_')) {
+            best = i;
+            bl = l;
+        }
+    }
+    return best;
+}
+
+/* Every animation folder of the BRRES: CHR0 (needs bones), VIS0, SRT0, CLR0, PAT0, SCN0. When the animations
+ * are named after the models (Animal Crossing's "fg_treeA_1_t_cut0_L"), only model `name`'s are taken: another
+ * model's bones and materials would only pull this one apart. */
+static void chr_load(model_t *m, const u8 *f, u32 flen, const char *name)
 {
     if (flen < 0x10 || memcmp(f, "bres", 4)) return;
+    static u32 moffs[MAX_MODELS];
+    static char mnames[MAX_MODELS][64];
+    int nmodels = brres_models(f, flen, moffs, mnames, MAX_MODELS), self = -1;
+    for (int i = 0; i < nmodels; i++)
+        if (name && !strcmp(mnames[i], name)) self = i;
+    bool named = false;                         /* some animation is named after some model */
     u32 root = be16(f + 0x0C);
     if (root + 16 > flen || memcmp(f + root, "root", 4)) return;
     static const struct { const char *folder; bool (*load)(model_t *, const u8 *, u32, u32, const char *); } kinds[] = {
@@ -1529,6 +1557,7 @@ static void chr_load(model_t *m, const u8 *f, u32 flen)
         { "AnmTexPat(NW4R)", pat_load_one }, { "AnmScn(NW4R)", scn_load_one },
     };
     u32 g = root + 8, n = be32(f + g + 4);
+    for (int pass = 0; pass < 2; pass++)            /* 0: are they named after the models? 1: load */
     for (u32 i = 1; i <= n && g + 8 + (i + 1) * 16 <= flen; i++) {
         const u8 *e = f + g + 8 + i * 16;
         u32 fn = g + be32(e + 8), sub = g + be32(e + 12);
@@ -1542,6 +1571,9 @@ static void chr_load(model_t *m, const u8 *f, u32 flen)
                 if (no >= flen) continue;
                 char nm[48];
                 snprintf(nm, sizeof(nm), "%.*s", (int)(flen - no < 47 ? flen - no : 47), (const char *)f + no);
+                int owner = anim_owner(nm, mnames, nmodels);
+                if (pass == 0) { if (owner >= 0) named = true; continue; }
+                if (named && owner != self) continue;
                 kinds[kd].load(m, f, flen, at, nm);
             }
         }
@@ -1828,7 +1860,7 @@ static bool load_mdl0(model_t *m, const u8 *file, u32 flen, u32 off, u32 len, co
     mdl_skeleton(&d, m, g_bone, nb);
     free(d.mtx);
     free(d.has);
-    chr_load(m, file, flen);
+    chr_load(m, file, flen, name);
 
     snprintf(m->name, sizeof(m->name), "%s", name);
     m->kind = "MDL0";
@@ -3872,7 +3904,6 @@ static bool load_model(model_t *m, const u8 *b, u32 len, u32 off, const char *na
     return load_j3d(m, b, len, name);
 }
 
-#define MAX_MODELS 64
 
 bool model_view(const char *path)
 {
