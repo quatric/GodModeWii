@@ -356,7 +356,11 @@ static void transfer_end(sess_t *s, bool ok, const char *err)
     snprintf(real, sizeof(real), "%s", s->t_real);
 
     if (s->f_open) {
-        vfs_close(&s->f);
+        /* an upload isn't on the drive until the close went through */
+        if (!vfs_close_checked(&s->f) && ok && stor) {
+            ok = false;
+            err = "452 Could not finish writing the file (drive full?)";
+        }
         s->f_open = false;
     }
     data_close(s);
@@ -383,7 +387,7 @@ static void transfer_end(sess_t *s, bool ok, const char *err)
         }
         if (!good) {
             ok = false;
-            err = "Could not finalise the upload";
+            err = "451 Could not finalise the upload";
         } else {
             s->t_tmp[0] = '\0';
         }

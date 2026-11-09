@@ -565,10 +565,12 @@ static bool load_xm(trk_t *t, buf_t b)
     t->nchan = chans;
     t->norders = song_len;
     t->orders = malloc(song_len);
+    if (!t->orders) return false;
     for (int i = 0; i < song_len; i++) t->orders[i] = r8(b, 80 + i);
     uint32_t pos = 60 + hsize;
     t->npat = npat > 0 ? npat : 1;
     t->pats = calloc(t->npat, sizeof(pat_t));
+    if (!t->pats) return false;
     for (int p = 0; p < npat; p++) {
         uint32_t plen = r32(b, pos);
         int rows = r16(b, pos + 5);

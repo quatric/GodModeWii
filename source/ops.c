@@ -35,9 +35,20 @@ static struct {
     char errs[MAX_ERRS][VFS_PATH_MAX + 64];
     char src[VFS_PATH_MAX], dst[VFS_PATH_MAX];
     u8 *buf;
+    /* sources that were not copied (skipped): a move must leave them where they are */
+    char **kept;
+    u32 kept_n, kept_cap, kept_i, kept_hits;
+    bool kept_lost;
 } X;
 
 static u64 now_ms(void) { return ticks_to_millisecs(gettime()); }
+
+#ifdef GMW_AUTOTEST
+/* Test builds: "@copy" / "@move <source> <target folder> [skip|overwrite]" in sd:/gmwtest.txt
+ * pastes with the "exists" question answered that way and the result written to sd:/gmwtest.log. */
+static bool g_auto;
+static int g_auto_policy;
+#endif
 
 static void fail(const char *what, const char *path)
 {
@@ -153,6 +164,10 @@ static void begin(const char *title, u64 bytes, u32 files)
     X.files_total = files;
     X.start_ms = X.last_ms = now_ms();
     X.buf = memalign(32, CHUNK);
+#ifdef GMW_AUTOTEST
+    if (g_auto)
+        X.policy = g_auto_policy;
+#endif
     prog_paint(true);
 }
 
@@ -160,6 +175,57 @@ static void finish(void)
 {
     free(X.buf);
     X.buf = NULL;
+    for (u32 i = 0; i < X.kept_n; i++)
+        free(X.kept[i]);
+    free(X.kept);
+    X.kept = NULL;
+    X.kept_n = X.kept_cap = 0;
+}
+
+static bool begin_copy(const char *title)
+{
+    begin(title, 0, 0);
+    if (X.buf)
+        return true;
+    finish();
+    ui_message("ERROR", C_RED, "Out of memory.");
+    return false;
+}
+
+/* Remembers a source that stays behind, so a move doesn't delete it afterwards. */
+static void keep_source(const char *src)
+{
+    if (X.kept_n == X.kept_cap) {
+        u32 cap = X.kept_cap ? X.kept_cap * 2 : 64;
+        char **k = realloc(X.kept, cap * sizeof(char *));
+        if (!k) {
+            X.kept_lost = true;
+            return;
+        }
+        X.kept = k;
+        X.kept_cap = cap;
+    }
+    char *c = strdup(src);
+    if (!c) {
+        X.kept_lost = true;
+        return;
+    }
+    X.kept[X.kept_n++] = c;
+}
+
+/* The delete pass walks the tree in the order the copy did, so the next one is tried first. */
+static bool is_kept(const char *path)
+{
+    if (X.kept_i < X.kept_n && !strcmp(X.kept[X.kept_i], path)) {
+        X.kept_i++;
+        return true;
+    }
+    for (u32 i = 0; i < X.kept_n; i++)
+        if (!strcmp(X.kept[i], path)) {
+            X.kept_i = i + 1;
+            return true;
+        }
+    return false;
 }
 
 /* ---------------------------------------------------------------- scanning */
@@ -343,7 +409,10 @@ static bool copy_file(const char *src, const char *dst)
         virt_disc_tolerate(false, NULL);
 
     if (!ok) {
-        vfs_remove(dst, false);         /* never leave half a file behind */
+        /* Never leave half a file behind. Not on a memory card: a failed save was never
+         * created there, and the name may belong to a save that was on the card already. */
+        if (!vfs_is_card(dd))
+            vfs_remove(dst, false);
         return false;
     }
     vfs_clone_attrs(src, dst);
@@ -404,6 +473,7 @@ static bool copy_tree(const char *src, const char *dst_dir, const char *name)
             if (!ask_overwrite(dst)) {
                 X.total_bytes -= size < X.total_bytes ? size : X.total_bytes;
                 if (X.files_total) X.files_total--;
+                keep_source(src);
                 return !X.cancelled;
             }
         }
@@ -430,8 +500,11 @@ static bool copy_tree(const char *src, const char *dst_dir, const char *name)
     bool ok = true;
     for (int i = 0; i < n && !X.cancelled; i++) {
         char child[VFS_PATH_MAX];
-        if (!vfs_join(child, sizeof(child), src, list[i].name))
+        if (!vfs_join(child, sizeof(child), src, list[i].name)) {
+            fail("Path too long", list[i].name);
+            ok = false;
             continue;
+        }
         ok &= copy_tree(child, dst, list[i].name);
     }
     free(list);
@@ -450,8 +523,13 @@ static bool delete_tree(const char *path)
         return false;
     }
     snprintf(X.src, sizeof(X.src), "%s", path);
+    if (!is_dir && X.kept_n && is_kept(path)) {
+        X.kept_hits++;
+        return true;
+    }
 
     bool ok = true;
+    u32 hits = X.kept_hits;
     if (is_dir) {
         vfs_entry *list;
         int n;
@@ -468,6 +546,8 @@ static bool delete_tree(const char *path)
         free(list);
         if (X.cancelled)
             return false;
+        if (X.kept_hits != hits)
+            return ok;                  /* something inside stays, so the folder does too */
     }
     if (!vfs_remove(path, is_dir)) {
         fail("Cannot delete", path);
@@ -542,6 +622,18 @@ static void summary(const char *verb, bool ok)
                  X.done_bytes ? ", " : "", X.done_bytes ? sz : "", (unsigned)el);
     }
 
+#ifdef GMW_AUTOTEST
+    if (g_auto) {
+        FILE *lg = fopen("sd:/gmwtest.log", "a");
+        if (lg) {
+            fprintf(lg, "[ops] %s (%s)\n", msg, ok ? "ok" : "failed");
+            for (int i = 0; i < X.fails && i < MAX_ERRS; i++)
+                fprintf(lg, "[ops]   %s\n", X.errs[i]);
+            fclose(lg);
+        }
+        return;
+    }
+#endif
     if (X.disc_err_files && !X.cancelled) {
         char sz[32], extra[200];
         ui_fmt_size(sz, sizeof(sz), X.disc_err_bytes);
@@ -604,11 +696,22 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
 
     u64 bytes = 0;
     u32 files = 0, dirs = 0;
-    begin(cut ? "MOVING" : "COPYING", 0, 0);
+    if (!begin_copy(cut ? "MOVING" : "COPYING"))
+        return false;
     snprintf(X.src, sizeof(X.src), "Scanning...");
     prog_paint(true);
-    for (int i = 0; i < n; i++)
+    /* per source, for the ones that end up moved by a rename */
+    u32 *src_files = calloc(n, sizeof(u32));
+    u64 *src_bytes = calloc(n, sizeof(u64));
+    for (int i = 0; i < n; i++) {
+        u64 b0 = bytes;
+        u32 f0 = files;
         ops_tree_info(srcs[i], &bytes, &files, &dirs);
+        if (src_files && src_bytes) {
+            src_files[i] = files - f0;
+            src_bytes[i] = bytes - b0;
+        }
+    }
     X.total_bytes = bytes;
     X.files_total = files;
 
@@ -628,24 +731,38 @@ bool ops_paste(char **srcs, int n, bool cut, const char *dst_dir)
         }
 
         char dst[VFS_PATH_MAX];
-        vfs_join(dst, sizeof(dst), dst_dir, newname);
+        if (!vfs_join(dst, sizeof(dst), dst_dir, newname)) {
+            fail("Path too long", srcs[i]);
+            all_ok = false;
+            continue;
+        }
 
         /* same device and free destination: a plain rename is instant */
         if (cut && vfs_dev_of(srcs[i]) == vfs_dev_of(dst) && !vfs_exists(dst) &&
             name_fits(dst_dir, newname) && vfs_rename(srcs[i], dst)) {
-            u64 b = 0;
-            u32 f = 0, d = 0;
-            (void)b;
-            (void)f;
-            (void)d;
+            if (src_files && src_bytes) {
+                X.files_done += src_files[i];
+                X.done_bytes += src_bytes[i];
+            }
             continue;
         }
 
         bool ok = copy_tree(srcs[i], dst_dir, newname);
-        if (ok && cut)
-            ok = delete_tree(srcs[i]);
+        if (ok && cut) {
+            if (X.kept_lost) {
+                /* which files were skipped is no longer known: remove nothing */
+                fail("Out of memory - the originals were left in place", srcs[i]);
+                ok = false;
+            } else {
+                u32 counted = X.files_done;     /* the copy counted them already */
+                ok = delete_tree(srcs[i]);
+                X.files_done = counted;
+            }
+        }
         all_ok &= ok;
     }
+    free(src_files);
+    free(src_bytes);
     summary(cut ? "Moved" : "Copied", all_ok);
     finish();
 
@@ -658,7 +775,8 @@ bool ops_copy_each(char **srcs, char **dst_dirs, int n, const char *title)
 {
     u64 bytes = 0;
     u32 files = 0, dirs = 0;
-    begin(title, 0, 0);
+    if (!begin_copy(title))
+        return false;
     snprintf(X.src, sizeof(X.src), "Scanning...");
     prog_paint(true);
     for (int i = 0; i < n; i++)
@@ -706,3 +824,14 @@ bool ops_delete(char **srcs, int n)
         vfs_update_space(i);
     return ok && !X.cancelled;
 }
+
+#ifdef GMW_AUTOTEST
+void ops_autotest(const char *src, const char *dst_dir, bool cut, const char *policy)
+{
+    char *one = (char *)src;
+    g_auto = true;
+    g_auto_policy = !strcmp(policy, "skip") ? POL_SKIP : POL_OVERWRITE;
+    ops_paste(&one, 1, cut, dst_dir);
+    g_auto = false;
+}
+#endif

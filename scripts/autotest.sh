@@ -17,6 +17,8 @@
 # NAND=/path/to/Wii runs on a copy of that emulated NAND (left in OUTDIR/.dolphin/user/Wii afterwards).
 # @put:LOCAL:SDPATH copies a file onto the card without opening it (e.g. @put:x.app:/GodModeWii/a.csm).
 # The card is left as OUTDIR/.dolphin/sd.img.
+# "@copy SRC DSTDIR [skip|overwrite]" / "@move ..." pastes on the card (e.g. "@move sd:/a sd:/b skip"),
+# answering the "exists" question that way; the result line goes to gmwtest.log.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 out=$1; shift

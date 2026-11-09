@@ -457,11 +457,13 @@ bool mcard_close_write(vfs_file *f)
             g_write_err = "Incomplete .gci file, nothing was written";
             ok = false;
         }
+        if (w->failed)
+            ok = false;
         free(w->data);
         free(w);
     }
     f->ctx = NULL;
-    return ok && !(w && w->failed);
+    return ok;
 }
 
 bool mcard_delete(int dev, const char *name)

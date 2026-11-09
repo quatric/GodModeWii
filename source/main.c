@@ -253,6 +253,15 @@ int main(int argc, char **argv)
                     waddump_autotest(src, dst);
                 continue;
             }
+            /* "@copy" / "@move <source> <target folder> [skip|overwrite]": a paste, logged */
+            if (!strncmp(line, "@copy ", 6) || !strncmp(line, "@move ", 6)) {
+                extern void ops_autotest(const char *src, const char *dst_dir, bool cut,
+                                         const char *policy);
+                char src[256], dst[256], pol[16] = "overwrite";
+                if (sscanf(line + 6, "%255s %255s %15s", src, dst, pol) >= 2)
+                    ops_autotest(src, dst, line[1] == 'm', pol);
+                continue;
+            }
             /* "@databin <title id> <out>": a save exported as data.bin with a test console's keys */
             if (!strncmp(line, "@databin ", 9)) {
                 extern void databin_autotest(const char *tid, const char *out);

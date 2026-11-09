@@ -1428,8 +1428,9 @@ bool vfs_close_checked(vfs_file *f)
         if (f->fd >= 0)
             ISFS_Close(f->fd);
     } else if (f->fp) {
-        fflush(f->fp);
-        fclose(f->fp);
+        /* a full drive often only shows up when the last blocks are flushed */
+        ok = fflush(f->fp) == 0;
+        ok = (fclose(f->fp) == 0) && ok;
     }
     f->fp = NULL;
     f->fd = -1;
