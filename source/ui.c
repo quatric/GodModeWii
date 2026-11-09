@@ -594,7 +594,7 @@ static bool text_input(const char *title, char *buf, int maxlen, const char *cha
                 buf[len] = '\0';
             }
             const char *f = strchr(charset, buf[pos]);
-            int idx = f ? (int)(f - CHARSET) : 0;
+            int idx = f ? (int)(f - charset) : 0;
             idx = ((idx + step) % cs + cs) % cs;
             buf[pos] = charset[idx];
         }

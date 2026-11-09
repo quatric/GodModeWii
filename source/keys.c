@@ -185,13 +185,13 @@ void keys_refresh(void)
         free(cert);
     }
 
-    memset(otp, 0, sizeof(otp));
-    memset(seep, 0, sizeof(seep));
-
-    char note[48];
+    char note[48];                                  /* the console ID: read before the OTP is wiped */
     snprintf(note, sizeof(note), "%08X  read-only",
              (unsigned)(((u32)o->ng_id[0] << 24) | ((u32)o->ng_id[1] << 16) |
                         ((u32)o->ng_id[2] << 8) | o->ng_id[3]));
+
+    memset(otp, 0, sizeof(otp));
+    memset(seep, 0, sizeof(seep));
     snprintf(d->note, sizeof(d->note), "%s", note);
     d->mounted = nfiles > 0;
 }

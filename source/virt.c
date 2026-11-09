@@ -373,9 +373,20 @@ static bool load_fst(u64 fst_off, u32 fst_size)
         done += n;
     }
     fst_count = be32(fst + 8);
-    if (fst_count < 1 || fst_count * 12 > fst_size)
+    if (fst_count < 1 || fst_count > fst_size / 12)
         return false;
     fst_names = (const char *)fst + fst_count * 12;
+    /* A damaged table must not send the walkers in circles or past the buffer: every name starts inside
+     * the string table (which is made to end in a NUL), every directory ends after itself and in bounds. */
+    u32 names_size = fst_size - fst_count * 12;
+    if (names_size) fst[fst_size - 1] = 0;
+    for (u32 i = 1; i < fst_count; i++) {
+        const u8 *e = fst + i * 12;
+        if ((be32(e) & 0x00FFFFFF) >= names_size)
+            return false;
+        if (e[0] && (be32(e + 8) <= i || be32(e + 8) > fst_count))
+            return false;
+    }
     return true;
 }
 

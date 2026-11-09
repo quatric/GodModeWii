@@ -216,7 +216,7 @@ archive_t *arc_wad_open(const src_t *file, const char *name)
         uint32_t tb2 = sig_body(be32(tmd));
         const uint8_t *tm = tmd + tb2;
         uint64_t sysv = be64(tm + 0x04);
-        int ck = tb ? tik[tb + 0xB1] : -1;
+        int ck = (tb && tik_sz >= tb + 0xB2) ? tik[tb + 0xB1] : -1;
 
         size_t cap = 1024 + (size_t)t.count * 80;
         char *txt = malloc(cap);

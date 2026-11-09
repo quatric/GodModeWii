@@ -201,17 +201,16 @@ void alarm_menu(void)
                 sleep_apply();
             }
         }
+        if (ringing && (p & (WPAD_BUTTON_A | WPAD_BUTTON_B))) {     /* a test: A or B stops it, nothing more */
+            alarm_stop();
+            p &= ~(WPAD_BUTTON_A | WPAD_BUTTON_B);
+            draw(field);
+        }
         if (p & WPAD_BUTTON_A) al.on = !al.on;
         if (p & WPAD_BUTTON_1) start_ringing();
         if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT | WPAD_BUTTON_UP | WPAD_BUTTON_DOWN |
                  WPAD_BUTTON_PLUS | WPAD_BUTTON_MINUS | WPAD_BUTTON_A))
             draw(field);
-        if (ringing) {                                  /* a test: A or B stops it */
-            if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B)) {
-                alarm_stop();
-                p &= ~WPAD_BUTTON_B;
-            }
-        }
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
     }
     if (ringing) alarm_stop();                      /* the sleep noise carries on after the menu */
