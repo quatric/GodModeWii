@@ -771,7 +771,7 @@ static void show_credits(void)
 
         "Interface sounds: MoonShell 2.10 (Moonlight; GPL v2 or later).\n\n"
         "Thanks for using GodModeWii!\n\n"
-        "Psst... feeling nostalgic? Right here, enter + A - 1 2 -.",
+        "Psst... feeling nostalgic? Right here, or on the drive list, enter + A - 1 2 -.",
     };
     /* the easter egg: + A - 1 2 - on the last page switches TiVo mode */
     static const u32 code[] = { WPAD_BUTTON_PLUS, WPAD_BUTTON_A, WPAD_BUTTON_MINUS, WPAD_BUTTON_1,
@@ -1658,7 +1658,27 @@ int app_run(void)
                 cursor_only = false;
                 continue;
             }
-            if (p & WPAD_BUTTON_A)    open_drive(devs[home_cursor]);
+            /* and the TiVo code (+ A - 1 2 -, or - A + 1 2 -) switches TiVo mode, as on the last
+             * credits page; while it is under way its A doesn't open the drive */
+            static const u32 tivo[2][6] = {
+                { WPAD_BUTTON_PLUS, WPAD_BUTTON_A, WPAD_BUTTON_MINUS, WPAD_BUTTON_1, WPAD_BUTTON_2, WPAD_BUTTON_MINUS },
+                { WPAD_BUTTON_MINUS, WPAD_BUTTON_A, WPAD_BUTTON_PLUS, WPAD_BUTTON_1, WPAD_BUTTON_2, WPAD_BUTTON_MINUS },
+            };
+            static int tivo_got[2];
+            bool tivo_kept = false, tivo_done = false;
+            for (int c = 0; p && c < 2; c++) {
+                if (p == tivo[c][tivo_got[c]]) tivo_got[c]++, tivo_kept = true;
+                else tivo_got[c] = p == tivo[c][0] ? 1 : 0;
+                if (tivo_got[c] == 6) tivo_done = true;
+            }
+            if (tivo_done) {
+                tivo_got[0] = tivo_got[1] = 0;
+                bool saved = sfx_tivo_toggle();
+                ui_tivo_dialog(sfx_tivo(), saved, sfx_enabled());
+                cursor_only = false;
+                continue;
+            }
+            if ((p & WPAD_BUTTON_A) && !tivo_kept) open_drive(devs[home_cursor]);
             continue;
         }
 

@@ -477,13 +477,15 @@ void ui_message(const char *title, int color, const char *text)
 bool ui_message_pages_code(const char *title, int color, const char *const *pages, int n,
                            const u32 *code, int code_n)
 {
-    /* The code is also taken with + and - the other way round, and the press that turns to the last page
-     * counts as its first button (so - from the first page, then A + 1 2 -, works too). */
+    /* The code is also taken with its first + and - the other way round (+ A - 1 2 - or - A + 1 2 -: the
+     * last button stays), and the press that turns to the last page counts as its first button (so -
+     * from the first page, then A + 1 2 -, works too). */
     u32 alt[16];
     int got[2] = { 0, 0 };
     if (code_n > 16) code_n = 16;
     for (int k = 0; code && k < code_n; k++)
-        alt[k] = code[k] == WPAD_BUTTON_PLUS ? WPAD_BUTTON_MINUS : code[k] == WPAD_BUTTON_MINUS ? WPAD_BUTTON_PLUS : code[k];
+        alt[k] = k == code_n - 1 ? code[k] : code[k] == WPAD_BUTTON_PLUS ? WPAD_BUTTON_MINUS
+               : code[k] == WPAD_BUTTON_MINUS ? WPAD_BUTTON_PLUS : code[k];
     const u32 *codes[2] = { code, alt };
     int i = 0;
     for (;;) {
@@ -551,9 +553,9 @@ void ui_tivo_dialog(bool on, bool saved, bool sounds_on)
     char text[400];
     snprintf(text, sizeof(text), "%s%s%s",
              on ? "TiVo mode is on: the interface plays TiVo's sounds instead of MoonShell's. "
-                  "The same code on the last credits page turns it off again."
+                  "The same code on the drive list or the last credits page turns it off again."
                 : "TiVo mode is off: MoonShell's sounds are back. "
-                  "The code on the last credits page brings TiVo back.",
+                  "The code on the drive list or the last credits page brings TiVo back.",
              sounds_on ? "" : "\n\nSound effects are off, so nothing plays: turn them on in the HOME menu.",
              saved ? "" : "\n\nThe setting couldn't be saved on the SD card: it lasts until GodModeWii exits.");
     int w = box_width(), left;

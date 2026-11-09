@@ -536,7 +536,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   through the launcher.
 * **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the interface sound effects
   (`res/sfx.bin`, made by `scripts/make_sfx.py` from its `misctools/sndeff` folder).
-* **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint.
+* **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
 * **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
   (`source/wiilight.c`, `source/wiilight_patterns.h`).
 * **[PictoCard](https://github.com/larsenv/PictoCard-Client)** (larsenv) — the doodle pad's palette, brush sizes and tools
