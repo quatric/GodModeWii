@@ -1244,6 +1244,7 @@ static bool play_gen(const char *path)
         u32 held = INPUT_ButtonsHeld();
         int dir = (held & WPAD_BUTTON_RIGHT) ? 1 : (held & WPAD_BUTTON_LEFT) ? -1 : 0;
         if (!dir) {
+            if (hold_steps > 1) sfx_play(SFX_SLOWDOWN);    /* TiVo mode: back to play after a scrub */
             hold_steps = 0;
         } else if (can_seek) {
             u64 now = ticks_to_millisecs(gettime());
@@ -1253,6 +1254,11 @@ static bool play_gen(const char *path)
                 last_seek = now;
                 int secs = first ? 5 : hold_steps < 8 ? 3 : 10;
                 hold_steps = first ? 1 : hold_steps + 1;
+                /* TiVo mode: its fast-forward clicks, one higher each time the scrub picks up speed */
+                if (hold_steps == 1)       sfx_play(SFX_SPEED1);
+                else if (hold_steps == 2)  sfx_play(SFX_SPEED2);
+                else if (hold_steps == 8)  sfx_play(SFX_SPEED3);
+                else if (hold_steps == 20) sfx_play(SFX_SPEED4);
                 u64 cur = pos_base + oq_played(submitted);
                 if (in->total) cur %= in->total + 1;
                 s64 target = (s64)cur + (s64)dir * secs * in->rate;

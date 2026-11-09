@@ -202,7 +202,7 @@ int main(int argc, char **argv)
     wiilight_load_setting();
     colors_load();
     alarm_load();
-    sfx_play(SFX_LONGTAP);                          /* the soft tick of B, not the chime or the A click */
+    sfx_play(SFX_STARTUP);                          /* the soft tick of B; in TiVo mode, the TiVo Central chime */
     wiilight_pattern(WL_DISC_CLOSE);
 
     if (toggled) {
@@ -306,6 +306,19 @@ int main(int argc, char **argv)
                 ui_goto(8, 0); ui_bg(C_GREEN); ui_color(C_BLACK, false); printf(" green bar ");
                 ui_reset();
                 ui_test_dump();
+                continue;
+            }
+            /* "@tivo": TiVo mode on (its dialog saved like a viewer's), a few of its sounds, then off again */
+            if (!strcmp(line, "@tivo")) {
+                for (int k = 0; k < 2; k++) {
+                    bool saved = sfx_tivo_toggle();
+                    ui_tivo_dialog(sfx_tivo(), saved, sfx_enabled());
+                    sfx_wait();
+                    if (sfx_tivo()) {
+                        static const int ids[] = { SFX_CLICK, SFX_LONGTAP, SFX_PAGEUP, SFX_PAGEDOWN, SFX_UPDOWN };
+                        for (int j = 0; j < 5; j++) { sfx_play(ids[j]); sfx_wait(); }
+                    }
+                }
                 continue;
             }
             /* one wiiload upload (sent from the PC), logged */

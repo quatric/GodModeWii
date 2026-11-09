@@ -436,7 +436,8 @@ void ui_message(const char *title, int color, const char *text)
 {
     int left;
     draw_text_box(title, color, text, "A  OK", 0, NULL, &left);
-    sfx_play(SFX_CLICK);
+    /* an error, a "can't do that here" or a success; TiVo mode tells them apart */
+    sfx_play(color == C_RED ? SFX_ERROR : color == C_YELLOW ? SFX_BONK : color == C_GREEN ? SFX_DONE : SFX_CLICK);
     if (color == C_RED) wiilight_pattern(WL_BLINK3);
     else wiilight_pulse();
     for (;;) {
@@ -446,9 +447,10 @@ void ui_message(const char *title, int color, const char *text)
     }
 }
 
-void ui_message_pages(const char *title, int color, const char *const *pages, int n)
+bool ui_message_pages_code(const char *title, int color, const char *const *pages, int n,
+                           const u32 *code, int code_n)
 {
-    int i = 0;
+    int i = 0, got = 0;
     for (;;) {
         char strip[64], head[96];
         int left;
@@ -457,17 +459,101 @@ void ui_message_pages(const char *title, int color, const char *const *pages, in
         draw_text_box(head, color, pages[i], strip, 0, NULL, &left);
         for (;;) {
             u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
+            /* On the last page, presses that follow the code are kept for it instead of flipping the
+             * page or closing; the first one off the code works as usual (so a second + in a row
+             * still turns the page). A slip partway through can start the code over. */
+            if (p && code && i == n - 1) {
+                if (p == code[got] || (got > 1 && p == code[0])) {
+                    got = p == code[got] ? got + 1 : 1;
+                    if (got == code_n)
+                        return true;
+                    continue;
+                }
+                got = 0;
+            }
             if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
-                return;
+                return false;
             if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS | WPAD_BUTTON_DOWN)) {
                 i = (i + 1) % n;
+                got = 0;
                 break;
             }
             if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS | WPAD_BUTTON_UP)) {
                 i = (i + n - 1) % n;
+                got = 0;
                 break;
             }
         }
+    }
+}
+
+void ui_message_pages(const char *title, int color, const char *const *pages, int n)
+{
+    ui_message_pages_code(title, color, pages, n, NULL, 0);
+}
+
+/* "TiVo" in big letters, two full blocks a dot so they come out square, one bright colour a letter. */
+static const char *const TIVO_ART[5] = {
+    "#####.#.#...#.....",
+    "..#.....#...#.###.",
+    "..#...#.#...#.#.#.",
+    "..#...#..#.#..#.#.",
+    "..#...#...#...###.",
+};
+static const int TIVO_LETTER_COLOR[] = { C_RED, C_YELLOW, C_GREEN, C_CYAN };
+
+static int tivo_letter(int x)                   /* which letter column x of TIVO_ART belongs to */
+{
+    return x < 6 ? 0 : x < 8 ? 1 : x < 14 ? 2 : 3;
+}
+
+void ui_tivo_dialog(bool on, bool saved, bool sounds_on)
+{
+    char text[400];
+    snprintf(text, sizeof(text), "%s%s%s",
+             on ? "TiVo mode is on: the interface plays TiVo's sounds instead of MoonShell's. "
+                  "The same code on the last credits page turns it off again."
+                : "TiVo mode is off: MoonShell's sounds are back. "
+                  "The code on the last credits page brings TiVo back.",
+             sounds_on ? "" : "\n\nSound effects are off, so nothing plays: turn them on in the HOME menu.",
+             saved ? "" : "\n\nThe setting couldn't be saved on the SD card: it lasts until GodModeWii exits.");
+    int w = box_width(), left;
+    char lines[16][BOX_W_MAX + 2];
+    int n = wrap_lines(text, w - 4, lines, 16);
+    ui_clear();                                 /* not the taller credits window around it */
+    int row = draw_window("", win_body, 6 + n, w, "A  OK", &left, NULL);
+
+    /* the title bar: "TiVo" in its colours, then the state */
+    static const char word[] = "TiVo";
+    ui_goto(row - 2, left + 2);
+    ui_bg(win_body);
+    for (int k = 0; k < 4; k++) {
+        ui_color(TIVO_LETTER_COLOR[k], true);
+        putchar(word[k]);
+    }
+    ui_color(C_WHITE, true);
+    printf(on ? " MODE ON" : " MODE OFF");
+
+    int art_w = (int)strlen(TIVO_ART[0]) * 2, x0 = left + (w - art_w) / 2;
+    for (int r = 0; r < 5; r++)
+        for (int x = 0; TIVO_ART[r][x]; x++) {
+            if (TIVO_ART[r][x] != '#') continue;
+            ui_bg(win_body);
+            ui_color(TIVO_LETTER_COLOR[tivo_letter(x)], true);   /* bright: the full block glyph */
+            ui_goto(row + r, x0 + x * 2);
+            printf("\xdb\xdb");
+        }
+    for (int i = 0; i < n; i++)
+        win_text(row + 6 + i, left, w, C_WHITE, true, lines[i]);
+    ui_reset();
+#ifdef GMW_AUTOTEST
+    ui_test_dump();
+    return;
+#endif
+    for (;;) {
+        u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
+        if (p & (WPAD_BUTTON_A | WPAD_BUTTON_B | WPAD_BUTTON_HOME))
+            return;
     }
 }
 
@@ -477,8 +563,8 @@ bool ui_confirm(const char *title, int color, const char *text)
     draw_text_box(title, color, text, "A  Yes        B  No", 0, NULL, &left);
     for (;;) {
         u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
-        if (p & WPAD_BUTTON_A) return true;
-        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) return false;
+        if (p & WPAD_BUTTON_A) { sfx_play(SFX_YES); return true; }          /* TiVo mode: thumbs up */
+        if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) { sfx_play(SFX_NO); return false; }
     }
 }
 

@@ -77,7 +77,9 @@ u32 input_pressed(void)
     u32 held = INPUT_ButtonsHeld() & DPAD;
     if (down & WPAD_BUTTON_A) sfx_play(SFX_CLICK);
     else if (down & WPAD_BUTTON_B) sfx_play(SFX_LONGTAP);
-    else if (down & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) sfx_play(SFX_MOVEPAGE);
+    else if (down & WPAD_BUTTON_LEFT) sfx_play(SFX_PAGEUP);
+    else if (down & WPAD_BUTTON_RIGHT) sfx_play(SFX_PAGEDOWN);
+    else if (down & (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN)) sfx_play(SFX_UPDOWN);   /* TiVo mode only */
 
     if (!held || (down & DPAD)) {
         hold_frames = 0;
@@ -86,8 +88,10 @@ u32 input_pressed(void)
     }
 
     hold_frames++;
-    if (hold_frames > 22 && (hold_frames % 3) == 0)
+    if (hold_frames > 22 && (hold_frames % 3) == 0) {
         down |= held & repeat_mask;
+        if (down & (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN)) sfx_play(SFX_UPDOWN);   /* a tick a step, like TiVo */
+    }
     return down;
 }
 

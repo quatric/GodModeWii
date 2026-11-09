@@ -31,6 +31,11 @@ void ui_fmt_size(char *out, size_t n, u64 bytes);
 void ui_message(const char *title, int color, const char *text);
 /* Several pages of text; L / R (or - / +) flip between them, A closes. */
 void ui_message_pages(const char *title, int color, const char *const *pages, int n);
+/* The same, and true (closed) once the button sequence code[] has been entered on the last page. */
+bool ui_message_pages_code(const char *title, int color, const char *const *pages, int n,
+                           const u32 *code, int code_n);
+/* TiVo mode has been switched on or off: "TiVo" in big coloured letters, and what changed. */
+void ui_tivo_dialog(bool on, bool saved, bool sounds_on);
 /* While on, dialog windows get a red body instead of blue (problem summaries). */
 void ui_alert_window(bool on);
 bool ui_confirm(const char *title, int color, const char *text);
