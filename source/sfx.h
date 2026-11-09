@@ -27,8 +27,8 @@ enum {
     SFX_PAGEDOWN,   /* D-Pad Right: page down           TiVo: pagedown */
     SFX_UPDOWN,     /* D-Pad Up / Down: cursor moved    TiVo only */
     SFX_MENU,       /* the HOME menu opens              TiVo only: SC_Enter */
-    SFX_BONK,       /* that can't be done here          TiVo only */
-    SFX_ERROR,      /* an error message                 TiVo: error */
+    SFX_BONK,       /* that can't be done here, a list's end  TiVo only */
+    SFX_ERROR,      /* an error message                 TiVo: bonk */
     SFX_DONE,       /* a success message                TiVo: tagup */
     SFX_YES,        /* A on a yes / no question         TiVo only: thumbsup */
     SFX_NO,         /* B on a yes / no question         TiVo only: thumbsdown */

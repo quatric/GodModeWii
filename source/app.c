@@ -783,6 +783,19 @@ static void show_credits(void)
     }
 }
 
+/* TiVo mode, as a TiVo does: the cursor stops at the top and bottom of a list (and paging stops at the
+ * ends) with a bonk instead of the tick, where MoonShell mode wraps round. True when it bonked. */
+static bool tivo_bonk(u32 p, int cursor, int total)
+{
+    if (!sfx_tivo() || !(p & (WPAD_BUTTON_UP | WPAD_BUTTON_DOWN | WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT))) return false;
+    bool top = cursor <= 0, end = cursor >= total - 1;
+    if (!(((p & (WPAD_BUTTON_UP | WPAD_BUTTON_LEFT)) && top) || ((p & (WPAD_BUTTON_DOWN | WPAD_BUTTON_RIGHT)) && end)))
+        return false;
+    sfx_cancel();                                   /* not the tick or page sound that went with the press */
+    sfx_play(SFX_BONK);
+    return true;
+}
+
 /* ---------------------------------------------------------------- actions */
 
 static void do_copy_cut(bool cut)
@@ -1640,12 +1653,14 @@ int app_run(void)
         if (!cwd[0]) {
             int devs[DEV_COUNT];
             int n = home_list(devs);
-            if (p & WPAD_BUTTON_UP)   home_cursor = (home_cursor + n - 1) % n;
-            if (p & WPAD_BUTTON_DOWN) home_cursor = (home_cursor + 1) % n;
             /* several drives at a time, like a page of files */
             int jump = home_rows() > 2 ? home_rows() - 1 : 1;
-            if (p & WPAD_BUTTON_LEFT)  { home_cursor -= jump; if (home_cursor < 0) home_cursor = 0; }
-            if (p & WPAD_BUTTON_RIGHT) { home_cursor += jump; if (home_cursor >= n) home_cursor = n - 1; }
+            if (!tivo_bonk(p, home_cursor, n)) {
+                if (p & WPAD_BUTTON_UP)   home_cursor = (home_cursor + n - 1) % n;
+                if (p & WPAD_BUTTON_DOWN) home_cursor = (home_cursor + 1) % n;
+                if (p & WPAD_BUTTON_LEFT)  { home_cursor -= jump; if (home_cursor < 0) home_cursor = 0; }
+                if (p & WPAD_BUTTON_RIGHT) { home_cursor += jump; if (home_cursor >= n) home_cursor = n - 1; }
+            }
             /* the easter egg: the Konami code (no START) here opens Bad Block Sweeper instead of the drive */
             static const u32 konami[] = { WPAD_BUTTON_UP, WPAD_BUTTON_UP, WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN,
                                           WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT, WPAD_BUTTON_LEFT, WPAD_BUTTON_RIGHT,
@@ -1686,15 +1701,18 @@ int app_run(void)
         int total = nents + off;
         int L = list_rows();
 
-        if (p & WPAD_BUTTON_UP)    { if (total) cursor = (cursor + total - 1) % total; }
-        if (p & WPAD_BUTTON_DOWN)  { if (total) cursor = (cursor + 1) % total; }
-        if (p & WPAD_BUTTON_LEFT) {
-            cursor -= L - 1;
-            if (cursor < 0) cursor = 0;
-        }
-        if (p & WPAD_BUTTON_RIGHT) {
-            cursor += L - 1;
-            if (cursor >= total) cursor = total ? total - 1 : 0;
+        if (tivo_bonk(p, cursor, total)) {
+        } else {
+            if (p & WPAD_BUTTON_UP)    { if (total) cursor = (cursor + total - 1) % total; }
+            if (p & WPAD_BUTTON_DOWN)  { if (total) cursor = (cursor + 1) % total; }
+            if (p & WPAD_BUTTON_LEFT) {
+                cursor -= L - 1;
+                if (cursor < 0) cursor = 0;
+            }
+            if (p & WPAD_BUTTON_RIGHT) {
+                cursor += L - 1;
+                if (cursor >= total) cursor = total ? total - 1 : 0;
+            }
         }
 
         if (p & WPAD_BUTTON_B) {
