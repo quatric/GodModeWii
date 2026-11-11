@@ -20,6 +20,11 @@
  *
  * Both signatures are checked again before the file is kept, and every content is checked against
  * the TMD's SHA-1 as it goes, so nothing half-right is left on the card.
+ *
+ * A DLC WAD doesn't have to hold every content its TMD lists: full WADs, WADs with pieces missing and
+ * dlc-wad-splitter's "small" WADs (the whole signed TMD, content 0 and a run of the others) are all
+ * taken. w2b_layout finds which contents are there and where, and w2b_split cuts a WAD into small
+ * ones the way DarkMatterCore's dlc-wad-splitter does (https://github.com/DarkMatterCore/dlc-wad-splitter).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,9 +94,20 @@ void w2b_tid_ascii(uint64_t tid, char out[5])
     out[4] = 0;
 }
 
+/* DLCs whose game has another ID than the DLC's own in upper case (wad2bin's list of DLCs that load from
+ * the SD card, region byte left out): Rock Band 3's sZJ..sZM belong to SZB, Guitar Hero: World Tour's
+ * sYO to SXA, Guitar Hero 5's sXF..sXH to SXE. */
+static const struct { uint32_t dlc, game; } PARENTS[] = {
+    { 0x735A4A00, 0x535A4200 }, { 0x735A4B00, 0x535A4200 }, { 0x735A4C00, 0x535A4200 }, { 0x735A4D00, 0x535A4200 },
+    { 0x73594F00, 0x53584100 },
+    { 0x73584600, 0x53584500 }, { 0x73584700, 0x53584500 }, { 0x73584800, 0x53584500 },
+};
+
 uint64_t w2b_parent_tid(uint64_t dlc_tid)
 {
     uint32_t lo = (uint32_t)dlc_tid;
+    for (size_t i = 0; i < sizeof(PARENTS) / sizeof(PARENTS[0]); i++)
+        if ((lo & 0xFFFFFF00u) == PARENTS[i].dlc) return (uint64_t)0x00010000 << 32 | PARENTS[i].game | (lo & 0xFF);
     uint8_t c = (uint8_t)(lo >> 24);
     if (c >= 'a' && c <= 'z') c -= 32;                  /* sZAE -> SZAE */
     return (uint64_t)0x00010000 << 32 | ((uint32_t)c << 24) | (lo & 0xFFFFFF);
@@ -101,7 +117,7 @@ uint64_t w2b_parent_tid(uint64_t dlc_tid)
 
 typedef struct {
     const src_t *f;
-    uint32_t cert_sz, tik_sz, tmd_sz;
+    uint32_t cert_sz, tik_sz, tmd_sz, data_sz;
     uint64_t cert_off, tik_off, tmd_off, data_off;
     uint8_t *cert, *tik, *tmd;
     uint32_t tmd_body;                  /* where the TMD's fields start */
@@ -141,6 +157,7 @@ static bool wad_open(wad_t *w, const src_t *f, w2b_result_t *r)
     uint32_t crl = rb32(h + 0xC);
     w->tik_sz = rb32(h + 0x10);
     w->tmd_sz = rb32(h + 0x14);
+    w->data_sz = rb32(h + 0x18);
     if (w->cert_sz > 0x10000 || crl > 0x10000 || w->tik_sz < 0x2A4 || w->tik_sz > 0x10000 || w->tmd_sz < 0x1E4 ||
         w->tmd_sz > 0x40000) {
         err(r, "The WAD's header is damaged");
@@ -165,7 +182,7 @@ static bool wad_open(wad_t *w, const src_t *f, w2b_result_t *r)
     w->tmd_body = mb;
     w->ncont = rb16(w->tmd + mb + 0x9E);
     w->tid = rb64(w->tmd + mb + 0x4C);
-    if (mb + 0xA4 + (uint32_t)w->ncont * 0x24 > w->tmd_sz || !w->ncont) {
+    if (mb + 0xA4 + (uint32_t)w->ncont * 0x24 > w->tmd_sz || !w->ncont || w->ncont > W2B_MAX_CONTENTS) {
         err(r, "The WAD's TMD is damaged");
         return false;
     }
@@ -209,6 +226,137 @@ bool w2b_peek(const src_t *wad, uint64_t *tid)
     if (ok) *tid = w.tid;
     wad_free(&w);
     return ok;
+}
+
+/* ---------------------------------------------------------------- which contents are in the WAD */
+
+/* Where the content data ends: the header's data size when it fits in the file (a footer may follow),
+ * else the end of the file. */
+static uint64_t data_end(const wad_t *w)
+{
+    uint64_t fend = w->f->size, end = w->data_off + a64(w->data_sz);
+    return w->data_sz && end <= fend ? end : fend;
+}
+
+/* 1 when the data at `off` is content record `i` (decrypted with the title key, SHA-1 as in the TMD),
+ * 0 when it isn't (or can't be read), -1 when canceled. */
+static int hash_at(const wad_t *w, int i, uint64_t off, uint8_t *buf, const w2b_io_t *io, uint64_t scan_total,
+                   w2b_result_t *r)
+{
+    const uint8_t *rc = rec(w, i);
+    uint64_t size = rb64(rc + 8), need = (size + 15) & ~(uint64_t)15;
+    if (off + size > w->f->size) return 0;
+    if (off + need > w->f->size) need = w->f->size - off;          /* can't decrypt a partial block */
+    if (need & 15) return 0;
+    uint8_t iv[16], sum[20];
+    content_iv(rc, iv);
+    sha1_t c;
+    sha1_init(&c);
+    for (uint64_t pos = 0; pos < need; pos += CHUNK) {
+        uint32_t n = (uint32_t)(need - pos < CHUNK ? need - pos : CHUNK);
+        if (!src_read_full(w->f, off + pos, buf, n)) return 0;
+        uint8_t next[16];
+        memcpy(next, buf + n - 16, 16);
+        aes128_cbc_decrypt(&w->title_key, iv, buf, buf, n);
+        memcpy(iv, next, 16);
+        sha1_update(&c, buf, (size_t)(size - pos < n ? size - pos : n));
+        if (io && io->progress && !io->progress(io->ctx, "Looking for the contents", off - w->data_off, scan_total)) {
+            err(r, "Canceled");
+            return -1;
+        }
+    }
+    sha1_final(&c, sum);
+    return !memcmp(sum, rc + 0x10, 20);
+}
+
+/* Fills off[] (W2B_ABSENT for a content the WAD leaves out) and returns how many are there; -1 when
+ * canceled or out of memory.
+ *
+ * Contents are always in TMD order. A whole WAD (or a whole tail of one) is taken by its size alone;
+ * otherwise a run of contents that ends where the data ends is looked for first (dlc-wad-splitter's
+ * WADs are content 0 and one such run), checked by the SHA-1 of its first and last content, and then
+ * each record is tried in turn the way wad2bin does it. Whatever is taken is checked again against
+ * the TMD when it is used. */
+static int find_contents(const wad_t *w, uint64_t *off, const w2b_io_t *io, w2b_result_t *r)
+{
+    int n = w->ncont, present = 0;
+    for (int i = 0; i < n; i++) off[i] = W2B_ABSENT;
+    uint64_t end = data_end(w), pos = w->data_off, total = end - w->data_off;
+    uint8_t *buf = NULL;
+    for (int i = 0; i < n && pos < end;) {
+        uint64_t s = 0;
+        for (int k = i; k < n; k++) s += k == n - 1 ? rb64(rec(w, k) + 8) : a64(rb64(rec(w, k) + 8));
+        if (pos + s <= end) {                               /* everything from here on, back to back */
+            for (int k = i; k < n; k++, present++) {
+                off[k] = pos;
+                pos += a64(rb64(rec(w, k) + 8));
+            }
+            break;
+        }
+        if (!buf && !(buf = malloc(CHUNK))) {
+            err(r, "Out of memory");
+            return -1;
+        }
+        bool run = false;
+        for (int j = i, tries = 0; j < n && !run && tries < 8; j++) {
+            s = 0;
+            for (int k = j; k < n; k++) {
+                uint64_t sz = rb64(rec(w, k) + 8);
+                if (pos + s + sz > end) break;
+                if (end - (pos + s + sz) < 64) {            /* j..k ends where the data does */
+                    tries++;
+                    int a = hash_at(w, j, pos, buf, io, total, r);
+                    int b = a > 0 && k != j ? hash_at(w, k, pos + s, buf, io, total, r) : a;
+                    if (a < 0 || b < 0) {
+                        free(buf);
+                        return -1;
+                    }
+                    if (a && b) {
+                        for (int m = j; m <= k; m++, present++) {
+                            off[m] = pos;
+                            pos += a64(rb64(rec(w, m) + 8));
+                        }
+                        run = true;
+                    }
+                    break;
+                }
+                s += a64(sz);
+            }
+        }
+        if (run) break;
+        uint64_t sz = rb64(rec(w, i) + 8);
+        if (pos + sz <= end) {
+            int h = hash_at(w, i, pos, buf, io, total, r);
+            if (h < 0) {
+                free(buf);
+                return -1;
+            }
+            if (h) {
+                off[i] = pos;
+                pos += a64(sz);
+                present++;
+            }
+        }
+        i++;
+    }
+    free(buf);
+    return present;
+}
+
+int w2b_layout(const src_t *wad, w2b_layout_t *L, const w2b_io_t *io, w2b_result_t *r)
+{
+    memset(r, 0, sizeof(*r));
+    memset(L, 0, sizeof(*L));
+    wad_t w;
+    int ret = -1;
+    if (wad_open(&w, wad, r)) {
+        L->tid = r->tid = w.tid;
+        L->ncont = w.ncont;
+        ret = find_contents(&w, L->off, io, r);
+        if (ret >= 0) L->present = (uint16_t)ret;
+    }
+    wad_free(&w);
+    return ret;
 }
 
 /* ---------------------------------------------------------------- output */
@@ -582,13 +730,23 @@ static int make_dlc_bins(const wad_t *w, const char *root, const w2b_keys_t *k, 
         return -1;
     }
     memcpy(tp, w->tmd, w->tmd_sz);
-    uint64_t off = w->data_off, end = w->f->size, done = 0;
+    uint64_t *at = malloc(W2B_MAX_CONTENTS * sizeof(*at));
+    int found = at ? find_contents(w, at, io, r) : -1;
+    if (found <= 0) {
+        free(tp), free(buf), free(at);
+        if (!found) err(r, "None of the DLC's contents are in this WAD");
+        else if (!r->err[0]) err(r, "Out of memory");
+        return -1;
+    }
+    uint64_t done = 0, total = 0;
+    for (int i = 0; i < w->ncont; i++)
+        if (at[i] != W2B_ABSENT) total += a64(rb64(rec(w, i) + 8));
     int files = 0;
-    for (int i = 0; i < w->ncont && off < end; i++) {
+    for (int i = 0; i < w->ncont; i++) {
         const uint8_t *rc = rec(w, i);
-        uint64_t size = rb64(rc + 8);
+        uint64_t size = rb64(rc + 8), off = at[i];
         uint16_t index = rb16(rc + 4);
-        if (end - off < size) continue;                   /* not in this WAD */
+        if (off == W2B_ABSENT) continue;                  /* not in this WAD */
         uint8_t bk[0x80] = { 0 };
         wb32(bk, 0x70);
         wb16(bk + 4, 0x426B);
@@ -603,7 +761,7 @@ static int make_dlc_bins(const wad_t *w, const char *root, const w2b_keys_t *k, 
         snprintf(path, sizeof(path), "%s/%03u.bin", dir, (unsigned)index);
         out_t o;
         if (!o_open(&o, io, path, NULL)) {
-            free(tp), free(buf);
+            free(tp), free(buf), free(at);
             err(r, "Couldn't create a file on the SD card");
             return -1;
         }
@@ -611,34 +769,49 @@ static int make_dlc_bins(const wad_t *w, const char *root, const w2b_keys_t *k, 
         o_put(&o, tp, tmdpad, false);
         bool match;
         if (!copy_content(w, i, off, opt && opt->dlc_null_key ? null_key : k->prng_key, &o, buf, &match, io, &done,
-                          end - w->data_off, r)) {
+                          total, r)) {
             o_close(&o, false);
-            free(tp), free(buf);
+            free(tp), free(buf), free(at);
             return -1;
         }
-        if (!match) {                                     /* that was another content: try the next record here */
+        if (!match) {
             o_close(&o, false);
-            continue;
+            free(tp), free(buf), free(at);
+            snprintf(r->err, sizeof(r->err), "Content %u doesn't match its TMD hash: the WAD is damaged", (unsigned)index);
+            return -1;
         }
         if (!o_close(&o, true)) {
-            free(tp), free(buf);
+            free(tp), free(buf), free(at);
             err(r, "Couldn't write to the SD card (is it full?)");
             return -1;
         }
         files++;
-        off += a64(size);
     }
-    free(tp), free(buf);
-    if (!files) {
-        err(r, "None of the DLC's contents are in this WAD");
-        return -1;
-    }
+    free(tp), free(buf), free(at);
+    r->missing = w->ncont - files;
     snprintf(r->path, sizeof(r->path), "%s", dir);
     r->files = files;
     return 0;
 }
 
 /* ---------------------------------------------------------------- */
+
+/* A copy of the ticket, fakesigned when it is homebrew or was issued to a console other than
+ * `console_id` (0: any console-bound ticket), the way wad2bin and dlc-wad-splitter do it. */
+static uint8_t *portable_ticket(const wad_t *w, uint32_t console_id)
+{
+    uint8_t *tik = malloc(w->tik_sz);
+    if (!tik) return NULL;
+    memcpy(tik, w->tik, w->tik_sz);
+    uint32_t tb = sig_len(rb32(tik)), owner = rb32(tik + tb + 0x98);
+    if (zero_sig(tik, tb) || (owner && owner != console_id)) {
+        memset(tik + 4, 0, tb - 0x3C - 4);
+        memset(tik + tb + 0x40, 0, 0x3C);                 /* ECDH data */
+        wb32(tik + tb + 0x98, 0);                         /* console ID */
+        fakesign(tik + tb, w->tik_sz - tb, tik + tb + 0x122);
+    }
+    return tik;
+}
 
 /* Ticket and TMD only, as wad2bin's "<title id>_bogus.wad": what a WAD manager needs to put them on
  * the NAND (the contents stay on the SD card). */
@@ -657,19 +830,10 @@ static void make_bogus(const wad_t *w, const char *root, uint32_t console_id, co
     out_t o;
     if (!o_open(&o, io, path, NULL)) return;
     o_put(&o, h, sizeof(h), false);
-    /* the ticket, fakesigned when it is homebrew or was issued to another console (as wad2bin does) */
-    uint8_t *tik = malloc(w->tik_sz);
+    uint8_t *tik = portable_ticket(w, console_id);
     if (!tik) {
         o_close(&o, false);
         return;
-    }
-    memcpy(tik, w->tik, w->tik_sz);
-    uint32_t tb = sig_len(rb32(tik)), owner = rb32(tik + tb + 0x98);
-    if (zero_sig(tik, tb) || (owner && owner != console_id)) {
-        memset(tik + 4, 0, tb - 0x3C - 4);
-        memset(tik + tb + 0x40, 0, 0x3C);                 /* ECDH data */
-        wb32(tik + tb + 0x98, 0);                         /* console ID */
-        fakesign(tik + tb, w->tik_sz - tb, tik + tb + 0x122);
     }
     const uint8_t *parts[3] = { w->cert, tik, w->tmd };
     uint32_t sizes[3] = { w->cert_sz, w->tik_sz, w->tmd_sz };
@@ -697,4 +861,159 @@ int w2b_convert(const src_t *wad, const char *root, const w2b_keys_t *keys, cons
     if (!ret) make_bogus(&w, root, keys->console_id, io, r);
     wad_free(&w);
     return ret;
+}
+
+/* ---------------------------------------------------------------- split DLC WADs */
+
+/* Copies content record `i` from `off` as it is (still encrypted with the title key), checking it against
+ * the TMD on the way. */
+static bool copy_raw(const wad_t *w, int i, uint64_t off, out_t *o, uint8_t *buf, uint8_t *dec, const w2b_io_t *io,
+                     uint64_t *done, uint64_t total, w2b_result_t *r)
+{
+    const uint8_t *rc = rec(w, i);
+    uint64_t size = rb64(rc + 8), padded = a64(size);
+    uint8_t iv[16], sum[20];
+    content_iv(rc, iv);
+    sha1_t c;
+    sha1_init(&c);
+    for (uint64_t pos = 0; pos < padded; pos += CHUNK) {
+        uint32_t n = (uint32_t)(padded - pos < CHUNK ? padded - pos : CHUNK);
+        uint32_t have = n;
+        if (off + pos + n > w->f->size) {                 /* the last content of a WAD cut short at its end */
+            have = (uint32_t)(w->f->size - (off + pos));
+            if (have & 15 || have < (uint32_t)(((size - pos) + 15) & ~(uint64_t)15)) {
+                err(r, "Couldn't read the WAD (is it complete?)");
+                return false;
+            }
+            memset(buf + have, 0, n - have);
+        }
+        if (!src_read_full(w->f, off + pos, buf, have)) {
+            err(r, "Couldn't read the WAD (is it complete?)");
+            return false;
+        }
+        o_put(o, buf, n, false);
+        uint32_t real = (uint32_t)(size - pos < n ? size - pos : n), dl = (real + 15) & ~15u;
+        uint8_t next[16];
+        memcpy(next, buf + n - 16, 16);
+        aes128_cbc_decrypt(&w->title_key, iv, buf, dec, dl);
+        memcpy(iv, next, 16);
+        sha1_update(&c, dec, real);
+        *done += n;
+        if (io->progress && !io->progress(io->ctx, "Splitting", *done, total)) {
+            err(r, "Canceled");
+            return false;
+        }
+        if (!o->ok) {
+            err(r, "Couldn't write the WAD (is the drive full?)");
+            return false;
+        }
+    }
+    sha1_final(&c, sum);
+    if (memcmp(sum, rc + 0x10, 20)) {
+        snprintf(r->err, sizeof(r->err), "Content %u doesn't match its TMD hash: the WAD is damaged", (unsigned)rb16(rc + 4));
+        return false;
+    }
+    return true;
+}
+
+int w2b_split(const src_t *wad, const char *dir, const char *base, int per, const w2b_io_t *io, w2b_result_t *r)
+{
+    memset(r, 0, sizeof(*r));
+    wad_t w;
+    uint64_t *at = NULL;
+    uint8_t *tik = NULL, *buf = NULL, *dec = NULL, *tp = NULL;
+    int made = -1;
+    if (!wad_open(&w, wad, r)) goto out;
+    r->tid = w.tid;
+    r->dlc = (w.tid >> 32) == 0x00010005;
+    if (!r->dlc) {
+        err(r, "Only DLC WADs can be split: a game loads each DLC content on its own, a channel needs them all");
+        goto out;
+    }
+    if (per < 1) per = 1;
+    at = malloc(W2B_MAX_CONTENTS * sizeof(*at));
+    buf = malloc(CHUNK);
+    dec = malloc(CHUNK);
+    tik = portable_ticket(&w, 0);
+    tp = calloc(1, a64(w.tmd_sz));
+    if (!at || !buf || !dec || !tik || !tp) {
+        err(r, "Out of memory");
+        goto out;
+    }
+    memcpy(tp, w.tmd, w.tmd_sz);
+    int found = find_contents(&w, at, io, r);
+    if (found < 0) goto out;
+    if (at[0] == W2B_ABSENT) {
+        err(r, "This WAD doesn't hold content 0, which every split WAD needs");
+        goto out;
+    }
+    int rest = found - 1;
+    if (rest < 1) {
+        err(r, "This WAD only holds content 0: there is nothing to split");
+        goto out;
+    }
+    if (!io->mkdirs(io->ctx, dir)) {
+        err(r, "Couldn't create the folder for the split WADs");
+        goto out;
+    }
+    uint64_t done = 0, total = 0;
+    int parts = (rest + per - 1) / per;
+    for (int i = 1; i < w.ncont; i++)
+        if (at[i] != W2B_ABSENT) total += a64(rb64(rec(&w, i) + 8));
+    total += (uint64_t)parts * a64(rb64(rec(&w, 0) + 8));
+
+    made = 0;
+    int next = 1;                                       /* the next record to place */
+    for (int part = 1; part <= parts; part++) {
+        int pick[W2B_MAX_CONTENTS], np = 0;
+        pick[np++] = 0;
+        for (; next < w.ncont && np <= per; next++)
+            if (at[next] != W2B_ABSENT) pick[np++] = next;
+        uint64_t data = 0;
+        for (int k = 0; k < np; k++) data += a64(rb64(rec(&w, pick[k]) + 8));
+        char path[320];
+        snprintf(path, sizeof(path), "%s/%s_split_%d.wad", dir, base, part);
+        uint8_t h[0x40] = { 0 };
+        wb32(h, 0x20);
+        wb16(h + 4, 0x4973);
+        wb32(h + 8, w.cert_sz);
+        wb32(h + 0x10, w.tik_sz);
+        wb32(h + 0x14, w.tmd_sz);
+        wb32(h + 0x18, (uint32_t)data);
+        out_t o;
+        if (!o_open(&o, io, path, NULL)) {
+            err(r, "Couldn't create a split WAD (is the drive writable?)");
+            made = -1;
+            goto out;
+        }
+        static const uint8_t zeros[64];
+        o_put(&o, h, sizeof(h), false);
+        o_put(&o, w.cert, w.cert_sz, false);
+        o_put(&o, zeros, (uint32_t)(a64(w.cert_sz) - w.cert_sz), false);
+        o_put(&o, tik, w.tik_sz, false);
+        o_put(&o, zeros, (uint32_t)(a64(w.tik_sz) - w.tik_sz), false);
+        o_put(&o, tp, (uint32_t)a64(w.tmd_sz), false);    /* the TMD as it is: still signed */
+        for (int k = 0; k < np; k++)
+            if (!copy_raw(&w, pick[k], at[pick[k]], &o, buf, dec, io, &done, total, r)) {
+                o_close(&o, false);
+                made = -1;
+                goto out;
+            }
+        if (!o_close(&o, true)) {
+            err(r, "Couldn't write a split WAD (is the drive full?)");
+            made = -1;
+            goto out;
+        }
+        made++;
+        r->files = made;
+        if (made == 1) snprintf(r->path, sizeof(r->path), "%s", path);
+    }
+    r->missing = w.ncont - found;
+
+out:
+    free(at), free(buf), free(dec), free(tp);
+    if (tik) memset(tik, 0, w.tik_sz);
+    free(tik);
+    wad_free(&w);
+    return made;
 }

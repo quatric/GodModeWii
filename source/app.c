@@ -1056,33 +1056,50 @@ static void wad_menu(const vfs_entry *en)
         if (marks[i] && !ents[i].is_dir && entry_type(&ents[i]) == FT_WAD)
             marked_wads++;
 
+    char path[VFS_PATH_MAX];
+    bool have_path = vfs_join(path, sizeof(path), cwd, en->name);
+    bool dlc = have_path && wad_is_dlc(path);
+
     char install[48] = "Install to NAND", sd[64] = "Install to SD card (wad2bin: content.bin)";
+    char split[64] = "Split DLC into small WADs (dlc-wad-splitter)";
+    if (dlc) snprintf(sd, sizeof(sd), "Install to SD card (wad2bin: <index>.bin)");
     if (marked_wads > 1) {
         snprintf(install, sizeof(install), "Install %d marked WADs to NAND", marked_wads);
         snprintf(sd, sizeof(sd), "Install %d marked WADs to SD card (wad2bin)", marked_wads);
+        snprintf(split, sizeof(split), "Split the marked DLC WADs into small WADs");
     }
 
-    const char *items[] = { install, sd, "Browse decrypted contents", "More actions..." };
-    int r = ui_menu(en->name, items, NULL, 4, 0);
+    enum { W_NAND, W_SD, W_SPLIT, W_BROWSE, W_MORE };
+    const char *items[5];
+    int code[5], n = 0;
+    items[n] = install, code[n++] = W_NAND;
+    items[n] = sd, code[n++] = W_SD;
+    if (dlc || marked_wads > 1) items[n] = split, code[n++] = W_SPLIT;
+    items[n] = "Browse decrypted contents", code[n++] = W_BROWSE;
+    items[n] = "More actions...", code[n++] = W_MORE;
+    int r = ui_menu(en->name, items, NULL, n, 0);
+    if (r < 0) return;
+    r = code[r];
 
-    char path[VFS_PATH_MAX];
-    if ((r == 0 || r == 1) && marked_wads > 1) {
+    if ((r == W_NAND || r == W_SD || r == W_SPLIT) && marked_wads > 1) {
         int t;
         char **tp = targets(&t);
         if (t) {
-            if (r == 0) wad_install_paths(tp, t);
-            else wad_install_sd(tp, t);
+            if (r == W_NAND) wad_install_paths(tp, t);
+            else if (r == W_SD) wad_install_sd(tp, t);
+            else wad_split_paths(tp, t);
             free_paths(tp, t);
             reload_keep();
         }
-    } else if ((r == 0 || r == 1) && vfs_join(path, sizeof(path), cwd, en->name)) {
+    } else if ((r == W_NAND || r == W_SD || r == W_SPLIT) && have_path) {
         char *one = path;
-        if (r == 0) wad_install_paths(&one, 1);
-        else wad_install_sd(&one, 1);
+        if (r == W_NAND) wad_install_paths(&one, 1);
+        else if (r == W_SD) wad_install_sd(&one, 1);
+        else wad_split_paths(&one, 1);
         reload_keep();
-    } else if (r == 2) {
+    } else if (r == W_BROWSE) {
         open_archive(en);
-    } else if (r == 3) {
+    } else if (r == W_MORE) {
         actions_menu();
     }
 }

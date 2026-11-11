@@ -10,7 +10,10 @@
  * checked against the TMD's hash before the file is kept. The code is GodModeWii's own.
  *
  * Unlike YABDM there are no choices: the ticket is always fakesigned and the TMD never is. A DLC with
- * pieces that were never downloaded is refused (leaving them out would change the TMD).
+ * pieces that were never downloaded becomes a WAD of the pieces that are there, with the whole TMD
+ * (the way dlc-wad-splitter's "small" WADs and wad2bin's partial DLC WADs are), and a DLC can be cut
+ * into several such WADs of a few contents each, content 0 in every one, as dlc-wad-splitter does
+ * (https://github.com/DarkMatterCore/dlc-wad-splitter).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -358,6 +361,13 @@ static int stream(writer_t *w, const char *path, u64 size, const aes128_enc_t *k
 int waddump_build(const char *src, const char *outpath, char *err, size_t en, waddump_progress_fn progress,
                   void *ctx)
 {
+    return waddump_build_part(src, outpath, 0, 0, NULL, err, en, progress, ctx);
+}
+
+int waddump_build_part(const char *src, const char *outpath, int part, int per, waddump_info_t *info, char *err,
+                       size_t en, waddump_progress_fn progress, void *ctx)
+{
+    u8 *sel = NULL;
     dump_t d;
     memset(&d, 0, sizeof(d));
     u64 tid = 0;
@@ -495,31 +505,73 @@ int waddump_build(const char *src, const char *outpath, char *err, size_t en, wa
         goto out;
     }
 
-    /* --- every content has to be there */
+    /* --- every content has to be there, except the pieces of a DLC that were never downloaded */
     snprintf(path, sizeof(path), "%s/shared1/content.map", d.nand);
     d.map = read_all(path, &d.map_n, FILE_MAX);
     d.map_n = d.map ? d.map_n / 28 : 0;
-    u64 data_len = 0;
-    u32 footer_len = 0;
-    char foot[VFS_PATH_MAX + 64] = "";
+    bool dlc = (tid >> 32) == 0x00010005;
+    sel = calloc(ncont, 1);
+    if (!sel) {
+        free(certs);
+        seterr(err, en, "Out of memory");
+        goto out;
+    }
+    int have = 0;
     for (u16 i = 0; i < ncont; i++) {
         const u8 *rec = tmd + TMD_RECORDS + (u32)i * REC_LEN;
-        u64 size = be64(rec + 8);
-        if (!locate(&d, rec, path, sizeof(path))) {
-            if ((tid >> 32) == 0x00010005)
-                seterr(err, en, "Part %08x of this DLC was never downloaded. Leaving it out would mean changing "
-                       "(and fakesigning) the TMD, so no WAD was made", (unsigned)be32(rec));
-            else
-                seterr(err, en, "Content %08x isn't on the NAND", (unsigned)be32(rec));
+        if (locate(&d, rec, path, sizeof(path))) {
+            sel[i] = 1;
+            have++;
+            continue;
+        }
+        if (!dlc || !(be16(rec + 6) & 0x4000)) {
+            seterr(err, en, "Content %08x isn't on the NAND", (unsigned)be32(rec));
             free(certs);
             goto out;
         }
+    }
+    if (info) {
+        info->ncont = ncont;
+        info->present = have;
+        info->dlc = dlc;
+    }
+    if (per > 0) {                      /* split: content 0, then the part'th `per` of the others there are */
+        if (!dlc || !sel[0]) {
+            seterr(err, en, dlc ? "Content 0 of this DLC isn't on the NAND" : "Only a DLC can be split");
+            free(certs);
+            goto out;
+        }
+        int nth = 0, kept = 0, from = (part - 1) * per;
+        for (u16 i = 1; i < ncont; i++) {
+            if (!sel[i]) continue;
+            bool in = nth >= from && nth < from + per;
+            nth++;
+            if (!in) sel[i] = 0;
+            else kept++;
+        }
+        if (!kept) {                    /* past the last part */
+            free(certs);
+            ret = 1;
+            goto out;
+        }
+    }
+    u64 data_len = 0;
+    u32 footer_len = 0;
+    int nsel = 0;
+    char foot[VFS_PATH_MAX + 64] = "";
+    for (u16 i = 0; i < ncont; i++) {
+        if (!sel[i]) continue;
+        const u8 *rec = tmd + TMD_RECORDS + (u32)i * REC_LEN;
+        u64 size = be64(rec + 8);
+        locate(&d, rec, path, sizeof(path));
         data_len += a64((u32)((size + 15) & ~15ull));
+        nsel++;
         if (i == 0 && size < 0x10000000ull) {
             footer_len = (u32)size;
             snprintf(foot, sizeof(foot), "%s", path);
         }
     }
+    if (info) info->written = nsel;
 
     /* --- write it */
     wbuf = memalign(32, CHUNK + 64);
@@ -549,6 +601,7 @@ int waddump_build(const char *src, const char *outpath, char *err, size_t en, wa
         goto out;
     }
     for (u16 i = 0; i < ncont; i++) {
+        if (!sel[i]) continue;
         const u8 *rec = tmd + TMD_RECORDS + (u32)i * REC_LEN;
         locate(&d, rec, path, sizeof(path));
         snprintf(w.what, sizeof(w.what), "Content %u of %u (%08x)", i + 1, ncont, (unsigned)be32(rec));
@@ -595,6 +648,7 @@ out:
     free(sys);
     free(d.map);
     free(wbuf);
+    free(sel);
     return ret;
 }
 
@@ -707,6 +761,22 @@ int waddump_paths(char **paths, int n)
              "They go in GodModeWii/wad-dump/ on the drive you choose next.",
              srcs, srcs == 1 ? "" : "s", srcs == 1 ? "" : "s");
     if (!ui_confirm("BACK UP AS WAD", C_CYAN, q)) return 0;
+
+    /* DLC: one WAD, or split into small ones (dlc-wad-splitter) */
+    int dlcs = 0, per = 0;
+    for (int i = 0; i < n; i++) {
+        u64 t = 0;
+        if (waddump_is_source(paths[i], &t) && (t >> 32) == 0x00010005) dlcs++;
+    }
+    if (dlcs) {
+        static const int sizes[] = { 0, 1, 5, 10, 20, 50 };
+        const char *items[] = { "One WAD (every part that was downloaded)", "Split: 1 content per WAD",
+                                "Split: 5 contents per WAD", "Split: 10 contents per WAD", "Split: 20 contents per WAD",
+                                "Split: 50 contents per WAD" };
+        int r = ui_menu(dlcs == 1 ? "BACK UP THE DLC AS" : "BACK UP THE DLCS AS", items, NULL, 6, 0);
+        if (r < 0) return 0;
+        per = sizes[r];
+    }
     int dev = pick_target();
     if (dev < 0) return 0;
     char dir[VFS_PATH_MAX];
@@ -717,11 +787,11 @@ int waddump_paths(char **paths, int n)
     }
 
     int ok = 0, done = 0;
-    char report[1400] = "", last[VFS_PATH_MAX + 200] = "";
+    char report[1400] = "", last[2 * VFS_PATH_MAX + 320] = "";
     size_t rl = 0;
     for (int i = 0; i < n; i++) {
         if (!waddump_is_source(paths[i], NULL)) continue;
-        char name[64] = "", outp[VFS_PATH_MAX + 64], err[200] = "", shown[VFS_PATH_MAX];
+        char name[64] = "", outp[VFS_PATH_MAX + 96], err[200] = "", shown[VFS_PATH_MAX], note[96] = "";
         u64 tid = 0;
         u16 ver = 0;
         vfs_shown_path(paths[i], shown, sizeof(shown));
@@ -732,17 +802,40 @@ int waddump_paths(char **paths, int n)
             waddump_name(tid, ver, name, sizeof(name));
             snprintf(outp, sizeof(outp), "%s/%s", dir, name);
             progress_box(name, "Reading the ticket and TMD...", 0, 1);
-            rc = waddump_build(paths[i], outp, err, sizeof(err), ui_progress, name);
+            waddump_info_t inf = { 0, 0, 0, false };
+            if (per && (tid >> 32) == 0x00010005) {
+                /* <name>_split_1.wad, _2 ... until the contents run out */
+                char stem[64];
+                snprintf(stem, sizeof(stem), "%.*s", (int)(strlen(name) - 4), name);
+                int parts = 0;
+                for (int part = 1;; part++) {
+                    snprintf(outp, sizeof(outp), "%s/%s_split_%d.wad", dir, stem, part);
+                    rc = waddump_build_part(paths[i], outp, part, per, &inf, err, sizeof(err), ui_progress, name);
+                    if (rc) break;
+                    parts++;
+                }
+                if (rc == 1) rc = parts ? 0 : -1;
+                if (!rc) {
+                    snprintf(outp, sizeof(outp), "%s/%s_split_1.wad ... _%d.wad", dir, stem, parts);
+                    snprintf(note, sizeof(note), "%d WADs, %d of %d contents", parts, inf.present, inf.ncont);
+                } else if (!err[0])
+                    snprintf(err, sizeof(err), "Nothing to split: only content 0 is on the NAND");
+            } else {
+                rc = waddump_build_part(paths[i], outp, 0, 0, &inf, err, sizeof(err), ui_progress, name);
+                if (!rc && inf.present < inf.ncont)
+                    snprintf(note, sizeof(note), "%d of %d contents, the rest were never downloaded", inf.present,
+                             inf.ncont);
+            }
         }
         done++;
         if (!rc) ok++;
         if (rc)
             snprintf(last, sizeof(last), "%s: %s", shown, err);
         else
-            snprintf(last, sizeof(last), "%s\n-> %s", shown, outp);
+            snprintf(last, sizeof(last), "%s\n-> %s%s%s", shown, outp, note[0] ? "\n\n" : "", note);
         if (rl < sizeof(report) - 1)
             rl += snprintf(report + rl, sizeof(report) - rl, "%s %s: %s\n", rc ? "FAIL" : "OK  ",
-                           name[0] ? name : vfs_basename(paths[i]), rc ? err : "done");
+                           name[0] ? name : vfs_basename(paths[i]), rc ? err : note[0] ? note : "done");
         if (rl >= sizeof(report)) rl = sizeof(report) - 1;
     }
     vfs_update_space(dev);
@@ -765,6 +858,19 @@ void waddump_autotest(const char *src, const char *outp)
     FILE *lg = fopen("sd:/gmwtest.log", "a");
     if (lg) {
         fprintf(lg, "waddump %s -> %s: %s %s\n", src, outp, rc ? "FAILED" : "ok", err);
+        fclose(lg);
+    }
+}
+
+void waddump_part_autotest(const char *src, const char *outp, int part, int per)
+{
+    char err[200] = "";
+    waddump_info_t inf = { 0, 0, 0, false };
+    int rc = waddump_build_part(src, outp, part, per, &inf, err, sizeof(err), NULL, NULL);
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (lg) {
+        fprintf(lg, "waddumppart %s -> %s part %d/%d: rc=%d %d of %d present, %d written %s\n", src, outp, part, per, rc,
+                inf.present, inf.ncont, inf.written, err);
         fclose(lg);
     }
 }

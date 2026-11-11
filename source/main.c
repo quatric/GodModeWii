@@ -254,6 +254,34 @@ int main(int argc, char **argv)
                     waddump_autotest(src, dst);
                 continue;
             }
+            /* "@waddumppart <source> <out.wad> <part> <per>": one part of a DLC backup (per 0: one WAD) */
+            if (!strncmp(line, "@waddumppart ", 13)) {
+                extern void waddump_part_autotest(const char *src, const char *out, int part, int per);
+                char src[400], dst[256];
+                int part, per;
+                if (sscanf(line + 13, "%399s %255s %d %d", src, dst, &part, &per) == 4)
+                    waddump_part_autotest(src, dst, part, per);
+                continue;
+            }
+            /* "@wadsplit <wad> <dir> <per>", "@wadlayout <wad>", "@wadinstall <wad>" (to the NAND, no questions) */
+            if (!strncmp(line, "@wadsplit ", 10)) {
+                extern void wadsplit_autotest(const char *wad, const char *dir, int per);
+                char wad[256], dir[256];
+                int per;
+                if (sscanf(line + 10, "%255s %255s %d", wad, dir, &per) == 3)
+                    wadsplit_autotest(wad, dir, per);
+                continue;
+            }
+            if (!strncmp(line, "@wadlayout ", 11)) {
+                extern void wadlayout_autotest(const char *wad);
+                wadlayout_autotest(line + 11);
+                continue;
+            }
+            if (!strncmp(line, "@wadinstall ", 12)) {
+                extern void wadinstall_autotest(const char *wad);
+                wadinstall_autotest(line + 12);
+                continue;
+            }
             /* "@copy" / "@move <source> <target folder> [skip|overwrite]": a paste, logged */
             if (!strncmp(line, "@copy ", 6) || !strncmp(line, "@move ", 6)) {
                 extern void ops_autotest(const char *src, const char *dst_dir, bool cut,

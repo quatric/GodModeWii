@@ -21,7 +21,7 @@ typedef struct {
 
 typedef struct {
     bool dlc_null_key;                  /* DLC only: encrypt with a null key (older games via the Disc Channel) */
-    uint64_t parent_tid;                /* DLC only: the game it belongs to; 0 = the DLC's own ID in upper case */
+    uint64_t parent_tid;                /* DLC only: the game it belongs to; 0 = w2b_parent_tid */
 } w2b_opts_t;
 
 /* Where the files go. mkdirs makes a folder and its parents; open creates / truncates a file;
@@ -42,8 +42,31 @@ typedef struct {
     int files;                          /* .bin files written */
     char path[320];                     /* content.bin, or the DLC's folder */
     char bogus[320];                    /* the ticket + TMD WAD ("" if it couldn't be written) */
+    int missing;                        /* DLC: contents the TMD lists that weren't in the WAD */
     char err[160];
 } w2b_result_t;
+
+#define W2B_MAX_CONTENTS 512
+#define W2B_ABSENT UINT64_MAX
+
+/* Which of the TMD's contents an installable WAD holds, and where. A DLC WAD may leave contents out:
+ * one with pieces missing, or a "small" WAD from dlc-wad-splitter (the whole signed TMD, content 0 and
+ * a run of the others). Contents are found by their size and SHA-1, in TMD order. */
+typedef struct {
+    uint64_t tid;
+    uint16_t ncont, present;
+    uint64_t off[W2B_MAX_CONTENTS];     /* file offset of each content record, or W2B_ABSENT */
+} w2b_layout_t;
+
+/* How many contents the WAD holds (L filled in), or -1 with r->err. io may be NULL; only its progress
+ * is used (looking for contents in a WAD with pieces missing reads them). */
+int w2b_layout(const src_t *wad, w2b_layout_t *L, const w2b_io_t *io, w2b_result_t *r);
+
+/* Cuts a DLC WAD into small ones, as dlc-wad-splitter does: <dir>/<base>_split_<n>.wad, each holding the
+ * ticket (fakesigned when it was bound to a console), the TMD as it is, content 0 and the next `per`
+ * contents the WAD has. Contents are copied as they are and checked against the TMD. Returns how many
+ * WADs were written (r->path is the first), or -1 with r->err (a WAD being written is removed). */
+int w2b_split(const src_t *wad, const char *dir, const char *base, int per, const w2b_io_t *io, w2b_result_t *r);
 
 /* root is the card's root with its slash ("sd:/"). 0 on success; otherwise r->err says why, and
  * nothing half-written is left behind. */
@@ -58,7 +81,8 @@ bool w2b_ap_sign(const w2b_keys_t *k, const uint8_t digest[20], uint8_t r[30], u
 /* The title ID of an installable WAD; false when it isn't one. */
 bool w2b_peek(const src_t *wad, uint64_t *tid);
 
-/* "ABCD" of a title ID (non-printable bytes as '.'), and the game a DLC belongs to by default. */
+/* "ABCD" of a title ID (non-printable bytes as '.'), and the game a DLC belongs to (Rock Band 3, Guitar Hero
+ * World Tour / 5 DLC by wad2bin's list, otherwise the DLC's own ID in upper case). */
 void w2b_tid_ascii(uint64_t tid, char out[5]);
 uint64_t w2b_parent_tid(uint64_t dlc_tid);
 

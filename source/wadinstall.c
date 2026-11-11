@@ -16,6 +16,13 @@
  *     reported, with the backup's location
  *   - the System Menu is not installed here (that needs YAWM ModMii
  *     Edition's Priiloader handling), nor is boot2
+ *
+ * A DLC WAD may leave contents out: one with pieces missing, or a "small"
+ * WAD cut by dlc-wad-splitter (https://github.com/DarkMatterCore/dlc-wad-splitter),
+ * which keeps the whole signed TMD. The contents it holds are found by their
+ * SHA-1 (w2b_layout) and only those are added. ES takes a title with optional
+ * contents (type 0x4001, DLC) missing, and keeps the ones already installed,
+ * so the small WADs of one DLC can be installed one after another.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -380,6 +387,23 @@ int wad_backup_save(u64 tid, char *where, size_t wsz, u32 *files_before)
 
 /* ---------------------------------------------------------------- install */
 
+static int32_t vsrc_read(void *ctx, uint64_t off, void *buf, uint32_t len);
+static void vsrc_close(void *ctx);
+
+static void progress(const char *name, const char *what, u64 done, u64 total);
+static bool scan_progress(void *ctx, const char *what, uint64_t done, uint64_t total)
+{
+    static u64 last;
+    if (input_cancel_held()) return false;
+    u64 now = ticks_to_millisecs(gettime());
+    if (now - last < 200 && done != total) return true;
+    last = now;
+    char w[80];
+    snprintf(w, sizeof(w), "%s...  (hold B to cancel)", what);
+    progress(ctx, w, done, total);
+    return true;
+}
+
 typedef struct {
     u32 hdr_len, certs_len, crl_len, tik_len, tmd_len, data_len;
 } wadhdr;
@@ -412,6 +436,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
 
     int ret = -996;
     u8 *hb = NULL, *certs = NULL, *crl = NULL, *tik = NULL, *tmd = NULL, *buf = NULL, *map = NULL;
+    w2b_layout_t *lay = NULL;
     bool started = false;
     progress(name, "Reading WAD...", 0, 1);
 
@@ -535,6 +560,47 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         goto out;
     }
 
+    /* ---- which contents are in the WAD (a DLC WAD may leave some out) ---- */
+    if (!sd_mode) {
+        lay = malloc(sizeof(*lay));
+        if (!lay) {
+            ret = -996;
+            goto out;
+        }
+        src_t s = { vsrc_read, vsrc_close, &f, f.size };
+        w2b_io_t lio = { .ctx = (void *)name, .progress = scan_progress };
+        w2b_result_t lr;
+        progress(name, "Looking for the contents...", 0, 1);
+        if (w2b_layout(&s, lay, &lio, &lr) < 0 || lay->ncont != ncont) {
+            if (!strcmp(lr.err, "Canceled")) {
+                snprintf(msg, msz, "Canceled.");
+                ret = -998;
+                goto out;
+            }
+            /* not something the locator reads: the contents back to back, as WAD managers take them */
+            u64 p = data_off;
+            for (int i = 0; i < ncont; i++) {
+                lay->off[i] = p;
+                p += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
+            }
+            lay->present = (u16)ncont;
+        }
+        u32 map_n0 = 0;
+        u8 *map0 = load_content_map(&map_n0);
+        for (int i = 0; i < ncont; i++) {
+            const u8 *rec = tmd + W_TMD_CONTENTS + i * 0x24;
+            if (lay->off[i] != W2B_ABSENT || (be16(rec + 6) & 0x4000) || shared_present(rec, map0, map_n0))
+                continue;
+            snprintf(msg, msz,
+                     "This WAD doesn't hold content %08x (index %u), which the title needs. Only DLC contents can "
+                     "be left out of a WAD.", (unsigned)be32(rec), (unsigned)be16(rec + 4));
+            free(map0);
+            ret = ES_EINVAL;
+            goto out;
+        }
+        free(map0);
+    }
+
     /* ---- protect the save data ---- */
     char backup[VFS_PATH_MAX] = "";
     u32 files_before = 0;
@@ -565,7 +631,8 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
 
     u64 total = 0, done = 0;
     for (int i = 0; i < ncont; i++)
-        total += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
+        if (!lay || lay->off[i] != W2B_ABSENT)
+            total += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
 
     progress(name, "Installing ticket...", 0, total);
     ret = ES_AddTicket((signed_blob *)tik, h.tik_len, (signed_blob *)certs, h.certs_len,
@@ -606,13 +673,14 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         goto out;
     }
 
-    u64 pos = data_off;
     for (int i = 0; i < ncont; i++) {
         const u8 *rec = tmd + W_TMD_CONTENTS + i * 0x24;
         u32 cid = be32(rec);
         u32 len = round64((u32)be64(rec + 8));
+        if (lay->off[i] == W2B_ABSENT)               /* left out of this WAD */
+            continue;
+        u64 pos = lay->off[i];
         if (shared_present(rec, map, map_n)) {
-            pos += len;
             done += len;
             continue;
         }
@@ -669,7 +737,11 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
             snprintf(note, nsz, "Save data kept (%u file(s)). A backup is in %s",
                      (unsigned)files_before, backup);
     }
-    snprintf(msg, msz, "Installed %08x-%08x v%u.", TID_HI(tid), TID_LO(tid), (unsigned)version);
+    if (lay->present < ncont)
+        snprintf(msg, msz, "Installed %08x-%08x v%u: the %u of its %d contents in this WAD (DLC contents already on "
+                 "the NAND are kept).", TID_HI(tid), TID_LO(tid), (unsigned)version, (unsigned)lay->present, ncont);
+    else
+        snprintf(msg, msz, "Installed %08x-%08x v%u.", TID_HI(tid), TID_LO(tid), (unsigned)version);
 
 out:
     if (started)
@@ -683,6 +755,7 @@ out:
     free(tmd);
     free(buf);
     free(map);
+    free(lay);
     vfs_close(&f);
     return ret;
 }
@@ -957,6 +1030,109 @@ int wad_install_sd(char **paths, int n)
     return ok;
 }
 
+/* ---------------------------------------------------------------- split DLC WADs (dlc-wad-splitter) */
+
+bool wad_is_dlc(const char *path)
+{
+    vfs_file f;
+    uint64_t tid = 0;
+    bool ok = false;
+    if (ftype_detect(path) == FT_WAD && vfs_open_read(&f, path)) {
+        src_t s = { vsrc_read, vsrc_close, &f, f.size };
+        ok = w2b_peek(&s, &tid) && (tid >> 32) == 0x00010005;
+        vfs_close(&f);
+    }
+    return ok;
+}
+
+static bool split_progress(void *ctx, const char *what, uint64_t done, uint64_t total)
+{
+    static u64 last;
+    if (input_cancel_held()) return false;
+    u64 now = ticks_to_millisecs(gettime());
+    if (now - last < 200 && done != total) return true;
+    last = now;
+    char w[80];
+    snprintf(w, sizeof(w), "%s...  (hold B to cancel)", what);
+    progress(ctx, w, done, total);
+    return true;
+}
+
+int wad_split_paths(char **paths, int n)
+{
+    int dlcs = 0;
+    for (int i = 0; i < n; i++)
+        if (wad_is_dlc(paths[i])) dlcs++;
+    if (!dlcs) {
+        ui_message("SPLIT DLC WAD", C_YELLOW, "Only DLC WADs (title type 00010005) can be split.");
+        return 0;
+    }
+    int dev = backup_device();
+    if (dev < 0) {
+        ui_message("SPLIT DLC WAD", C_RED, "Insert a writable SD card (or USB drive) for the split WADs.");
+        return 0;
+    }
+    static const int sizes[] = { 1, 5, 10, 20, 50 };
+    const char *items[] = { "1 content per WAD", "5 contents per WAD", "10 contents per WAD", "20 contents per WAD",
+                            "50 contents per WAD" };
+    char q[600];
+    snprintf(q, sizeof(q),
+             "Split %d DLC WAD%s into small WADs, the way dlc-wad-splitter does it?\n\n"
+             "Each small WAD holds the whole TMD (still signed), content 0 and the next few contents, so it "
+             "installs on its own (to the NAND, or to the SD card with wad2bin) next to the others. The ticket "
+             "is fakesigned if it was bound to a console. They go to %sGodModeWii/wad-split/.",
+             dlcs, dlcs == 1 ? "" : "s", g_devs[dev].root);
+    if (!ui_confirm("SPLIT DLC WAD", C_CYAN, q)) return 0;
+    int r = ui_menu("CONTENTS PER SMALL WAD", items, NULL, 5, 0);
+    if (r < 0) return 0;
+
+    char dir[VFS_PATH_MAX];
+    snprintf(dir, sizeof(dir), "%sGodModeWii/wad-split", g_devs[dev].root);
+    int ok = 0, done = 0;
+    char report[1400] = "", line[VFS_PATH_MAX + 200] = "";
+    size_t rl = 0;
+    for (int i = 0; i < n; i++) {
+        if (!wad_is_dlc(paths[i])) continue;
+        const char *name = vfs_basename(paths[i]);
+        w2b_result_t res;
+        memset(&res, 0, sizeof(res));
+        int made = -1;
+        vfs_file f;
+        if (vfs_open_read(&f, paths[i])) {
+            vfs_unbuffered(&f);
+            src_t s = { vsrc_read, vsrc_close, &f, f.size };
+            uint64_t tid = 0;
+            w2b_peek(&s, &tid);
+            char base[24];
+            snprintf(base, sizeof(base), "%016llx", (unsigned long long)tid);
+            w2b_io_t io = { (void *)name, vio_mkdirs, vio_open, vio_write, vio_close, vio_remove, split_progress };
+            progress(name, "Looking for the contents...", 0, 1);
+            made = w2b_split(&s, dir, base, sizes[r], &io, &res);
+            vfs_close(&f);
+        } else
+            snprintf(res.err, sizeof(res.err), "Can't open the file");
+        done++;
+        if (made > 0) {
+            ok++;
+            snprintf(line, sizeof(line), "%s: %d small WAD%s in %s%s", name, made, made == 1 ? "" : "s", dir,
+                     res.missing ? " (contents missing from it were left out)" : "");
+        } else
+            snprintf(line, sizeof(line), "%s: %s", name, res.err);
+        if (rl < sizeof(report) - 1)
+            rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", made > 0 ? "OK  " : "FAIL", line);
+        if (rl >= sizeof(report)) rl = sizeof(report) - 1;
+    }
+    vfs_update_space(dev);
+    if (done == 1)
+        ui_message(ok ? "DLC WAD SPLIT" : "SPLIT FAILED", ok ? C_GREEN : C_RED, line);
+    else {
+        char title[48];
+        snprintf(title, sizeof(title), "SPLIT %d OF %d DLC WADS", ok, done);
+        ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
+    }
+    return ok;
+}
+
 #ifdef GMW_AUTOTEST
 /* Test builds: convert `wad` with the keys in `keyfile` (console ID, NG key, PRNG key, device
  * certificate) and log the outcome, with no questions asked. */
@@ -987,6 +1163,65 @@ void wad2bin_autotest(const char *wad, const char *keyfile, bool null_key)
     if ((lg = fopen("sd:/gmwtest.log", "a"))) {
         fprintf(lg, "wad2bin %s: %s %s files=%d bogus=%s %s\n", wad, rc ? "FAILED" : "ok", res.path, res.files,
                 res.bogus, res.err);
+        fclose(lg);
+    }
+}
+/* "@wadsplit <wad> <dir> <per>": a split, logged. */
+void wadsplit_autotest(const char *wad, const char *dir, int per)
+{
+    w2b_result_t res;
+    memset(&res, 0, sizeof(res));
+    int made = -1;
+    vfs_file f;
+    if (vfs_open_read(&f, wad)) {
+        src_t s = { vsrc_read, vsrc_close, &f, f.size };
+        uint64_t tid = 0;
+        w2b_peek(&s, &tid);
+        char base[24];
+        snprintf(base, sizeof(base), "%016llx", (unsigned long long)tid);
+        w2b_io_t io = { (void *)"test", vio_mkdirs, vio_open, vio_write, vio_close, vio_remove, NULL };
+        made = w2b_split(&s, dir, base, per, &io, &res);
+        vfs_close(&f);
+    }
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (lg) {
+        fprintf(lg, "wadsplit %s: made=%d missing=%d first=%s %s\n", wad, made, res.missing, res.path, res.err);
+        fclose(lg);
+    }
+}
+
+/* "@wadlayout <wad>": which contents a WAD holds, logged. */
+void wadlayout_autotest(const char *wad)
+{
+    w2b_layout_t *L = malloc(sizeof(*L));
+    w2b_result_t res;
+    memset(&res, 0, sizeof(res));
+    int got = -1;
+    vfs_file f;
+    if (L && vfs_open_read(&f, wad)) {
+        src_t s = { vsrc_read, vsrc_close, &f, f.size };
+        got = w2b_layout(&s, L, NULL, &res);
+        vfs_close(&f);
+    }
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (lg) {
+        fprintf(lg, "wadlayout %s: %d of %d [", wad, got, L ? L->ncont : 0);
+        for (int i = 0; L && got >= 0 && i < L->ncont; i++)
+            if (L->off[i] != W2B_ABSENT) fprintf(lg, " %d@%llx", i, (unsigned long long)L->off[i]);
+        fprintf(lg, " ] %s\n", res.err);
+        fclose(lg);
+    }
+    free(L);
+}
+
+/* "@wadinstall <wad>": a NAND install with no questions (test NANDs only), logged. */
+void wadinstall_autotest(const char *wad)
+{
+    char msg[200], note[300];
+    int r = install_one(wad, msg, sizeof(msg), note, sizeof(note), false);
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (lg) {
+        fprintf(lg, "wadinstall %s: %d %s %s\n", wad, r, msg, note);
         fclose(lg);
     }
 }

@@ -27,6 +27,20 @@ typedef bool (*waddump_progress_fn)(void *ctx, const char *what, u64 done, u64 t
 int waddump_build(const char *src, const char *out, char *err, size_t errsz, waddump_progress_fn progress,
                   void *ctx);
 
+/* The same with a choice of contents. A DLC whose pieces weren't all downloaded gives a WAD of the ones that
+ * are there (the TMD stays whole and signed; WAD managers, wad2bin and GodModeWii install such WADs).
+ * per > 0 splits a DLC the way dlc-wad-splitter does: part n (from 1) holds content 0 and the n'th `per`
+ * of the other contents on the NAND; 1 is returned (nothing written) when there is no such part.
+ * info (may be NULL) gets the counts. */
+typedef struct {
+    int ncont;                          /* contents in the TMD */
+    int present;                        /* of those, on the NAND */
+    int written;                        /* in this WAD */
+    bool dlc;
+} waddump_info_t;
+int waddump_build_part(const char *src, const char *out, int part, int per, waddump_info_t *info, char *err,
+                       size_t errsz, waddump_progress_fn progress, void *ctx);
+
 /* The file name for a title: "00010001-48414241-HABA-v2.wad". */
 void waddump_name(u64 tid, u16 version, char *out, size_t n);
 

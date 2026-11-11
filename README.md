@@ -178,11 +178,26 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   checks come from YAWM ModMii Edition. Refused: boot2 and System Menu WADs (use YAWM ModMii Edition itself, which keeps
   Priiloader), Wii IOS on vWii and the other way round, stubs over the IOS of the System Menu, EULA, region select or Homebrew
   Channel, System Menu IOS that would brick a Korean-key Wii, and titles whose IOS is missing or a stub. Needs the Konami code.
+* **Split DLC ("small" WADs):** a DLC WAD doesn't have to hold every content its TMD lists. A full DLC WAD, one with pieces
+  missing, and the small WADs [dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter) makes (the whole signed TMD,
+  content 0 and a run of the others) all install to the NAND: the contents that are there are found by their size and SHA-1 and
+  only those are added. Contents of the DLC that are already on the NAND stay, so the small WADs of one DLC can be installed one
+  after another (each as it is needed). Only optional contents (DLC, type `0x4001`) may be missing; a channel or IOS WAD with a
+  content left out is refused.
+* **Split a DLC WAD:** **A** on a DLC `.wad` → *Split DLC into small WADs*, or mark several. Each small WAD holds content 0 and the
+  next 1, 5, 10, 20 or 50 contents, the TMD as it is (still signed) and the ticket (fakesigned if it was bound to a console), as
+  dlc-wad-splitter makes them, named `<title id>_split_<n>.wad`, in `GodModeWii/wad-split/` on the SD card (or a USB drive).
+  Contents are copied as they are and checked against the TMD. Works on DLC WADs with pieces missing too, and on any DLC title
+  (dlc-wad-splitter only takes the games on its list).
 * **Install WADs to the SD card (wad2bin):** **A** on a `.wad` → *Install to SD card*, or mark several. The WAD is converted the way
   [wad2bin](https://github.com/DarkMatterCore/wad2bin) does it, with this console's own keys (read from the OTP, so start from the
   Homebrew Channel): a channel becomes `private/wii/title/<ID>/content.bin` and runs from the SD card menu (System Menu 4.0 or
   later) without taking NAND space; DLC (any title, no list of supported games) becomes `private/wii/data/<ID>/<index>.bin`,
-  encrypted with the console's key or, for older games through the Disc Channel, a null key. The ticket and TMD then go on the
+  encrypted with the console's key or, for older games through the Disc Channel, a null key. Full DLC WADs, ones with contents
+  missing and dlc-wad-splitter's small WADs all convert (each content the WAD has becomes its `<index>.bin`, so several small WADs
+  of one DLC fill the same folder). The game a DLC belongs to is written into each file: Rock Band 3's (`sZJ`…`sZM`) is `SZB`,
+  Guitar Hero: World Tour's `sYO` is `SXA`, Guitar Hero 5's `sXF`…`sXH` are `SXE`, as in wad2bin's list; any other is the DLC's
+  own ID in upper case. The ticket and TMD then go on the
   NAND (Konami code; a title that is installed already keeps what it has), and a `wad/<title id>_bogus.wad` with just those is
   left for other WAD managers. The files only work on the Wii that made them. A ticket that isn't for this console needs a System
   Menu IOS with the signing bug (a cIOS for DLC), as with wad2bin. Every content is checked against its TMD hash and both
@@ -196,8 +211,10 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   dumped from Priiloader's copy of the original (`title_or.tmd`, `1xxxxxxx.app`). The **ticket is always fakesigned**: its console
   ID and ECDH data are wiped and a Korean or vWii title key is encrypted again with the Wii common key (common key index 0), so the
   WAD installs on any Wii whose IOS has the signing bug. The **TMD is never fakesigned**: it stays exactly as Nintendo signed it.
-  Every content is checked against its TMD hash, and a title with a damaged or missing content is refused, as is DLC with pieces
-  that were never downloaded (leaving them out would mean changing the TMD). A `content.bin` is decrypted with the keys of the Wii that made it
+  Every content is checked against its TMD hash, and a title with a damaged or missing content is refused. **DLC** is asked about
+  first: *one WAD* holds every part that was downloaded (pieces that never were are left out and the TMD stays whole, which is
+  what WAD managers, wad2bin and GodModeWii take), or *split* makes dlc-wad-splitter style small WADs of content 0 and the next 1,
+  5, 10, 20 or 50 downloaded contents each, named `<title id>-<ID>-v<version>_split_<n>.wad`. A `content.bin` is decrypted with the keys of the Wii that made it
   (found by the console ID in its header): this console's own, or, as with YABDM, that Wii's BootMii `keys.bin` (or `otp.bin` /
   `nand.bin`) next to the `content.bin`, at the root of its drive or at the root of the SD card. Its ticket comes from this
   console's NAND, or, for a title that isn't installed here, from `<title id>.tik` / `<hi>-<lo>.tik` next to the `content.bin` or
@@ -610,6 +627,7 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
   Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
   OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
+* **[dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter)** by DarkMatterCore — the split DLC WAD layout (the TMD kept as it is, content 0 and a run of the other contents in each WAD, `<title id>_split_<n>.wad`, the ticket fakesigned when it was bound to a console) and wad2bin's way of finding the contents a partial DLC WAD holds. `w2b_split` and the content locator in `source/wad2bin.c` are GodModeWii's own code.
 * **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader System Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
 * **[nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios)** by thepikachugamer (GPL-2.0; with mkwcat's `/dev/sha` exploit) — the NAND backup: its IOS stages (`nanddumper/`, prebuilt in `res/nd_*.bin`), the `/dev/flash` FS patch, the page / bad block reading, the `keys.bin` and `setting.txt` handling and the file layout, ported in `source/nanddump.c`.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
