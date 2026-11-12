@@ -4,9 +4,8 @@
  * Inspired by ftpii (Joseph Jordan and contributors), rewritten around a
  * single-threaded, non-blocking state machine with a lot of guard rails:
  *
- *  - login is required by default; the password is random per run and shown on
- *    the console screen, failed logins are throttled and lock the door. It can
- *    be switched off on the server screen, for that run only
+ *  - no user name or password: any USER / PASS is accepted (clients still send
+ *    them), the LAN-only check below is the gate
  *  - only private-network / link-local peers are accepted
  *  - PORT / PASV data connections must come from / go to the control peer
  *    (no FTP bounce, no data-connection hijacking)
@@ -50,12 +49,7 @@
 #define CTL_IDLE_MS     (5 * 60 * 1000)
 #define DATA_IDLE_MS    (30 * 1000)
 #define DATA_WAIT_MS    (20 * 1000)
-#define LOGIN_BAD_MAX   3
-#define GLOBAL_BAD_MAX  8
-#define GLOBAL_WINDOW   (60 * 1000)
-#define GLOBAL_LOCK     (60 * 1000)
 #define IOS_NONBLOCK    0x04
-#define FTP_USER        "godmode"
 
 enum { T_NONE, T_ACCEPT, T_CONNECT, T_SEND_FILE, T_RECV_FILE, T_SEND_LIST, T_LINGER };
 enum { OP_RETR, OP_STOR, OP_LIST, OP_NLST, OP_MLSD };
@@ -69,8 +63,6 @@ typedef struct {
     bool overflow;
     char out[OUT_MAX];
     int outlen;
-    bool user_ok, authed;
-    int bad;
     u64 last;
     char cwd[VFS_PATH_MAX];           /* virtual, canonical */
 
@@ -103,12 +95,8 @@ static int g_port;
 static bool g_rw;
 static int g_install;                 /* FTP_INSTALL_*: unpack uploaded archives */
 static char g_pend[VFS_PATH_MAX];     /* archive waiting to be installed */
-static char g_pass[10];
-static bool g_open_login;             /* no user name or password needed (switched on the screen) */
 static bool net_ready;
 
-static int g_fail_count;
-static u64 g_fail_start, g_block_until;
 
 /* ---------------------------------------------------------------- log */
 
@@ -858,31 +846,6 @@ static void do_port(sess_t *s, const char *arg)
     reply(s, "200 PORT command successful");
 }
 
-static bool pass_ok(const char *given)
-{
-    size_t gl = strlen(given), pl = strlen(g_pass);
-    unsigned diff = gl ^ pl;
-    for (size_t i = 0; i < pl; i++)
-        diff |= (unsigned char)g_pass[i] ^ (unsigned char)(i < gl ? given[i] : 0);
-    return diff == 0;
-}
-
-static void note_login_failure(sess_t *s)
-{
-    u64 t = now_ms();
-    s->bad++;
-    if (t - g_fail_start > GLOBAL_WINDOW) {
-        g_fail_start = t;
-        g_fail_count = 0;
-    }
-    if (++g_fail_count >= GLOBAL_BAD_MAX) {
-        g_block_until = t + GLOBAL_LOCK;
-        ftp_log("Too many bad logins - refusing clients for 60s");
-    }
-    ftp_log("Bad login from %u.%u.%u.%u", s->peer_ip >> 24, (s->peer_ip >> 16) & 255,
-            (s->peer_ip >> 8) & 255, s->peer_ip & 255);
-}
-
 static void run_command(sess_t *s, char *line)
 {
     char *arg = line;
@@ -936,41 +899,8 @@ static void run_command(sess_t *s, char *line)
         return;
     }
 
-    if (g_open_login && (!strcmp(cmd, "USER") || !strcmp(cmd, "PASS"))) {
+    if (!strcmp(cmd, "USER") || !strcmp(cmd, "PASS")) {
         reply(s, "230 Logged in, no login needed. %s", g_rw ? "Read/write." : "Read-only.");
-        return;
-    }
-
-    if (!strcmp(cmd, "USER")) {
-        s->authed = false;
-        s->user_ok = !strcmp(arg, FTP_USER);
-        reply(s, "331 Password required");
-        return;
-    }
-
-    if (!strcmp(cmd, "PASS")) {
-        if (!s->user_ok) {
-            reply(s, "503 Send USER first");
-            return;
-        }
-        if (pass_ok(arg)) {
-            s->authed = true;
-            ftp_log("Login ok");
-            reply(s, "230 Logged in. %s", g_rw ? "Read/write." : "Read-only.");
-        } else {
-            note_login_failure(s);
-            s->user_ok = false;
-            reply(s, "530 Login incorrect");
-            if (s->bad >= LOGIN_BAD_MAX) {
-                reply(s, "421 Too many failed logins");
-                s->quit = true;
-            }
-        }
-        return;
-    }
-
-    if (!s->authed && !g_open_login) {
-        reply(s, "530 Please log in with USER and PASS");
         return;
     }
 
@@ -1268,11 +1198,7 @@ static void sess_open(sess_t *s, s32 c, u32 ip)
     s->peer_ip = ip;
     s->last = now_ms();
     snprintf(s->cwd, sizeof(s->cwd), "/");
-    if (g_open_login)
-        reply(s, "220 GodModeWii FTP ready. No user name or password needed.");
-    else
-        reply(s, "220 GodModeWii FTP ready. Log in with USER %s and the password shown on the Wii.",
-              FTP_USER);
+    reply(s, "220 GodModeWii FTP ready. No user name or password needed.");
 }
 
 static void accept_new(void)
@@ -1288,7 +1214,6 @@ static void accept_new(void)
 
         const char *deny = NULL;
         if (!lan_peer(a.sin_addr.s_addr)) deny = "421 Local network clients only\r\n";
-        else if (now_ms() < g_block_until) deny = "421 Temporarily locked after failed logins\r\n";
         sess_t *slot = NULL;
         for (int i = 0; i < MAX_SESS && !deny; i++)
             if (!S[i].used) {
@@ -1441,14 +1366,7 @@ static void draw(u32 ip, bool full)
     ui_color(C_WHITE, true);
     ui_field(4, 1, cols - 2, "Address :  ftp://%u.%u.%u.%u:%d", (ip >> 24) & 255, (ip >> 16) & 255,
              (ip >> 8) & 255, ip & 255, g_port);
-    if (g_open_login) {
-        ui_color(C_YELLOW, true);
-        ui_field(5, 1, cols - 2, "Login   :  OFF - no user name or password needed");
-        ui_field(6, 1, cols - 2, "           anyone on your network can connect");
-    } else {
-        ui_field(5, 1, cols - 2, "User    :  %s", FTP_USER);
-        ui_field(6, 1, cols - 2, "Password:  %s", g_pass);
-    }
+    ui_field(5, 1, cols - 2, "Login   :  none - any user name and password");
     ui_color(g_rw ? C_YELLOW : C_CYAN, true);
     ui_field(7, 1, cols - 2, "Mode    :  %s",
              g_rw ? "READ / WRITE (NAND still needs the Konami unlock)" : "READ-ONLY");
@@ -1480,10 +1398,8 @@ static void draw(u32 ip, bool full)
             ui_fmt_size(sz, sizeof(sz), s->t_bytes * 1000 / el);
             snprintf(tr, sizeof(tr), "%s %s/s", s->op == OP_STOR ? "up" : "down", sz);
         }
-        bool in = s->authed || g_open_login;
-        ui_color(in ? C_WHITE : C_YELLOW, in);
-        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s,
-                 s->authed ? "logged in" : in ? "open" : "login...", tr,
+        ui_color(C_WHITE, true);
+        ui_field(row++, 2, cols - 3, "%-15s %-9s %-14s %s", ip_s, "open", tr,
                  s->ts >= T_SEND_FILE ? s->t_name : "");
         ui_reset();
     }
@@ -1497,20 +1413,11 @@ static void draw(u32 ip, bool full)
             ui_field(logrow + i, 2, cols - 3, "%s", logbuf[idx % LOG_LINES]);
     }
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "1: login on/off    B / HOME: stop the server");
+    ui_field(rows - 2, 1, cols - 2, "B / HOME: stop the server");
     ui_reset();
 }
 
 /* ---------------------------------------------------------------- entry */
-
-static void gen_password(void)
-{
-    static const char set[] = "abcdefghjkmnpqrstuvwxyz23456789";
-    srand((unsigned)(gettime() ^ (gettime() >> 32)));
-    for (int i = 0; i < 8; i++)
-        g_pass[i] = set[rand() % (sizeof(set) - 1)];
-    g_pass[8] = '\0';
-}
 
 /* libogc's net_init() sleeps forever if a start-up is already running (the update check's),
  * so start it asynchronously and let B leave; the start-up carries on in the background. */
@@ -1575,12 +1482,8 @@ bool ftp_run(bool read_write, int install_mode)
     }
 
     g_rw = read_write || install_mode;
-    g_open_login = false;
     g_install = install_mode;
     g_pend[0] = '\0';
-    gen_password();
-    g_fail_count = 0;
-    g_block_until = 0;
     log_n = 0;
     for (int i = 0; i < MAX_SESS; i++) {
         memset(&S[i], 0, sizeof(S[i]));
@@ -1611,12 +1514,6 @@ bool ftp_run(bool read_write, int install_mode)
         }
 
         u32 btn = progress ? input_poll_nowait() : DetectInput(IN_DOWN);
-        if (btn & WPAD_BUTTON_1) {
-            g_open_login = !g_open_login;
-            ftp_log(g_open_login ? "Login off: anyone on the network can connect"
-                                 : "Login required again");
-            last_draw = 0;
-        }
         if (btn & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) {
             bool busy = false;
             for (int i = 0; i < MAX_SESS; i++)

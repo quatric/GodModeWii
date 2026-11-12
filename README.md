@@ -350,13 +350,11 @@ All three servers only accept computers on your local network, and speak plain, 
 
 ### FTP server
 
-HOME → *FTP server (read-only)* or *(read/write)*. The screen shows the address, the user name (`godmode`) and a fresh random
-password. Every mounted drive is a folder (`/sd`, `/usb1`, `/nand`, `/disc` …).
+HOME → *FTP server (read-only)* or *(read/write)*. The screen shows the address; there is no user name or password (any is accepted). Every mounted drive is a folder (`/sd`, `/usb1`, `/nand`, `/disc` …).
 
 It is built to be harder to break and abuse than ftpii:
 
-* **Login required**, random password per run; failed logins are throttled and a burst locks the server for a minute.
-  **1** on the server screen turns login off (anyone on your network can then connect) and on again.
+* **No password:** only computers on your local network can connect, so run it on a network you trust.
 * **No FTP bounce:** `PORT` must point back at the client (port ≥ 1024), and passive connections must come from the client.
 * **Sandboxed paths:** `..` tricks, odd characters and unmounted drives go nowhere.
 * **Read-only by default**; the SEEPROM and disc are always read-only.
