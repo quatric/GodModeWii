@@ -67,13 +67,48 @@ Press **A** on a file and the viewer is chosen by **what is inside the file**, n
 The viewers only look and listen. Nothing is converted or repacked (that's [nintoolbox](https://github.com/quatric/nintoolbox)'s
 job). The full list, with each viewer's buttons, is in [docs/FORMATS.md](docs/FORMATS.md).
 
-## More features
+## Features
 
-Copy / cut / paste with progress, multi-select, rename, disk usage, and text and hex editors. WAD install, split and backup,
-save export and import, theme installing, a NAND backup tool, and a few extras in the HOME menu: Miis, sketchpad, voice memos,
-clock, alarm, calculator and themes. See [docs/FEATURES.md](docs/FEATURES.md).
+**Files and folders**
 
-Network: an **FTP server**, an **FTP install server** for apps and WADs, and **Wiiload**. See [docs/NETWORK.md](docs/NETWORK.md).
+* Copy, cut, paste and delete between any writable drives, with progress, speed, overwrite / skip prompts and **hold B to cancel**.
+* Multi-select, select all / invert, rename, new folder, new file, folder size and info.
+* Disk usage: a folder's entries by total size, with a share bar.
+* Text viewer, hex viewer, and in-place editors (*Edit as text*, *Edit as hex*).
+* Copying from a disc carries on past read errors and lists them.
+
+**Installing and launching**
+
+* Install WADs to the NAND, to an emulated NAND (neek2o, uneek, WiiFlow, Dolphin layout) or to the SD card (wad2bin, including DLC
+  with the null key for older games like Rock Band 2). Brick checks come from YAWM ModMii Edition.
+* Install DLC WADs with pieces missing, and split DLC into small WADs, one content (a song) each.
+* Install Wii Menu themes (`.csm`, `.mym`) with backups and the csm-installer checks.
+* Launch homebrew (`.dol`, `.elf`) and boot a Wii game disc with TinyLoad.
+* Save data is never deleted, and is backed up before a title is installed over.
+
+**Backups**
+
+* Back up installed titles as WADs, the way YABDM does, or a `content.bin` from the SD card.
+* Export all saves as folders or `data.bin`, and import a `data.bin`.
+* Back up the whole NAND (BootMii-format `nand.bin`) or just the console keys, with no BootMii needed.
+
+**Viewing and playing**
+
+* Archives, disc images, disks and partitions open like folders.
+* Images, 3D models with animations, banners and layouts, Miis, text and video.
+* Audio, tracker modules, MIDI and game sequences, with fast-forward and rewind.
+
+**Network**
+
+* FTP server (read-only or read / write), FTP install server for apps and WADs, and Wiiload. See
+  [docs/NETWORK.md](docs/NETWORK.md).
+
+**HOME menu extras**
+
+* Miis export, sketchpad, voice memos, clock and calendar, alarm clock with a sleep noise, calculator, colour themes, sound
+  effects and the disc slot light.
+
+The details of each are in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Controls
 
