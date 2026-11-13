@@ -1130,6 +1130,409 @@ int wad_split_paths(char **paths, int n)
     return ok;
 }
 
+/* ---------------------------------------------------------------- emulated NAND */
+
+/* An emulated NAND is the NAND's folders on the SD card or a USB drive, the way neek2o, uneek, WiiFlow and
+ * Dolphin keep one: title/<hi>/<lo>/content/title.tmd and <cid>.app (decrypted), ticket/<hi>/<lo>.tik,
+ * shared1/<n>.app with shared1/content.map, and sys/uid.sys listing the titles. */
+
+static bool emu_load(const char *path, u8 **out, u32 *len, u32 extra)
+{
+    *out = NULL;
+    *len = 0;
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return true;                  /* not there yet: empty */
+    bool ok = f.size < META_MAX * 8;
+    u8 *b = ok ? memalign(32, (size_t)((f.size + extra + 31) & ~31ull)) : NULL;
+    if (b && f.size) ok = read_at(&f, 0, b, (u32)f.size);
+    else ok = b != NULL;
+    u32 n = (u32)f.size;
+    vfs_close(&f);
+    if (!ok) {
+        free(b);
+        return false;
+    }
+    *out = b;
+    *len = n;
+    return true;
+}
+
+static bool emu_save(const char *path, const void *data, u32 len)
+{
+    vfs_file f;
+    if (!vfs_open_write(&f, path)) return false;
+    vfs_unbuffered(&f);
+    u8 *wb = memalign(32, CHUNK);
+    bool ok = wb != NULL;
+    for (u32 done = 0; ok && done < len;) {
+        u32 k = len - done > CHUNK ? CHUNK : len - done;
+        memcpy(wb, (const u8 *)data + done, k);
+        ok = vfs_write(&f, wb, k) == (s32)k;
+        done += k;
+    }
+    free(wb);
+    return vfs_close_checked(&f) && ok;
+}
+
+/* sys/uid.sys: a 12-byte record (title ID, 2 bytes of padding, UID) for each title ever installed. */
+static bool emu_uid(const char *root, u64 tid)
+{
+    char path[VFS_PATH_MAX];
+    snprintf(path, sizeof(path), "%ssys/uid.sys", root);
+    u8 *b;
+    u32 len;
+    if (!emu_load(path, &b, &len, 12)) return false;
+    if (len % 12) len -= len % 12;
+    for (u32 o = 0; o + 12 <= len; o += 12)
+        if (be64(b + o) == tid) {
+            free(b);
+            return true;
+        }
+    if (!b && !(b = memalign(32, 32))) return false;
+    u32 uid = 0x1000 + len / 12;
+    memset(b + len, 0, 12);
+    b[len] = (u8)(tid >> 56), b[len + 1] = (u8)(tid >> 48), b[len + 2] = (u8)(tid >> 40),
+    b[len + 3] = (u8)(tid >> 32), b[len + 4] = (u8)(tid >> 24), b[len + 5] = (u8)(tid >> 16),
+    b[len + 6] = (u8)(tid >> 8), b[len + 7] = (u8)tid;
+    b[len + 10] = (u8)(uid >> 8);
+    b[len + 11] = (u8)uid;
+    bool ok = emu_save(path, b, len + 12);
+    free(b);
+    return ok;
+}
+
+/* One WAD into the emulated NAND at `root` ("sd:/nands/emunand/"). 0 on success; `msg` says what happened. */
+static int emu_install_one(const char *path, const char *root, char *msg, size_t msz)
+{
+    const char *name = vfs_basename(path);
+    msg[0] = '\0';
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) {
+        snprintf(msg, msz, "Can't open the file.");
+        return -996;
+    }
+    vfs_unbuffered(&f);
+    int ret = -996;
+    u8 *hb = NULL, *certs = NULL, *tik = NULL, *tmd = NULL, *buf = NULL, *map = NULL;
+    w2b_layout_t *lay = NULL;
+    char partial[VFS_PATH_MAX] = "";
+    progress(name, "Reading WAD...", 0, 1);
+
+    hb = read_blob(&f, 0, 0x20);
+    if (!hb) goto out;
+    wadhdr h = { be32(hb), be32(hb + 8), be32(hb + 0xC), be32(hb + 0x10), be32(hb + 0x14), be32(hb + 0x18) };
+    if (h.hdr_len != 0x20 || be16(hb + 4) != 0x4973 || be16(hb + 6) != 0) {
+        snprintf(msg, msz, "This isn't an installable WAD (only \"Is\" type WADs are).");
+        goto out;
+    }
+    u64 off = round64(h.hdr_len);
+    certs = read_blob(&f, off, h.certs_len);
+    off += round64(h.certs_len) + (h.crl_len ? round64(h.crl_len) : 0);
+    tik = read_blob(&f, off, h.tik_len);
+    off += round64(h.tik_len);
+    tmd = read_blob(&f, off, h.tmd_len);
+    off += round64(h.tmd_len);
+    u64 data_off = off;
+    if (!certs || !tik || !tmd || h.tik_len < 0x2A4 || h.tmd_len < W_TMD_CONTENTS || be32(tik) != 0x00010001 ||
+        be32(tmd) != 0x00010001) {
+        snprintf(msg, msz, "The WAD is damaged or uses an unsupported signature type.");
+        goto out;
+    }
+    int ncont = be16(tmd + W_TMD_NCONT);
+    if (W_TMD_CONTENTS + (u32)ncont * 0x24 > h.tmd_len) goto out;
+    u64 tid = be64(tik + W_TIK_TID);
+    if (tid != be64(tmd + W_TMD_TID)) {
+        snprintf(msg, msz, "The ticket and the TMD are for different titles.");
+        goto out;
+    }
+    if (tid == TID(1, 1)) {
+        snprintf(msg, msz, "This is boot2, which has no place in an emulated NAND.");
+        goto out;
+    }
+
+    /* the title key, to decrypt the contents (an emulated NAND keeps them decrypted) */
+    u8 ck[16], tk[16], iv[16];
+    if (!arc_common_key(tik[W_TIK_CKIDX], ck)) {
+        snprintf(msg, msz, "The common key this ticket needs isn't available.");
+        goto out;
+    }
+    memset(iv, 0, 16);
+    memcpy(iv, tik + W_TIK_TID, 8);
+    aes128_t c;
+    aes128_init_dec(&c, ck);
+    aes128_cbc_decrypt(&c, iv, tik + W_TIK_KEY, tk, 16);
+    aes128_init_dec(&c, tk);
+    memset(tk, 0, 16);
+    memset(ck, 0, 16);
+
+    /* which contents the WAD holds (a DLC WAD may leave some out) */
+    lay = malloc(sizeof(*lay));
+    if (!lay) goto out;
+    {
+        src_t s = { vsrc_read, vsrc_close, &f, f.size };
+        w2b_io_t lio = { .ctx = (void *)name, .progress = scan_progress };
+        w2b_result_t lr;
+        progress(name, "Looking for the contents...", 0, 1);
+        if (w2b_layout(&s, lay, &lio, &lr) < 0 || lay->ncont != ncont) {
+            if (!strcmp(lr.err, "Canceled")) {
+                snprintf(msg, msz, "Canceled.");
+                ret = -998;
+                goto out;
+            }
+            u64 p = data_off;
+            for (int i = 0; i < ncont; i++) {
+                lay->off[i] = p;
+                p += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
+            }
+            lay->present = (u16)ncont;
+        }
+    }
+    for (int i = 0; i < ncont; i++) {
+        const u8 *rec = tmd + W_TMD_CONTENTS + i * 0x24;
+        if (lay->off[i] == W2B_ABSENT && !(be16(rec + 6) & 0x4000)) {
+            snprintf(msg, msz, "This WAD doesn't hold content %08x, which the title needs. Only DLC contents can "
+                     "be left out of a WAD.", (unsigned)be32(rec));
+            goto out;
+        }
+    }
+
+    char dir[VFS_PATH_MAX], file[VFS_PATH_MAX];
+    snprintf(dir, sizeof(dir), "%stitle/%08x/%08x/content", root, TID_HI(tid), TID_LO(tid));
+    snprintf(file, sizeof(file), "%stitle/%08x/%08x/data", root, TID_HI(tid), TID_LO(tid));
+    bool ok = mkdirs(dir) && mkdirs(file);
+    static const char *const base[] = { "sys", "shared1", "import", "tmp", "ticket", "meta" };
+    for (int i = 0; ok && i < 6; i++) {
+        snprintf(file, sizeof(file), "%s%s", root, base[i]);
+        ok = mkdirs(file);
+    }
+    snprintf(file, sizeof(file), "%sticket/%08x", root, TID_HI(tid));
+    ok = ok && mkdirs(file);
+    if (!ok) {
+        snprintf(msg, msz, "Can't create the folders in %s. Is the drive writable?", root);
+        goto out;
+    }
+
+    u32 map_n = 0, map_len = 0;
+    snprintf(file, sizeof(file), "%sshared1/content.map", root);
+    if (!emu_load(file, &map, &map_len, 28 * (u32)ncont) || (map_len % 28)) {
+        snprintf(msg, msz, "The emulated NAND's shared1/content.map is damaged.");
+        goto out;
+    }
+    if (!map && !(map = memalign(32, 28 * (size_t)ncont + 32))) goto out;
+    map_n = map_len / 28;
+    bool map_dirty = false;
+
+    u64 total = 0, done = 0;
+    for (int i = 0; i < ncont; i++)
+        if (lay->off[i] != W2B_ABSENT) total += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
+    buf = memalign(32, CHUNK);
+    if (!buf) goto out;
+
+    for (int i = 0; i < ncont; i++) {
+        const u8 *rec = tmd + W_TMD_CONTENTS + i * 0x24;
+        u32 cid = be32(rec), size = (u32)be64(rec + 8), len = round64(size);
+        if (lay->off[i] == W2B_ABSENT) continue;
+        bool shared = (be16(rec + 6) & 0x8000) != 0;
+        if (shared) {
+            u32 k;
+            for (k = 0; k < map_n; k++)
+                if (!memcmp(map + k * 28 + 8, rec + 0x10, 20)) break;
+            char sn[9];
+            if (k < map_n) {
+                memcpy(sn, map + k * 28, 8);
+                sn[8] = 0;
+                snprintf(file, sizeof(file), "%sshared1/%s.app", root, sn);
+                bool is_dir;
+                if (vfs_stat(file, &is_dir, NULL)) {            /* already there */
+                    done += len;
+                    continue;
+                }
+            } else {
+                snprintf(sn, sizeof(sn), "%08x", (unsigned)map_n);
+                memcpy(map + map_n * 28, sn, 8);
+                memcpy(map + map_n * 28 + 8, rec + 0x10, 20);
+                map_n++;
+                map_dirty = true;
+                snprintf(file, sizeof(file), "%sshared1/%s.app", root, sn);
+            }
+        } else
+            snprintf(file, sizeof(file), "%s/%08x.app", dir, (unsigned)cid);
+
+        char what[64];
+        snprintf(what, sizeof(what), "Content %d of %d (%08x)...", i + 1, ncont, (unsigned)cid);
+        progress(name, what, done, total);
+        vfs_file o;
+        if (!vfs_open_write(&o, file)) {
+            snprintf(msg, msz, "Can't write %08x.app. Is the drive full or read-only?", (unsigned)cid);
+            goto out;
+        }
+        vfs_unbuffered(&o);
+        snprintf(partial, sizeof(partial), "%s", file);
+        memset(iv, 0, 16);
+        iv[0] = (u8)(be16(rec + 4) >> 8);
+        iv[1] = (u8)be16(rec + 4);
+        sha1_t sh;
+        sha1_init(&sh);
+        u64 pos = lay->off[i];
+        bool good = true;
+        u32 left = size;
+        for (u32 idx = 0; good && idx < len;) {
+            u32 n = len - idx > CHUNK ? CHUNK : len - idx;
+            u32 data16 = (size + 15) & ~15u;                    /* the 16-byte blocks that hold data */
+            u32 dn = idx >= data16 ? 0 : data16 - idx < n ? data16 - idx : n;
+            good = read_at(&f, pos, buf, n);
+            u8 next[16];
+            if (good && dn) {
+                memcpy(next, buf + dn - 16, 16);
+                aes128_cbc_decrypt(&c, iv, buf, buf, dn);
+                memcpy(iv, next, 16);
+                u32 w = left < dn ? left : dn;
+                sha1_update(&sh, buf, w);
+                good = vfs_write(&o, buf, w) == (s32)w;
+                left -= w;
+            }
+            idx += n;
+            pos += n;
+            done += n;
+            if ((idx & 0x3FFFF) == 0) progress(name, what, done, total);
+        }
+        good = vfs_close_checked(&o) && good;
+        u8 dg[20];
+        sha1_final(&sh, dg);
+        if (!good || left || memcmp(dg, rec + 0x10, 20)) {
+            vfs_remove(file, false);
+            partial[0] = '\0';
+            snprintf(msg, msz, good && !left ? "Content %08x doesn't match its hash in the TMD." :
+                     "Writing content %08x failed. Is the drive full?", (unsigned)cid);
+            goto out;
+        }
+        partial[0] = '\0';
+    }
+
+    if (map_dirty) {
+        snprintf(file, sizeof(file), "%sshared1/content.map", root);
+        if (!emu_save(file, map, map_n * 28)) goto out;
+    }
+    progress(name, "Writing the ticket and TMD...", total, total);
+    snprintf(file, sizeof(file), "%s/title.tmd", dir);
+    if (!emu_save(file, tmd, h.tmd_len)) goto out;
+    snprintf(file, sizeof(file), "%sticket/%08x/%08x.tik", root, TID_HI(tid), TID_LO(tid));
+    if (!emu_save(file, tik, h.tik_len)) goto out;
+    if (!emu_uid(root, tid)) goto out;
+    if (lay->present < ncont)
+        snprintf(msg, msz, "Installed %08x-%08x v%u: the %u of its %d contents in this WAD.", TID_HI(tid),
+                 TID_LO(tid), (unsigned)be16(tmd + W_TMD_VERSION), (unsigned)lay->present, ncont);
+    else
+        snprintf(msg, msz, "Installed %08x-%08x v%u.", TID_HI(tid), TID_LO(tid),
+                 (unsigned)be16(tmd + W_TMD_VERSION));
+    ret = 0;
+
+out:
+    if (partial[0]) vfs_remove(partial, false);
+    if (ret && !msg[0]) snprintf(msg, msz, "The install failed (is the drive full or read-only?).");
+    memset(&c, 0, sizeof(c));
+    free(hb);
+    free(certs);
+    free(tik);
+    free(tmd);
+    free(buf);
+    free(map);
+    free(lay);
+    vfs_close(&f);
+    return ret;
+}
+
+/* Which emulated NAND: the ones found on the SD card and USB drives (a folder in nands/, or emunand/, nand/),
+ * or a new one in nands/emunand/. */
+static bool pick_emunand(char *root, size_t rsz)
+{
+    enum { MAXC = 16 };
+    static char cand[MAXC][VFS_PATH_MAX];
+    static char label[MAXC][VFS_PATH_MAX + 16];
+    const char *items[MAXC];
+    int n = 0;
+    for (int d = 0; d < DEV_COUNT && n < MAXC; d++) {
+        if (!g_devs[d].mounted || vfs_is_virtual(d) || vfs_is_readonly(g_devs[d].root)) continue;
+        bool is_dir;
+        char p[VFS_PATH_MAX];
+        static const char *const known[] = { "emunand", "nand" };
+        for (int k = 0; k < 2 && n < MAXC; k++) {
+            snprintf(p, sizeof(p), "%s%s", g_devs[d].root, known[k]);
+            if (vfs_stat(p, &is_dir, NULL) && is_dir) snprintf(cand[n++], VFS_PATH_MAX, "%s/", p);
+        }
+        vfs_entry *list;
+        int cnt;
+        snprintf(p, sizeof(p), "%snands", g_devs[d].root);
+        if (vfs_list_visible(p, &list, &cnt)) {
+            for (int i = 0; i < cnt && n < MAXC - 1; i++)
+                if (list[i].is_dir) snprintf(cand[n++], VFS_PATH_MAX, "%s/%s/", p, list[i].name);
+            free(list);
+        }
+        if (n < MAXC) snprintf(cand[n++], VFS_PATH_MAX, "%snands/emunand/", g_devs[d].root);
+    }
+    if (!n) {
+        ui_message("EMULATED NAND", C_RED, "Insert a writable SD card (or USB drive) for the emulated NAND.");
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        bool is_dir;
+        char p[VFS_PATH_MAX];
+        snprintf(p, sizeof(p), "%s", cand[i]);
+        p[strlen(p) - 1] = '\0';
+        snprintf(label[i], sizeof(label[i]), "%s%s", cand[i], vfs_stat(p, &is_dir, NULL) ? "" : "  (new)");
+        items[i] = label[i];
+    }
+    int r = ui_menu("EMULATED NAND", items, NULL, n, 0);
+    if (r < 0) return false;
+    snprintf(root, rsz, "%s", cand[r]);
+    return true;
+}
+
+int wad_install_emunand(char **paths, int n)
+{
+    int wads = 0;
+    for (int i = 0; i < n; i++)
+        if (ftype_detect(paths[i]) == FT_WAD) wads++;
+    if (!wads) {
+        ui_message("INSTALL TO EMUNAND", C_YELLOW, "Select one or more .wad files to install.");
+        return 0;
+    }
+    char root[VFS_PATH_MAX];
+    if (!pick_emunand(root, sizeof(root))) return 0;
+    char q[500];
+    snprintf(q, sizeof(q),
+             "Install %d WAD%s into the emulated NAND at %s?\n\nThe contents are written decrypted, the way "
+             "neek2o, uneek, WiiFlow and Dolphin read them, with the ticket, the TMD and sys/uid.sys. Save data "
+             "in it is kept. The real NAND is not touched.",
+             wads, wads == 1 ? "" : "s", root);
+    if (!ui_confirm("INSTALL TO EMUNAND", C_YELLOW, q)) return 0;
+
+    int ok = 0, done = 0;
+    char report[1400] = "", line[VFS_PATH_MAX + 300] = "";
+    size_t rl = 0;
+    for (int i = 0; i < n; i++) {
+        if (ftype_detect(paths[i]) != FT_WAD) continue;
+        char msg[260];
+        int rc = emu_install_one(paths[i], root, msg, sizeof(msg));
+        done++;
+        if (!rc) ok++;
+        snprintf(line, sizeof(line), "%s: %s", vfs_basename(paths[i]), msg);
+        if (rl < sizeof(report) - 1) rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", rc ? "FAIL" : "OK  ", line);
+        if (rl >= sizeof(report)) rl = sizeof(report) - 1;
+        if (rc == -998) break;                                  /* canceled */
+    }
+    int dev = vfs_dev_of(root);
+    if (dev >= 0) vfs_update_space(dev);
+    if (done == 1) {
+        ui_message(ok ? "INSTALLED TO EMUNAND" : "EMUNAND INSTALL FAILED", ok ? C_GREEN : C_RED, line);
+    } else {
+        char title[48];
+        snprintf(title, sizeof(title), "INSTALLED %d OF %d TO EMUNAND", ok, done);
+        ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
+    }
+    return ok;
+}
+
 #ifdef GMW_AUTOTEST
 /* Test builds: convert `wad` with the keys in `keyfile` (console ID, NG key, PRNG key, device
  * certificate) and log the outcome, with no questions asked. */

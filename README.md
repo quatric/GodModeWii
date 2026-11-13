@@ -189,6 +189,12 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   dlc-wad-splitter makes them, named `<title id>_split_<n>.wad`, in `GodModeWii/wad-split/` on the SD card (or a USB drive).
   Contents are copied as they are and checked against the TMD. Works on DLC WADs with pieces missing too, and on any DLC title
   (dlc-wad-splitter only takes the games on its list).
+* **Install WADs to an emulated NAND:** **A** on a `.wad` → *Install to emulated NAND*, or mark several. Pick an emunand found on the SD
+  card or a USB drive (a folder in `nands/`, or `emunand/`, `nand/`) or a new one in `nands/emunand/`. The contents are decrypted
+  with the ticket's title key, checked against the TMD, and written as `title/<hi>/<lo>/content/<id>.app` (shared contents to
+  `shared1/` and `content.map`), with `title.tmd`, `ticket/<hi>/<lo>.tik` and the `sys/uid.sys` entry, the layout neek2o, uneek,
+  WiiFlow and Dolphin read. DLC WADs with pieces missing, and the small ones from the split, go in one after another. Save data in
+  the emunand is kept; the real NAND isn't touched.
 * **Install WADs to the SD card (wad2bin):** **A** on a `.wad` → *Install to SD card*, or mark several. The WAD is converted the way
   [wad2bin](https://github.com/DarkMatterCore/wad2bin) does it, with this console's own keys (read from the OTP, so start from the
   Homebrew Channel): a channel becomes `private/wii/title/<ID>/content.bin` and runs from the SD card menu (System Menu 4.0 or

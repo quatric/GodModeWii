@@ -19,6 +19,10 @@ int wad_install_paths(char **paths, int n);
  * Returns how many were installed. */
 int wad_install_sd(char **paths, int n);
 
+/* Installs each WAD into an emulated NAND on the SD card or a USB drive (neek2o / uneek / WiiFlow / Dolphin
+ * layout, decrypted contents): asks which one first. The real NAND isn't touched. Returns how many went in. */
+int wad_install_emunand(char **paths, int n);
+
 /* True for a DLC WAD (title type 00010005). */
 bool wad_is_dlc(const char *path);
 

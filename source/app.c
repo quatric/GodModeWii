@@ -1069,11 +1069,14 @@ static void wad_menu(const vfs_entry *en)
         snprintf(split, sizeof(split), "Split the marked DLC WADs into small WADs");
     }
 
-    enum { W_NAND, W_SD, W_SPLIT, W_BROWSE, W_MORE };
-    const char *items[5];
-    int code[5], n = 0;
+    enum { W_NAND, W_SD, W_EMU, W_SPLIT, W_BROWSE, W_MORE };
+    const char *items[6];
+    int code[6], n = 0;
+    char emu[64] = "Install to emulated NAND (emunand)";
+    if (marked_wads > 1) snprintf(emu, sizeof(emu), "Install %d marked WADs to emunand", marked_wads);
     items[n] = install, code[n++] = W_NAND;
     items[n] = sd, code[n++] = W_SD;
+    items[n] = emu, code[n++] = W_EMU;
     if (dlc || marked_wads > 1) items[n] = split, code[n++] = W_SPLIT;
     items[n] = "Browse decrypted contents", code[n++] = W_BROWSE;
     items[n] = "More actions...", code[n++] = W_MORE;
@@ -1081,20 +1084,22 @@ static void wad_menu(const vfs_entry *en)
     if (r < 0) return;
     r = code[r];
 
-    if ((r == W_NAND || r == W_SD || r == W_SPLIT) && marked_wads > 1) {
+    if ((r == W_NAND || r == W_SD || r == W_EMU || r == W_SPLIT) && marked_wads > 1) {
         int t;
         char **tp = targets(&t);
         if (t) {
             if (r == W_NAND) wad_install_paths(tp, t);
             else if (r == W_SD) wad_install_sd(tp, t);
+            else if (r == W_EMU) wad_install_emunand(tp, t);
             else wad_split_paths(tp, t);
             free_paths(tp, t);
             reload_keep();
         }
-    } else if ((r == W_NAND || r == W_SD || r == W_SPLIT) && have_path) {
+    } else if ((r == W_NAND || r == W_SD || r == W_EMU || r == W_SPLIT) && have_path) {
         char *one = path;
         if (r == W_NAND) wad_install_paths(&one, 1);
         else if (r == W_SD) wad_install_sd(&one, 1);
+        else if (r == W_EMU) wad_install_emunand(&one, 1);
         else wad_split_paths(&one, 1);
         reload_keep();
     } else if (r == W_BROWSE) {
