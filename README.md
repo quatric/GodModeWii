@@ -168,83 +168,83 @@ out, and **+** or the Actions menu to copy anything out.
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| U8 | `.arc` `.app` `.bnr` `.carc` | Also with an IMET / IMD5 header |
-| RARC | | |
-| BRRES | `.brres` | Models, textures and animations |
-| Virtual Console CCF | | |
-| Brawl PAC | `.pac` | Super Smash Bros. Brawl |
-| Good-Feel GFA | | |
 | Arika `INFO.DAT` + `GAME.DAT` | `.dat` | Dr. Mario Online Rx, Endless Ocean |
+| Brawl PAC | `.pac` | Super Smash Bros. Brawl |
+| BRRES | `.brres` | Models, textures and animations |
+| Good-Feel GFA | | |
+| RARC | | |
+| U8 | `.arc` `.app` `.bnr` `.carc` | Also with an IMET / IMD5 header |
+| Virtual Console CCF | | |
 
 **PC archives, documents and sound**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| zip | `.zip` | |
 | 7z | `.7z` | |
-| RAR | `.rar` | 1.5 to 5.x |
-| PDF | `.pdf` | Each page's text, and every embedded image |
-| EPUB | `.epub` | Each chapter's text, and its pictures. EPUB 2 and 3 |
 | BRSAR | `.brsar` | Groups, sequences, banks, sound files and waves |
+| EPUB | `.epub` | Each chapter's text, and its pictures. EPUB 2 and 3 |
+| PDF | `.pdf` | Each page's text, and every embedded image |
+| RAR | `.rar` | 1.5 to 5.x |
+| zip | `.zip` | |
 
 **Titles, saves and discs**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| WAD | `.wad` | Decrypted as you browse, vWii-key WADs included |
+| BootMii NAND dump | `nand.bin` | With or without spare areas and appended keys |
+| CISO | `.ciso` | |
 | `content.bin` | `.bin` | DLC / WiiWare SD backups |
 | `data.bin` | `.bin` | Wii save backups |
-| VFF | | WiiConnect24 and Mii mailboxes |
 | GameCube / Wii disc | `.iso` `.gcm` | Each Wii partition decrypted on the fly |
-| WBFS | `.wbfs` | Single-file |
-| CISO | `.ciso` | |
 | RVZ | `.rvz` | Decompressed on the fly |
+| VFF | | WiiConnect24 and Mii mailboxes |
+| WAD | `.wad` | Decrypted as you browse, vWii-key WADs included |
+| WBFS | `.wbfs` | Single-file |
 | WIA | `.wia` | Decompressed on the fly |
-| BootMii NAND dump | `nand.bin` | With or without spare areas and appended keys |
 
 **Disks and partitions**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| Disk images | `.img` `.iso` | A raw image of a whole disk |
-| MBR | | With logical partitions |
-| GPT | | |
-| Apple partition map | | |
-| ext2 / ext3 / ext4 | | Read-only |
-| XFS | | v4 and v5 |
-| HFS+ / HFSX | | |
 | APFS | | Each volume is a folder |
+| Apple partition map | | |
+| Disk images | `.img` `.iso` | A raw image of a whole disk |
+| ext2 / ext3 / ext4 | | Read-only |
+| GPT | | |
+| HFS+ / HFSX | | |
+| MBR | | With logical partitions |
 | OpenZFS | | |
+| XFS | | v4 and v5 |
 
 **Game-specific archives**
 
 | Format | Extensions | Games |
 | --- | --- | --- |
+| Camelot module | `.sbn` | We Love Golf! |
+| HAL sysdolphin (HSD) | `.dat` | Super Smash Bros. Melee, Kirby Air Ride |
 | Mario Party archive | `.bin` | Mario Party 4 to 8 |
 | Monster Games RST + TOC | `.toc` | Excite Truck, Excitebots, Excitebike: World Rally |
-| Camelot module | `.sbn` | We Love Golf! |
-| Retro Studios PAK | | Metroid Prime 1 to 3, Trilogy, Donkey Kong Country Returns |
-| HAL sysdolphin (HSD) | `.dat` | Super Smash Bros. Melee, Kirby Air Ride |
 | Paon FJG | | Donkey Kong: Barrel Blast |
+| Retro Studios PAK | | Metroid Prime 1 to 3, Trilogy, Donkey Kong Country Returns |
 
 **Compression**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| Yaz0 / SZS | `.szs` | |
-| Yay0 | | |
+| ALZ1 | | Arika |
 | ASH0 | | |
+| Camelot STPL | `.stpl` | Mario Power Tennis, Mario Golf: Toadstool Tour |
+| GFCP | | Good-Feel (byte pair or LZ10) |
+| gzip | `.gz` | Found by its header |
+| Huffman | | |
 | LZ10 / LZ11 | | Bare, or behind an `LZ77` tag |
 | LZH8 | | The HOME Menu's compressed files |
 | LZO | `.lzo` | |
-| Huffman | | |
-| Run length | | |
-| zlib | `.z` `.zlib` | Found by its header |
-| gzip | `.gz` | Found by its header |
 | QuickLZ | | Versions 1.4.0 and 1.20, bare or in Monster Games' `PMCr` wrapper |
-| GFCP | | Good-Feel (byte pair or LZ10) |
-| ALZ1 | | Arika |
-| Camelot STPL | `.stpl` | Mario Power Tennis, Mario Golf: Toadstool Tour |
+| Run length | | |
+| Yay0 | | |
+| Yaz0 / SZS | `.szs` | |
+| zlib | `.z` `.zlib` | Found by its header |
 
 ### Viewers and players
 
@@ -252,77 +252,77 @@ out, and **+** or the Actions menu to copy anything out.
 
 | Format | Extensions | Games / notes |
 | --- | --- | --- |
-| MDL0 | `.brres` | Plays the BRRES animations: bones, hidden bones, moving textures, material colours, texture swaps, ambient light |
+| HAL sysdolphin (HSD) | `.dat` `.usd` | Super Smash Bros. Melee, Kirby Air Ride |
 | J3D | `.bmd` `.bdl` | |
 | Mario Party HSF | `.hsf` | HSFV037 |
-| HAL sysdolphin (HSD) | `.dat` `.usd` | Super Smash Bros. Melee, Kirby Air Ride |
-| Paon `OCN.` models and FJG bundles | `.dat` | Donkey Kong: Barrel Blast |
+| MDL0 | `.brres` | Plays the BRRES animations: bones, hidden bones, moving textures, material colours, texture swaps, ambient light |
 | Monster Games models | `.mod` | Excite Truck, Excitebots |
+| Paon `OCN.` models and FJG bundles | `.dat` | Donkey Kong: Barrel Blast |
 
 **Images**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| GX texture formats | | Every one, I4 to CMPR, with palettes |
-| TPL | `.tpl` | |
-| BTI | `.bti` | |
-| TEX0 / BRTEX | `.tex0` `.brtex` | With a `.plt0` beside it |
-| PLT0 | `.plt0` | As colour swatches |
-| BRFNT | `.brfnt` | Font sheets |
-| BREFT | `.breft` | Textures |
-| GameCube banner | `.bnr` | |
-| Wii save banner | `banner.bin` | |
 | AJPG | | Wii Message Board photos |
-| Retro texture | `.txtr` | |
+| BMP | `.bmp` | 1 to 32-bit, RLE4 / RLE8, bit fields and alpha, OS/2 too |
+| BREFT | `.breft` | Textures |
+| BRFNT | `.brfnt` | Font sheets |
+| BTI | `.bti` | |
+| GameCube banner | `.bnr` | |
+| GIF | `.gif` | First frame |
+| GX texture formats | | Every one, I4 to CMPR, with palettes |
+| Illustrator | `.ai` | Its embedded preview |
+| JPEG | `.jpg` `.jpeg` | |
 | Monster Games textures | `.tex` `.art` `.img` `.tm0` | Excite Truck, Excitebots |
 | Paon texture | `.d4` | Donkey Kong: Barrel Blast |
-| PNG | `.png` | |
-| JPEG | `.jpg` `.jpeg` | |
-| WebP | `.webp` | |
-| TGA | `.tga` | True-colour, grayscale and colour-mapped, raw or RLE |
-| BMP | `.bmp` | 1 to 32-bit, RLE4 / RLE8, bit fields and alpha, OS/2 too |
-| GIF | `.gif` | First frame |
 | Photoshop | `.psd` `.psb` | The flattened image |
-| Illustrator | `.ai` | Its embedded preview |
+| PLT0 | `.plt0` | As colour swatches |
+| PNG | `.png` | |
+| Retro texture | `.txtr` | |
+| TEX0 / BRTEX | `.tex0` `.brtex` | With a `.plt0` beside it |
+| TGA | `.tga` | True-colour, grayscale and colour-mapped, raw or RLE |
+| TPL | `.tpl` | |
+| WebP | `.webp` | |
+| Wii save banner | `banner.bin` | |
 
 **Banners and layouts**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| BRLYT | `.brlyt` | Banners and icons, drawn with GX |
 | BRLAN | `.brlan` | Animations, played on their layout |
+| BRLYT | `.brlyt` | Banners and icons, drawn with GX |
 
 **Audio**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| BRSTM | `.brstm` | |
+| AIFF | `.aiff` | |
+| AST | `.ast` | |
 | BCSTM | `.bcstm` | |
-| BFSTM | `.bfstm` | |
-| BRWAV | `.brwav` | |
 | BCWAV | `.bcwav` | |
+| BFSTM | `.bfstm` | |
 | BFWAV | `.bfwav` | |
 | BNS | `.bns` | |
-| DSP | `.dsp` | |
-| AST | `.ast` | |
+| BRSTM | `.brstm` | |
+| BRWAV | `.brwav` | |
 | BTSND | `.btsnd` | The Wii's boot sound |
-| Monster Games sound | `.sfx` | |
-| WAV | `.wav` | PCM, float, IMA / MS ADPCM, A-law, µ-law, RF64 |
-| AIFF | `.aiff` | |
-| MP3 | `.mp3` | |
+| DSP | `.dsp` | |
+| FastTracker 2 | `.xm` | |
 | FLAC | `.flac` | Also in Ogg |
+| Impulse Tracker | `.it` | |
+| Monster Games sound | `.sfx` | |
+| MP3 | `.mp3` | |
 | Ogg Vorbis | `.ogg` | |
 | ProTracker | `.mod` | 4 to 32 channels |
 | ScreamTracker | `.s3m` | |
-| FastTracker 2 | `.xm` | |
-| Impulse Tracker | `.it` | |
+| WAV | `.wav` | PCM, float, IMA / MS ADPCM, A-law, µ-law, RF64 |
 
 **MIDI and sequences**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
-| MIDI | `.mid` `.rmi` `.kar` | Uses the SoundFont with the same name next to it, or a built-in General MIDI set |
 | BRSAR sequences | | A sequence with a loop loops for ever, as in the game |
+| MIDI | `.mid` `.rmi` `.kar` | Uses the SoundFont with the same name next to it, or a built-in General MIDI set |
 
 **Miis**
 
@@ -335,20 +335,20 @@ out, and **+** or the Actions menu to copy anything out.
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
+| Flipnote | `.kwz` `.ppm` | |
 | Mobiclip | `.mo` | |
 | THP | `.thp` | |
-| Flipnote | `.kwz` `.ppm` | |
 
 **Text**
 
 | Format | Extensions | Notes |
 | --- | --- | --- |
 | BMG | `.bmg` | Message ids, attribute bytes, control codes and flow nodes |
-| MSBT | `.msbt` | |
 | BREFF | `.breff` | Emitters |
-| BRLYT | `.brlyt` | The pane tree and texts |
 | BRLAN | `.brlan` | What it animates |
+| BRLYT | `.brlyt` | The pane tree and texts |
 | Mario Kart Wii KMP | `.kmp` | |
+| MSBT | `.msbt` | |
 
 The viewers only look and listen. Nothing is converted or repacked (that's [nintoolbox](https://github.com/quatric/nintoolbox)'s
 job). Each viewer's buttons are in [docs/FORMATS.md](docs/FORMATS.md).
