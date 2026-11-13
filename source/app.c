@@ -130,7 +130,7 @@ static bool load_dir(const char *path, const char *select_name)
 {
     vfs_entry *list;
     int n;
-    ui_busy_begin("Loading...");
+    ui_busy_begin("folder");
     bool listed = vfs_list_visible(path, &list, &n);
     ui_busy_end();
     if (!listed) {
