@@ -113,15 +113,44 @@ to copy anything out.
 
 **Viewers and players:**
 
-* 3D models: BRRES, J3D, Mario Party HSF, HSD, Paon OCN., Monster Games `.mod`
-* Images: every GX format, TPL, BTI, PNG, JPEG, WebP, TGA, BMP, GIF, PSD
-* Banners and layouts: BRLYT with BRLAN animations
-* Audio: BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, WAV, AIFF, MP3, FLAC, Ogg Vorbis
-* Tracker modules: `.mod`, `.s3m`, `.xm`, `.it`
-* MIDI: `.mid`, `.rmi`, `.kar` and BRSAR sequences
-* Miis: `.miigx`, `.mii`, `.rcd`, `.rsd` and `RFL_DB.dat`
-* Video: Mobiclip, THP, Flipnote
-* Text: BMG, MSBT, BREFF, BRLYT, BRLAN, KMP
+* 3D models, lit, posed by their bones and textured
+  * MDL0 in `.brres` or on its own (with its animations: bones, hidden bones, moving textures, material colours, texture swaps and ambient light)
+  * J3D `.bmd` / `.bdl`
+  * Mario Party `.hsf` (HSFV037)
+  * HAL sysdolphin `.dat` / `.usd` (HSD: Super Smash Bros. Melee, Kirby Air Ride)
+  * Paon `OCN.` models and FJG bundles (Donkey Kong: Barrel Blast)
+  * Monster Games `.mod` (Excite Truck, Excitebots)
+* Images
+  * GX formats: every one, I4 to CMPR, with palettes
+  * Nintendo: TPL, BTI, TEX0 / BRTEX, PLT0 (as colour swatches), BRFNT font sheets, BREFT textures, J3D model textures, GameCube `.bnr`, Wii save `banner.bin`, AJPG (Wii Message Board photos)
+  * Game formats: Retro `.txtr`, Monster Games `.tex` / `.art` / `.img` / `.tm0`, Paon `.d4`
+  * Common formats: PNG, JPEG, WebP, TGA, BMP, GIF (first frame)
+  * Documents: Photoshop `.psd` / `.psb` (the flattened image), Illustrator `.ai` (its embedded preview)
+* Banners and layouts
+  * BRLYT layouts (banners and icons)
+  * BRLAN animations
+* Audio
+  * Nintendo: BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, BTSND
+  * Monster Games `.sfx`
+  * Common formats: WAV, AIFF, MP3, FLAC, Ogg Vorbis
+  * Tracker modules: `.mod`, `.s3m`, `.xm`, `.it`
+* MIDI and sequences
+  * `.mid`, `.rmi`, `.kar`
+  * BRSAR sequences
+* Miis
+  * `.miigx`, `.mii`, `.rcd`, `.rsd`
+  * `RFL_DB.dat` (a Mii database)
+* Video, with sound
+  * Mobiclip `.mo`
+  * THP
+  * Flipnote `.kwz` / `.ppm`
+* Text
+  * BMG
+  * MSBT
+  * BREFF
+  * BRLYT
+  * BRLAN
+  * Mario Kart Wii KMP
 
 The viewers only look and listen. Nothing is converted or repacked (that's [nintoolbox](https://github.com/quatric/nintoolbox)'s
 job). The full list, with each viewer's buttons, is in [docs/FORMATS.md](docs/FORMATS.md).
