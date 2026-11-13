@@ -769,7 +769,8 @@ static void show_credits(void)
         "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.\n\n"
         "Miis: drawn on the Wii by MiiKit (github.com/cmyksoda/MiiKit), from hbc-reborn's sdk/mii.",
 
-        "Interface sounds: MoonShell 2.10 (Moonlight; GPL v2 or later).\n\n"
+        "MoonShell (Moonlight) inspired us a lot: the interface sounds are MoonShell 2.10's (GPL v2 or "
+        "later), and the clock, calendar, calculator and alarm follow its own.\n\n"
         "Thanks for using GodModeWii!\n\n"
         "Psst... feeling nostalgic? Right here, or on the drive list, enter + A - 1 2 -.",
     };

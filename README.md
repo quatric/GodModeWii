@@ -555,8 +555,9 @@ WAV / MP3 / FLAC / Ogg player, and the extra controllers.
 * **[TinyLoad](https://wiibrew.org/wiki/TinyLoad)** 0.2 by Hector Martin (marcan), with code by Segher Boessenkool, Andre Heider
   and Nuke (GPL-2.0) — the game disc loader, built into `res/tinyload.elf` from `tinyload/` (`tinyload/build.sh`) and started
   through the launcher.
-* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the interface sound effects
-  (`res/sfx.bin`, made by `scripts/make_sfx.py` from its `misctools/sndeff` folder).
+* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — **inspired us a lot**: the clock and calendar, the alarm and the
+  calculator follow its own, and the interface sound effects are its (`res/sfx.bin`, made by `scripts/make_sfx.py` from its
+  `misctools/sndeff` folder).
 * **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
 * **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
   (`source/wiilight.c`, `source/wiilight_patterns.h`).
