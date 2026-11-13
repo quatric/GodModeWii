@@ -197,7 +197,7 @@ out, and **+** or the Actions menu to copy anything out.
 | `data.bin` | `.bin` | Wii save backups |
 | GameCube / Wii disc | `.iso` `.gcm` | Each Wii partition decrypted on the fly |
 | RVZ | `.rvz` | Decompressed on the fly |
-| VFF | | WiiConnect24 and Mii mailboxes |
+| VFF | `.vff` | WiiConnect24 and Mii mailboxes |
 | WAD | `.wad` | Decrypted as you browse, vWii-key WADs included |
 | WBFS | `.wbfs` | Single-file |
 | WIA | `.wia` | Decompressed on the fly |
