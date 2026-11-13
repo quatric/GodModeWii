@@ -171,7 +171,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Arika `INFO.DAT` + `GAME.DAT` | `.dat` | Dr. Mario Online Rx, Endless Ocean |
 | Brawl PAC | `.pac` | Super Smash Bros. Brawl |
 | BRRES | `.brres` | Models, textures and animations |
-| Good-Feel GFA | | |
+| Good-Feel GFA | `.gfa` | |
 | RARC | | |
 | U8 | `.arc` `.app` `.bnr` `.carc` | Also with an IMET / IMD5 header |
 | Virtual Console CCF | | |
