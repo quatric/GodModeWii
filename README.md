@@ -58,11 +58,70 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 
 Press **A** on a file and the viewer is chosen by **what is inside the file**, not by its name. Renamed files still open.
 
-* **Archives and disc images** open like folders, read-only: U8, RARC, BRRES, zip / 7z / RAR, WADs, `content.bin`, `data.bin`,
-  GameCube / Wii discs (ISO, WBFS, CISO, RVZ, WIA), BootMii `nand.bin`, disk images and partitions, PDF and EPUB, many game-specific
-  archives and compression formats.
-* **Viewers and players:** 3D models, images (every GX format, PNG, JPEG, WebP, TGA, BMP, GIF, PSD...), banners and layouts, audio
-  (BRSTM, BCSTM, WAV, MP3, FLAC, Ogg, tracker modules...), MIDI and sequences, Miis, text, and video (Mobiclip, THP, Flipnote).
+**Archives and disc images** open like folders, read-only:
+
+* Nintendo archives
+  * U8 (`.arc`, `.app`, `.bnr`, `.carc`...)
+  * RARC
+  * BRRES
+  * Virtual Console CCF
+  * Brawl PAC
+  * Good-Feel GFA
+* PC archives
+  * zip
+  * 7z
+  * RAR 1.5 to 5.x
+* Documents
+  * PDF (each page's text, and every embedded image)
+  * EPUB (each chapter's text, and its pictures)
+* Titles and saves
+  * WAD
+  * `content.bin` (DLC / WiiWare SD backups)
+  * `data.bin` (Wii save backups)
+  * VFF (WiiConnect24 and Mii mailboxes)
+* Disc images
+  * GameCube / Wii ISO and GCM
+  * WBFS
+  * CISO
+  * RVZ
+  * WIA
+* NAND dumps
+  * BootMii `nand.bin`, with or without spare areas and appended keys
+* Disks and partitions
+  * Disk images (`.img`, raw `.iso` of a disk)
+  * MBR, GPT and Apple partition maps
+  * ext2 / ext3 / ext4, XFS, HFS+ / HFSX, APFS and OpenZFS volumes
+* Sound archives
+  * BRSAR (groups, sequences, banks, sound files and waves)
+* Game-specific archives
+  * Mario Party `.bin`
+  * Monster Games RST
+  * Camelot `.sbn`
+  * Retro Studios PAK
+  * HAL sysdolphin `.dat` (HSD)
+  * Paon FJG
+  * Arika `INFO.DAT` + `GAME.DAT`
+* Compression formats
+  * Yaz0 / SZS, Yay0, ASH0
+  * LZ10 / LZ11, LZH8, LZO
+  * Huffman, run length
+  * zlib, gzip
+  * QuickLZ, GFCP, ALZ1, Camelot STPL
+
+Archives nest, for example `sd:/x.wad|/00000001.app|/meta/banner.bin`. Press **B** to go back out, and **+** or the Actions menu
+to copy anything out.
+
+**Viewers and players:**
+
+* 3D models: BRRES, J3D, Mario Party HSF, HSD, Paon OCN., Monster Games `.mod`
+* Images: every GX format, TPL, BTI, PNG, JPEG, WebP, TGA, BMP, GIF, PSD
+* Banners and layouts: BRLYT with BRLAN animations
+* Audio: BRSTM, BCSTM, BFSTM, BRWAV, BCWAV, BFWAV, BNS, DSP, AST, WAV, AIFF, MP3, FLAC, Ogg Vorbis
+* Tracker modules: `.mod`, `.s3m`, `.xm`, `.it`
+* MIDI: `.mid`, `.rmi`, `.kar` and BRSAR sequences
+* Miis: `.miigx`, `.mii`, `.rcd`, `.rsd` and `RFL_DB.dat`
+* Video: Mobiclip, THP, Flipnote
+* Text: BMG, MSBT, BREFF, BRLYT, BRLAN, KMP
 
 The viewers only look and listen. Nothing is converted or repacked (that's [nintoolbox](https://github.com/quatric/nintoolbox)'s
 job). The full list, with each viewer's buttons, is in [docs/FORMATS.md](docs/FORMATS.md).
@@ -141,7 +200,7 @@ job). The full list, with each viewer's buttons, is in [docs/FORMATS.md](docs/FO
 
 * FTP server, read-only or read / write
 * FTP install server for apps and WADs (archives go to the SD card or USB)
-* Wiiload for apps, WADs and files
+* Wiiload: send apps, WADs and files and have them installed to the SD card or a USB drive
 * All of them only accept computers on your local network
 
 **HOME menu extras**
@@ -167,6 +226,23 @@ job). The full list, with each viewer's buttons, is in [docs/FORMATS.md](docs/FO
 
 The details of each are in [docs/FEATURES.md](docs/FEATURES.md), [docs/FORMATS.md](docs/FORMATS.md),
 [docs/DRIVES.md](docs/DRIVES.md) and [docs/NETWORK.md](docs/NETWORK.md).
+
+## Installing with Wiiload
+
+Wiiload sends things to the Wii over the network and installs them on the **SD card or a USB drive** (press **1** on the Wii to
+choose USB). On the Wii, open HOME → *Wiiload*, then from your computer:
+
+```sh
+zip -r myapp.zip myapp
+WIILOAD=tcp:192.168.1.23 wiiload myapp.zip
+```
+
+* **Apps:** a `.dol` / `.elf`, or a `.zip` / `.7z` / `.rar` holding a program, is installed to `apps/<name>/` on the drive.
+* **WADs:** install them to the NAND, or to the SD card (wad2bin), or leave them as files.
+* **Archives of files** (WADs, `private/`, `apps/`...) are unpacked onto the drive the way the FTP install server does.
+* **Anything else** is saved at the root of the drive.
+
+See [docs/NETWORK.md](docs/NETWORK.md) for the full rules.
 
 ## Controls
 
@@ -240,14 +316,75 @@ This writes `GodModeWii.dol` and a much smaller self-extracting `GodModeWii-xz.d
 
 ## Credits
 
-GodModeWii is by quatric & cmyksoda, and it stands on a lot of other people's work. Thank you!
+GodModeWii is by quatric & cmyksoda, and it stands on a lot of other people's work. Thank you! Details, licences and file names are
+in [docs/CREDITS.md](docs/CREDITS.md).
 
-**MoonShell by Moonlight inspired us a lot.** The interface sound effects are MoonShell 2.10's (GPL-2.0 or later), and the clock,
-calendar, calculator and alarm follow its own.
+**MoonShell by Moonlight inspired us a lot.** Its 2.10 interface sounds are used here (GPL-2.0 or later), and the clock, calendar,
+calculator and alarm follow its own.
 
-Also modelled on [GodMode9](https://github.com/d0k3/GodMode9) (d0k3), with the NAND approach from FSToolBox-Mod, the WAD installer
-and launcher from YAWM ModMii Edition, and format knowledge from nintoolbox. The complete list of code, formats and references
-is in [docs/CREDITS.md](docs/CREDITS.md).
+**Code included**
+
+* [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
+* [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
+* TiVo: the easter-egg interface sounds
+* [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
+* [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
+* [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher
+* [wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player) (quatric): the Mobiclip, THP and Flipnote players
+  * FFmpeg's Mobiclip decoder (Florian Nouwt, Adib Surani, Paul B Mahol), PlayMobic, MobiclipDecoder and Gericom's x264 fork, WiiLink24's FFmpeg fork
+  * NanoJPEG (Martin J. Fiedler) and Tremor
+* [FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod) (WiiDatabase.de team, nickasa, Lupo96): NAND access on the Wii and vWii
+* libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94): the IOS patches
+* [TinySoundFont](https://github.com/schellingb/TinySoundFont) (Bernhard Schelling): MIDI playback
+  * [SFZero](https://github.com/stevefolta/SFZero) (Steve Folta) and the earlevel.com biquad filter
+  * Gervill's emergency soundbank (OpenJDK): the built-in General MIDI set
+* [dr_libs](https://github.com/mackron/dr_libs) (David Reid): WAV, MP3 and FLAC decoding
+  * [minimp3](https://github.com/lieff/minimp3) (lieff)
+* [Zstandard](https://github.com/facebook/zstd) (Meta): RVZ decoding, with xxHash and Finite State Entropy (Yann Collet)
+* [unarr](https://github.com/selmf/unarr) (selmf and contributors): zip, 7z and RAR readers
+  * LZMA SDK (Igor Pavlov) and The Unarchiver's XADMaster code
+* [csm-installer](https://github.com/Naim2000/csm-installer) (Naim2000): the Wii Menu theme installer
+* mym-to-csm (cmyksoda): ported into `source/mym.c`
+* [dolxz](https://github.com/FIX94/dolxz) (FIX94): the small self-extracting `.dol`
+* libwiidrc, libwupc (FIX94) and libsicksaxis (xerpi): GamePad, Pro Controller and PS3 pad support
+* Priiloader (Dacoslove): USB keyboard handling and the vWii check, via GlowWii
+* [MiiKit](https://github.com/cmyksoda/MiiKit) (cmyksoda, from hbc-reborn's sdk/mii): the Mii faces
+* [libntfs](https://github.com/extremscorner/libntfs) (Extrems) and NTFS-3G: NTFS drives
+* [lwext4](https://github.com/gkostka/lwext4) (Grzegorz Kostka) and Extrems' libdvm ext4 driver: ext2/3/4 drives
+* libpng, libjpeg-turbo, libwebp, zlib, bzip2, Tremor and libogg (devkitPro portlibs)
+* [devkitPro](https://devkitpro.org/): devkitPPC, libogc and libfat
+
+**Formats and references**
+
+* [nintoolbox](https://github.com/quatric/nintoolbox) and [mobipeg](https://github.com/quatric/mobipeg) (quatric): the first-party formats, compression and file-type detection
+* [HSDLib](https://github.com/Ploaj/HSDLib) and [Metanoia](https://github.com/Ploaj/Metanoia) (Ploaj): HSD and HSF
+* Mario Party `.bin`, Camelot STPL and texture banks, Monster Games (ExciteExtract): via nintoolbox
+* [QuickLZ](http://www.quicklz.com/) (Lasse Mikkel Reinhold)
+* AJPG / ODH: from the mobipeg FFmpeg fork
+* WiiBrew: the Mii data, Hollywood registers and the SEEPROM layout
+* The PDF 1.7, EPUB 3.2 and GIF89a specifications
+* Apple's APFS reference and TN1150 (HFS+), the kernel.org ext4 and XFS documents, the OpenZFS format description
+* [VGMTrans](https://github.com/vgmtrans/vgmtrans): the BRSAR / RSEQ / RBNK / RWAR layouts
+* [RiftWii](https://github.com/KakarottoCake/RiftWii) (KakarottoCake) and Dolphin's `WiaAndRvz.md`: the RVZ / WIA reader
+* [lzo](https://www.oberhumer.com/opensource/lzo/) / lzop (Markus Oberhumer)
+* [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) (DarkMatterCore, bushing, joedj, Sven Peter, Hector Martin, John Kelley): the Console Keys drive
+* [wad2bin](https://github.com/DarkMatterCore/wad2bin) (DarkMatterCore): `content.bin`, `<index>.bin` and the bogus WAD
+* [dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter) (DarkMatterCore): the split DLC WAD layout
+* [Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod) (DarkMatterCore, nicksasa, WiiPower): the WAD backup format
+* [nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios) (thepikachugamer, mkwcat's `/dev/sha` exploit): the NAND backup
+* Sharpii NetCore / libWiiSharp (Leathl): WAD, U8, IMD5 and LZ77 layouts
+* [wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools) (koolkdev): Wii U WFS
+* [vffmod](https://github.com/wii-tools/vffmod) (wii-tools) and vffdump.py (marcan): VFF
+* SaveGame Manager GX and Dolphin's `WiiSave` and `IOSC` code: `data.bin` and the fixed keys
+* GCMM (suloku): the memory card viewer and `.gci` format
+
+**Inspiration**
+
+* [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew)
+* MoonCalc and Morning Timer (for MoonShell): the calculator and the alarm
+* Terminal on macOS: the colour themes
+* [ftpii](https://code.google.com/p/ftpii/source/list) (Joseph Jordan) and [WiiXplorer](https://github.com/niuus/wiixplorer) (Dimok)
+* The Dolphin team, for the emulator used during development
 
 ## License
 
