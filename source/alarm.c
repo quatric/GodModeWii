@@ -16,11 +16,11 @@
 #define SETTING "sd:/apps/GodModeWii/alarm"
 #define RING_MAX_MS (5 * 60 * 1000)
 
-static struct { bool on; int h, m; bool noise; } al = { false, 7, 0, false };
+static struct { bool on; int h, m; } al = { false, 7, 0 };
 static bool ringing;
 static bool snoozing;
 static int snooze_h, snooze_m;
-static const int SLEEP_MIN[] = { 0, 15, 30, 60, 90 };
+static const int SLEEP_MIN[] = { 0, 15, 30, 60, 90, -1 };   /* 0 is off, -1 is on until stopped */
 #define NSLEEP ((int)(sizeof(SLEEP_MIN) / sizeof(SLEEP_MIN[0])))
 static int sleep_idx;                       /* sleep noise length: not kept, so it's never on at start-up */
 static u64 sleep_end;                       /* when the sleep noise stops (ms), 0 when it isn't playing */
@@ -35,7 +35,7 @@ static void save(void)
     mkdir("sd:/apps/GodModeWii", 0777);
     FILE *f = fopen(SETTING, "wb");
     if (!f) return;
-    fprintf(f, "%d %d %d %d\n", al.on ? 1 : 0, al.h, al.m, al.noise ? 1 : 0);
+    fprintf(f, "%d %d %d\n", al.on ? 1 : 0, al.h, al.m);
     fclose(f);
 }
 
@@ -43,13 +43,11 @@ void alarm_load(void)
 {
     FILE *f = fopen(SETTING, "rb");
     if (!f) return;
-    int on, h, m, noise = 0;
-    int n = fscanf(f, "%d %d %d %d", &on, &h, &m, &noise);
-    if (n >= 3 && h >= 0 && h < 24 && m >= 0 && m < 60) {
+    int on, h, m;                                   /* an older file has a 4th number: ignored */
+    if (fscanf(f, "%d %d %d", &on, &h, &m) == 3 && h >= 0 && h < 24 && m >= 0 && m < 60) {
         al.on = on != 0;
         al.h = h;
         al.m = m;
-        al.noise = n == 4 && noise != 0;
     }
     fclose(f);
 }
@@ -80,16 +78,16 @@ static void start_ringing(void)
     ringing = true;
     ring_began = now_ms();
     last_sound = last_light = 0;
-    if (al.noise) sfx_noise_start();
-    else sfx_noise_stop();                              /* the sleep noise gives way to the beep */
+    sfx_noise_stop();                                   /* the sleep noise gives way to the beep */
     sleep_end = 0;
+    sleep_idx = 0;
 }
 
 static void sleep_apply(void)
 {
     if (SLEEP_MIN[sleep_idx]) {
-        sleep_end = now_ms() + (u64)SLEEP_MIN[sleep_idx] * 60000;
-        sfx_noise_start();
+        sleep_end = SLEEP_MIN[sleep_idx] > 0 ? now_ms() + (u64)SLEEP_MIN[sleep_idx] * 60000 : 0;
+        sfx_noise_start();                              /* no end time: it plays until it's turned off */
     } else {
         sleep_end = 0;
         sfx_noise_stop();
@@ -104,7 +102,7 @@ void alarm_poll(void)
             alarm_stop();
             return;
         }
-        if (!al.noise && now - last_sound >= 1300) {
+        if (now - last_sound >= 1300) {
             last_sound = now;
             sfx_play_force(SFX_NOTIFY);
         }
@@ -134,7 +132,7 @@ void alarm_poll(void)
     }
 }
 
-#define NFIELDS 6
+#define NFIELDS 5
 
 static void draw(int field)
 {
@@ -143,8 +141,8 @@ static void draw(int field)
     ui_field(0, 1, ui_cols() - 2, "Alarm clock");
     ui_reset();
     ui_color(C_WHITE, false);
-    ui_field(2, 2, ui_cols() - 4, "At the set time, a beep (or white noise) and the disc slot light");
-    ui_field(3, 2, ui_cols() - 4, "go off. Sleep plays white noise now, then stops by itself.");
+    ui_field(2, 2, ui_cols() - 4, "At the set time, a beep and the disc slot light go off.");
+    ui_field(3, 2, ui_cols() - 4, "Sleep plays white noise now: for a while, or until you stop it.");
     ui_reset();
 
     int h12 = al.h % 12 ? al.h % 12 : 12;
@@ -154,17 +152,17 @@ static void draw(int field)
         else if (f == 1) snprintf(text, sizeof(text), " %02d ", al.m);
         else if (f == 2) snprintf(text, sizeof(text), " %s ", al.h < 12 ? "AM" : "PM");
         else if (f == 3) snprintf(text, sizeof(text), " %s ", al.on ? "ON " : "OFF");
-        else if (f == 4) snprintf(text, sizeof(text), " %s ", al.noise ? "White noise" : "Beep       ");
-        else if (SLEEP_MIN[sleep_idx]) snprintf(text, sizeof(text), " Sleep %2dm ", SLEEP_MIN[sleep_idx]);
+        else if (SLEEP_MIN[sleep_idx] > 0) snprintf(text, sizeof(text), " Sleep %2dm ", SLEEP_MIN[sleep_idx]);
+        else if (SLEEP_MIN[sleep_idx] < 0) snprintf(text, sizeof(text), " Sleep on  ");
         else snprintf(text, sizeof(text), " Sleep off ");
-        static const int COL[NFIELDS] = { 6, 13, 19, 26, 33, 48 };
+        static const int COL[NFIELDS] = { 6, 13, 19, 26, 33 };
         if (f == field) {
             ui_bg(C_CYAN);
             ui_color(C_BLACK, false);
         } else {
             ui_color(f == 3 && !al.on ? C_RED : C_WHITE, true);
         }
-        ui_field(5, COL[f], f == 4 ? 13 : f == 5 ? 11 : 5, "%s", text);
+        ui_field(5, COL[f], f == 4 ? 11 : 5, "%s", text);
         ui_reset();
     }
     ui_color(C_WHITE, true);
@@ -195,7 +193,6 @@ void alarm_menu(void)
             else if (field == 1) al.m = ((al.m + step) % 60 + 60) % 60;
             else if (field == 2) al.h = (al.h + 12) % 24;
             else if (field == 3) al.on = !al.on;
-            else if (field == 4) al.noise = !al.noise;
             else {
                 int d = step > 0 ? 1 : -1;
                 sleep_idx = (sleep_idx + d + NSLEEP) % NSLEEP;

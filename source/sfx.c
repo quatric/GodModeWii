@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <asndlib.h>
@@ -147,9 +148,25 @@ void sfx_wait(void)
     }
 }
 
-/* White noise: one second of it, made once, looped until stopped. Plays even when the sounds are off. */
-#define NOISE_FRAMES 48000
+/* White noise: made once, looped until stopped. Plays even when the sounds are off.
+   Eight seconds, so the repeat can't be heard; Gaussian like real hiss (not the harsh flat
+   spread of a plain random number); the two ears get different noise, so it sounds wide and
+   steady; and the end fades into the start, so the loop point has no click. */
+#define NOISE_FRAMES (48000 * 8)
+#define NOISE_FADE 4800                                 /* 0.1 s */
 static s16 *noise_buf;
+
+static int noise_sample(unsigned *s)
+{
+    int sum = 0;                                        /* four dice make a bell curve */
+    for (int k = 0; k < 4; k++) {
+        *s ^= *s << 13;                                 /* xorshift32 */
+        *s ^= *s >> 17;
+        *s ^= *s << 5;
+        sum += (int)(*s >> 16) - 32768;
+    }
+    return sum / 8;                                     /* about -17 dB, peaks stay clear of clipping */
+}
 
 void sfx_noise_start(void)
 {
@@ -158,10 +175,17 @@ void sfx_noise_start(void)
     if (!noise_buf) {
         noise_buf = memalign(32, NOISE_FRAMES * 4);
         if (!noise_buf) return;
-        unsigned seed = 0x2545F491u;
-        for (int i = 0; i < NOISE_FRAMES * 2; i++) {
-            seed = seed * 1664525u + 1013904223u;
-            noise_buf[i] = (s16)((int)(seed >> 16) - 32768) / 3;
+        unsigned seed[2] = { 0x2545F491u, 0x9E3779B9u };
+        static int tail[NOISE_FADE][2];                 /* the noise that follows the end, fading out at the start */
+        for (int i = 0; i < NOISE_FRAMES; i++)
+            for (int ch = 0; ch < 2; ch++) noise_buf[i * 2 + ch] = (s16)noise_sample(&seed[ch]);
+        for (int i = 0; i < NOISE_FADE; i++)
+            for (int ch = 0; ch < 2; ch++) tail[i][ch] = noise_sample(&seed[ch]);
+        for (int i = 0; i < NOISE_FADE; i++) {          /* equal power: the level doesn't dip */
+            float a = (float)i / NOISE_FADE * 1.5707963f;
+            float in = sinf(a), out = cosf(a);          /* the tail carries on from the end, then gives way */
+            for (int ch = 0; ch < 2; ch++)
+                noise_buf[i * 2 + ch] = (s16)(noise_buf[i * 2 + ch] * in + tail[i][ch] * out);
         }
         DCFlushRange(noise_buf, NOISE_FRAMES * 4);
     }
