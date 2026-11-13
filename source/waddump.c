@@ -769,13 +769,11 @@ int waddump_paths(char **paths, int n)
         if (waddump_is_source(paths[i], &t) && (t >> 32) == 0x00010005) dlcs++;
     }
     if (dlcs) {
-        static const int sizes[] = { 0, 1, 5, 10, 20, 50 };
-        const char *items[] = { "One WAD (every part that was downloaded)", "Split: 1 content per WAD",
-                                "Split: 5 contents per WAD", "Split: 10 contents per WAD", "Split: 20 contents per WAD",
-                                "Split: 50 contents per WAD" };
-        int r = ui_menu(dlcs == 1 ? "BACK UP THE DLC AS" : "BACK UP THE DLCS AS", items, NULL, 6, 0);
+        const char *items[] = { "One WAD (every part that was downloaded)",
+                                "Split (one content per WAD, a song each for song DLC)" };
+        int r = ui_menu(dlcs == 1 ? "BACK UP THE DLC AS" : "BACK UP THE DLCS AS", items, NULL, 2, 0);
         if (r < 0) return 0;
-        per = sizes[r];
+        per = r;                                    /* 0: one WAD, 1: a content in each */
     }
     int dev = pick_target();
     if (dev < 0) return 0;

@@ -22,9 +22,9 @@ int wad_install_sd(char **paths, int n);
 /* True for a DLC WAD (title type 00010005). */
 bool wad_is_dlc(const char *path);
 
-/* Splits each DLC WAD into small WADs, as dlc-wad-splitter does (content 0 and a few others each, the TMD
- * as it is), into <SD or USB>/GodModeWii/wad-split/. Asks first and how many contents per WAD. Returns
- * how many WADs were split. */
+/* Splits each DLC WAD into small WADs, as dlc-wad-splitter does (content 0 and one other each, the TMD
+ * as it is: a song each for song DLC), into <SD or USB>/GodModeWii/wad-split/. Asks first, nothing more.
+ * Returns how many WADs were split. */
 int wad_split_paths(char **paths, int n);
 
 /* This console's ID, NG key, PRNG key and device certificate (needs HW_AHBPROT off); false with `why`. */

@@ -1072,19 +1072,16 @@ int wad_split_paths(char **paths, int n)
         ui_message("SPLIT DLC WAD", C_RED, "Insert a writable SD card (or USB drive) for the split WADs.");
         return 0;
     }
-    static const int sizes[] = { 1, 5, 10, 20, 50 };
-    const char *items[] = { "1 content per WAD", "5 contents per WAD", "10 contents per WAD", "20 contents per WAD",
-                            "50 contents per WAD" };
     char q[600];
     snprintf(q, sizeof(q),
-             "Split %d DLC WAD%s into small WADs, the way dlc-wad-splitter does it?\n\n"
-             "Each small WAD holds the whole TMD (still signed), content 0 and the next few contents, so it "
-             "installs on its own (to the NAND, or to the SD card with wad2bin) next to the others. The ticket "
-             "is fakesigned if it was bound to a console. They go to %sGodModeWii/wad-split/.",
+             "Split %d DLC WAD%s into one small WAD per content (a song each, for song DLC), the way "
+             "dlc-wad-splitter does it?\n\n"
+             "Each small WAD holds the whole TMD (still signed), content 0 and one more content, so it "
+             "installs on its own (to the NAND, or to the SD card with wad2bin, with the null key for older "
+             "games like Rock Band 2) next to the others. The ticket is fakesigned if it was bound to a "
+             "console. They go to %sGodModeWii/wad-split/.",
              dlcs, dlcs == 1 ? "" : "s", g_devs[dev].root);
     if (!ui_confirm("SPLIT DLC WAD", C_CYAN, q)) return 0;
-    int r = ui_menu("CONTENTS PER SMALL WAD", items, NULL, 5, 0);
-    if (r < 0) return 0;
 
     char dir[VFS_PATH_MAX];
     snprintf(dir, sizeof(dir), "%sGodModeWii/wad-split", g_devs[dev].root);
@@ -1107,7 +1104,7 @@ int wad_split_paths(char **paths, int n)
             snprintf(base, sizeof(base), "%016llx", (unsigned long long)tid);
             w2b_io_t io = { (void *)name, vio_mkdirs, vio_open, vio_write, vio_close, vio_remove, split_progress };
             progress(name, "Looking for the contents...", 0, 1);
-            made = w2b_split(&s, dir, base, sizes[r], &io, &res);
+            made = w2b_split(&s, dir, base, 1, &io, &res);
             vfs_close(&f);
         } else
             snprintf(res.err, sizeof(res.err), "Can't open the file");

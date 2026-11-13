@@ -184,8 +184,8 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   only those are added. Contents of the DLC that are already on the NAND stay, so the small WADs of one DLC can be installed one
   after another (each as it is needed). Only optional contents (DLC, type `0x4001`) may be missing; a channel or IOS WAD with a
   content left out is refused.
-* **Split a DLC WAD:** **A** on a DLC `.wad` → *Split DLC into small WADs*, or mark several. Each small WAD holds content 0 and the
-  next 1, 5, 10, 20 or 50 contents, the TMD as it is (still signed) and the ticket (fakesigned if it was bound to a console), as
+* **Split a DLC WAD:** **A** on a DLC `.wad` → *Split DLC into small WADs*, or mark several. Each small WAD holds content 0 and
+  one more content (a song each, for song DLC), the TMD as it is (still signed) and the ticket (fakesigned if it was bound to a console), as
   dlc-wad-splitter makes them, named `<title id>_split_<n>.wad`, in `GodModeWii/wad-split/` on the SD card (or a USB drive).
   Contents are copied as they are and checked against the TMD. Works on DLC WADs with pieces missing too, and on any DLC title
   (dlc-wad-splitter only takes the games on its list).
@@ -213,8 +213,8 @@ These open like folders (read-only). **B** goes back out, and **+** or the actio
   WAD installs on any Wii whose IOS has the signing bug. The **TMD is never fakesigned**: it stays exactly as Nintendo signed it.
   Every content is checked against its TMD hash, and a title with a damaged or missing content is refused. **DLC** is asked about
   first: *one WAD* holds every part that was downloaded (pieces that never were are left out and the TMD stays whole, which is
-  what WAD managers, wad2bin and GodModeWii take), or *split* makes dlc-wad-splitter style small WADs of content 0 and the next 1,
-  5, 10, 20 or 50 downloaded contents each, named `<title id>-<ID>-v<version>_split_<n>.wad`. A `content.bin` is decrypted with the keys of the Wii that made it
+  what WAD managers, wad2bin and GodModeWii take), or *split* makes dlc-wad-splitter style small WADs of content 0 and one
+  downloaded content each (a song each, for song DLC), named `<title id>-<ID>-v<version>_split_<n>.wad`. A `content.bin` is decrypted with the keys of the Wii that made it
   (found by the console ID in its header): this console's own, or, as with YABDM, that Wii's BootMii `keys.bin` (or `otp.bin` /
   `nand.bin`) next to the `content.bin`, at the root of its drive or at the root of the SD card. Its ticket comes from this
   console's NAND, or, for a title that isn't installed here, from `<title id>.tik` / `<hi>-<lo>.tik` next to the `content.bin` or
