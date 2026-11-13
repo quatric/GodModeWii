@@ -232,7 +232,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Format | Extensions | Notes |
 | --- | --- | --- |
 | ALZ1 | | Arika |
-| ASH0 | | |
+| ASH0 | `.ash` | |
 | Camelot STPL | `.stpl` | Mario Power Tennis, Mario Golf: Toadstool Tour |
 | GFCP | | Good-Feel (byte pair or LZ10) |
 | gzip | `.gz` | Found by its header |
