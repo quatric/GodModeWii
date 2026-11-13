@@ -3701,6 +3701,11 @@ enum { SH_LIT, SH_FLAT, SH_WIRE, SH_COUNT };
 
 static void draw_range(const model_t *m, u32 done, u32 stop, int shade);
 
+/* the text rows kept clear of the picture: three at the top, the hint line at the bottom (the
+ * console starts 16 pixels in, and a row is 16 pixels tall) */
+#define VIEW_TOP 64
+#define VIEW_BOTTOM 32
+
 static void render(const model_t *m, float yaw, float pitch, float dist, int shade)
 {
     GXRModeObj *rm = VIDEO_GetPreferredMode(NULL);
@@ -3719,7 +3724,12 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     Mtx44 proj;
     float zfar = (dist + 1.5f) * r, znear = dist > 1.2f ? (dist - 1.1f) * r : zfar / 1000;
     if (znear < zfar / 1000) znear = zfar / 1000;
-    guPerspective(proj, 45, (f32)rm->fbWidth / rm->efbHeight, znear, zfar);
+    /* The title lines above and the hint line below are never copied over: they stay on the
+     * screen and are only rewritten when they change, so they don't blink with every frame. */
+    int top = VIEW_TOP, vh = rm->efbHeight - VIEW_TOP - VIEW_BOTTOM;
+    GX_SetViewport(0, top, rm->fbWidth, vh, 0, 1);
+    GX_SetScissor(0, top, rm->fbWidth, vh);
+    guPerspective(proj, 45, (f32)rm->fbWidth / vh, znear, zfar);
     GX_LoadProjectionMtx(proj, GX_PERSPECTIVE);
 
     Mtx view, model, rx, ry, mv, tr;
@@ -3792,7 +3802,10 @@ static void render(const model_t *m, float yaw, float pitch, float dist, int sha
     GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
 
     GX_DrawDone();
-    GX_CopyDisp(xfb, GX_TRUE);
+    f32 ys = GX_GetYScaleFactor(rm->efbHeight, rm->xfbHeight);
+    GX_SetDispCopySrc(0, top, rm->fbWidth, vh);
+    GX_SetDispCopyYScale(ys);
+    GX_CopyDisp((u8 *)xfb + (size_t)(top * ys + 0.5f) * rm->fbWidth * VI_DISPLAY_PIX_SZ, GX_TRUE);
     GX_Flush();
     GX_DrawDone();
 }
@@ -4015,6 +4028,7 @@ bool model_view(const char *path)
     bool info = true, redraw = true;
     ptr_drag drag = { 0 };
     ptr_begin();
+    ui_clear();                                 /* the text rows are no longer wiped by each frame */
 
     for (;;) {
 #ifndef GMW_AUTOTEST
@@ -4037,6 +4051,7 @@ bool model_view(const char *path)
             ui_color(C_WHITE, true);
             ui_field(0, 0, ui_cols() - 1, " MODEL  %s  [%d/%d] %s", vfs_basename(path), cur + 1,
                      count, m.name);
+            /* the lines stay on screen between frames, so a hidden one is blanked, not skipped */
             if (info)
                 ui_field(1, 0, ui_cols() - 1,
                          " %s  %u triangles  %d meshes (%d textured, %d textures)  %d bones  %s",
@@ -4044,13 +4059,16 @@ bool model_view(const char *path)
                          shade == SH_LIT    ? "lit"
                          : shade == SH_FLAT ? "unlit"
                                             : "wireframe");
+            else
+                ui_field(1, 0, ui_cols() - 1, "");
             if (info && m.nanim) {
                 if (ai >= 0 && ai < m.nanim)
                     ui_field(2, 0, ui_cols() - 1, " animation %d/%d  %s  frame %d/%d", ai + 1,
                              m.nanim, m.anim[ai].name, (int)anim_frame, (int)anim_loop(&m.anim[ai]));
                 else
                     ui_field(2, 0, ui_cols() - 1, " animation off (%d available)", m.nanim);
-            }
+            } else
+                ui_field(2, 0, ui_cols() - 1, "");
             ui_color(C_CYAN, true);
             ui_field(ui_rows() - 1, 0, ui_cols() - 1,
                      m.nanim ? " D-Pad/Point+A drag Rotate  +/- Zoom  A Shading  1 Next  2 Anim  B Close"
