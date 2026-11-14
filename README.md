@@ -3,7 +3,7 @@
 A text-mode file manager for the **Wii** and the **Wii U's vWii mode**, in the style of [GodMode9](https://github.com/d0k3/GodMode9).
 No fancy GUI: a console, a cursor and a lot of power.
 
-Version 0.14.0, by quatric & cmyksoda. Looking for the Wii U version? See [GodModeU](https://github.com/quatric/GodModeU).
+Version 0.15.0, by quatric & cmyksoda. Looking for the Wii U version? See [GodModeU](https://github.com/quatric/GodModeU).
 
 * Copy, move and delete files between every drive the console can see.
 * Open archives, disc images, saves and WADs like folders.
