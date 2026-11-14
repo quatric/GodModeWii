@@ -171,6 +171,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Arika `INFO.DAT` + `GAME.DAT` | `.dat` | Dr. Mario Online Rx, Endless Ocean |
 | Brawl PAC | `.pac` | Super Smash Bros. Brawl |
 | BRRES | `.brres` | Models, textures and animations |
+| BRWAR | `.brwar` | Its waves, playable |
 | Good-Feel GFA | `.gfa` | |
 | RARC | | |
 | U8 | `.arc` `.app` `.bnr` `.carc` | Also with an IMET / IMD5 header |
@@ -221,6 +222,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Format | Extensions | Games |
 | --- | --- | --- |
 | Camelot module | `.sbn` | We Love Golf! |
+| HAL sound bank | `.ssm` | Super Smash Bros. Melee, Kururin Squash!. Each sound as a playable `.dsp` |
 | HAL sysdolphin (HSD) | `.dat` | Super Smash Bros. Melee, Kirby Air Ride |
 | Mario Party archive | `.bin` | Mario Party 4 to 8 |
 | Monster Games RST + TOC | `.toc` | Excite Truck, Excitebots, Excitebike: World Rally |
@@ -309,6 +311,7 @@ out, and **+** or the Actions menu to copy anything out.
 | DSP | `.dsp` | |
 | FastTracker 2 | `.xm` | |
 | FLAC | `.flac` | Also in Ogg |
+| HAL HPS | `.hps` | Super Smash Bros. Melee, Kirby Air Ride. Loops as in the game |
 | Impulse Tracker | `.it` | |
 | Monster Games sound | `.sfx` | |
 | MP3 | `.mp3` | |

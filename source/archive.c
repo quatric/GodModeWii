@@ -1407,6 +1407,8 @@ static const fmt_t formats[] = {
     { "ASH0",        arc_ash0_probe,       arc_ash0_open },
     { "GFA",         arc_gfa_probe,        arc_gfa_open },
     { "BRSAR",       arc_brsar_probe,      arc_brsar_open },
+    { "BRWAR",       arc_brwar_probe,      arc_brwar_open },
+    { "HAL SSM",     arc_ssm_probe,        arc_ssm_open },
     { "CCF",         arc_ccf_probe,        arc_ccf_open },
     { "PAC",         arc_pac_probe,        arc_pac_open },
     { "Retro PAK",   arc_retro_probe,      arc_retro_open },

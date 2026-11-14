@@ -13,6 +13,9 @@
  *   PAC (.pac)                        Super Smash Bros. Brawl "ARC" archive: typed, indexed members
  *   GFA (.gfa)                        Good-Feel archive (Kirby's Epic Yarn ...), BPE or LZ10
  *                                     payload, little endian
+ *   BRWAR (.brwar, .rwar)             NW4R wave archive: its RWAV waves (playable)
+ *   HAL SSM (.ssm)                    HAL Laboratory sound bank (Melee, Kururin Squash!): each sound's
+ *                                     channels as plain DSP files (playable)
  * Layouts match quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
@@ -733,6 +736,121 @@ out:
     free(sb);
     free(ib);
     return a;
+}
+
+/* ---------------------------------------------------------------- BRWAR */
+
+bool arc_brwar_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x20];
+    return read_head(f, h, 0x20) && !memcmp(h, "RWAR", 4) && be16(h + 4) == 0xFEFF && f->size >= 0x40;
+}
+
+archive_t *arc_brwar_open(const src_t *f, const char *name)
+{
+    (void)name;
+    archive_t *a = raw_new("BRWAR", f);
+    if (!a) return NULL;
+    rsar_rwar(a, f, 0, f->size > 0xFFFFFFFFu ? 0xFFFFFFFFu : (uint32_t)f->size, 0);
+    if (a->tree.count <= 1) return raw_fail(a);
+    return a;
+}
+
+/* ---------------------------------------------------------------- HAL SSM */
+
+/* After nintoolbox's hal_ssm.inc (vgmstream ngc_ssm.c): u32 head size, data size, sound count, id; then
+ * per sound {u32 channels, u32 rate, per channel 0x40: loop flag, loop / end / first nibble (absolute in the
+ * data block at the end of the file), 16 coefficients at 0x10, history at 0x34}. */
+bool arc_ssm_probe(const src_t *f, const char *name)
+{
+    uint8_t h[0x10];
+    if (!name || !arc_name_has_ext(name, ".ssm") || !read_head(f, h, 0x10)) return false;
+    uint32_t head = be32(h), dsz = be32(h + 4), n = be32(h + 8);
+    return n && n <= 0x1000 && be32(h + 12) <= 0x1000 && head >= n * 0x48 && 0x10ull + head + dsz <= f->size;
+}
+
+static void put32(uint8_t *p, uint32_t v)
+{
+    p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v;
+}
+
+archive_t *arc_ssm_open(const src_t *f, const char *name)
+{
+    uint32_t len;
+    uint8_t *d = read_all(f, &len);
+    if (!d) return NULL;
+    uint32_t head = be32(d), dsz = be32(d + 4), n = be32(d + 8);
+    uint64_t data = len - dsz;
+    char stem[64];
+    static const char *const ext[] = { ".ssm", NULL };
+    inner_name(name, stem, sizeof(stem), ext);
+
+    /* first pass: size of every DSP file */
+    uint64_t total = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        uint8_t *blob = NULL;
+        archive_t *a = NULL;
+        if (pass) {
+            blob = total && total <= MAX_OUT ? malloc(total) : NULL;
+            a = blob ? archive_alloc("HAL SSM") : NULL;
+            if (!a) {
+                free(blob);
+                break;
+            }
+            a->read = raw_read;
+        }
+        uint64_t pos = 0, off = 0x10;
+        for (uint32_t i = 0; i < n && off + 8 <= 0x10ull + head; i++) {
+            uint32_t ch = be32(d + off), rate = be32(d + off + 4);
+            if (ch < 1 || ch > 2 || off + 8 + ch * 0x40ull > 0x10ull + head) break;
+            const uint8_t *r0 = d + off + 8;
+            off += 8 + ch * 0x40;
+            uint32_t first = be32(r0 + 0x0C), end = be32(r0 + 8);
+            if (end <= first || !rate || rate > 96000) continue;
+            uint32_t nib = end - first, ns = nib / 16 * 14 + (nib % 16 > 2 ? nib % 16 - 2 : 0);
+            uint32_t bytes = (nib + 1) / 2;
+            for (uint32_t c = 0; c < ch; c++) {
+                const uint8_t *rc = r0 + c * 0x40;
+                uint64_t so = data + be32(rc + 0x0C) / 16 * 8;
+                if (so + bytes > len) continue;
+                if (pass) {
+                    uint8_t *o = blob + pos;
+                    memset(o, 0, 0x60);
+                    put32(o, ns);
+                    put32(o + 4, nib);
+                    put32(o + 8, rate);
+                    put32(o + 0x10, 2);
+                    put32(o + 0x14, nib + 1);
+                    put32(o + 0x18, 2);
+                    memcpy(o + 0x1C, rc + 0x10, 32);
+                    memcpy(o + 0x40, rc + 0x34, 4);
+                    memcpy(o + 0x60, d + so, bytes);
+                    char nm[96];
+                    if (ch == 1) snprintf(nm, sizeof(nm), "%s_%03u.dsp", stem, (unsigned)i);
+                    else snprintf(nm, sizeof(nm), "%s_%03u_%c.dsp", stem, (unsigned)i, c ? 'R' : 'L');
+                    tree_add(&a->tree, 0, nm, false, 0x60 + bytes, pos, 0, 0);
+                }
+                pos += 0x60 + bytes;
+            }
+        }
+        if (!pass) {
+            total = pos;
+            continue;
+        }
+        free(d);
+        a->base = *f;
+        a->src = src_from_memory(blob, total);
+        if (!a->src.ctx || a->tree.count <= 1) {
+            if (!a->src.ctx) free(blob);
+            memset(&a->base, 0, sizeof(a->base));
+            archive_close(a);
+            return NULL;
+        }
+        return a;
+    }
+    free(d);
+    return NULL;
 }
 
 /* ---------------------------------------------------------------- CCF */

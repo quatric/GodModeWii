@@ -106,6 +106,7 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (M("IMD5") && n >= 0x24 && !memcmp(h + 0x20, "BNS ", 4)) return FT_STREAM;
         /* AST: PCM16 / ADPCM */
         if (M("STRM") && n >= 0x40 && be16(h + 8) <= 1) return FT_STREAM;
+        if (n >= 8 && M(" HALPST\0")) return FT_STREAM;                               /* HAL HPS */
         if (M("RSEQ")) return FT_SEQ;
         if (M("MThd")) return FT_MIDI;
         if (n >= 12 && M("RIFF") && !memcmp(h + 8, "RMID", 4)) return FT_MIDI;

@@ -10,6 +10,7 @@
  *   SFX                       Monster Games' DSP-ADPCM (Excite Truck, Excitebots)
  *   AST                       GameCube / Wii AFC ADPCM or PCM16 blocks
  *   BTSND                     Wii U boot sound, 48 kHz stereo PCM16
+ *   HPS                       HAL Laboratory streamed music (Melee, Kirby Air Ride), DSP-ADPCM blocks
  * Everything is decoded block by block while playing (libogc's ASND), so
  * long streams never need to fit in memory.
  * WAV / AIFF, MP3, FLAC and Ogg Vorbis come from audio_gen.c and play through
@@ -471,6 +472,76 @@ static bool open_ast(snd_t *s, const u8 *h)
     return n > 0;
 }
 
+/* HAL Laboratory .hps (Super Smash Bros. Melee, Kirby Air Ride), after nintoolbox's hps.inc: " HALPST\0",
+ * rate at 8 and channel count at 0xC, then 0x38 bytes of DSP channel info per channel at 0x10 (a DSP header
+ * from its 0x0C: loop / format, start / end / current nibble address, coefficients, gain, ps, history).
+ * Blocks start at 0x80: {u32 size, u32 last nibble, u32 next block, per-channel state} padded to 0x20, then
+ * the payload split evenly between the channels. The last block's "next" pointing back is the loop. */
+static bool open_hps(snd_t *s, const u8 *h, u32 hlen)
+{
+    s->fmt = "HPS";
+    if (hlen < 0x80) return false;
+    s->rate = be32(h + 8);
+    s->nch = be32(h + 12);
+    if (!s->nch || s->nch > 2 || s->rate < 4000 || s->rate > 96000) return false;
+    for (int ch = 0; ch < s->nch; ch++) {
+        const u8 *ci = h + 0x10 + 0x38 * ch;
+        load_coefs(s, ch, ci + 0x10);
+        s->h1[ch] = (s16)be16(ci + 0x34);
+        s->h2[ch] = (s16)be16(ci + 0x36);
+    }
+    u32 sa = be32(h + 0x14), ea = be32(h + 0x18);
+    if (ea < sa) return false;
+    s->total = nibbles_to_samples(ea - sa + 1);
+    s->codec = CO_ADPCM;
+    s->layout = L_AST;
+
+    u32 cap = 64, n = 0, first = 0;
+    s->ast_off = malloc(cap * sizeof(u64));
+    s->ast_size = malloc(cap * sizeof(u32));
+    s->ast_first = malloc(cap * sizeof(u32));
+    u8 *bh = memalign(32, 32);
+    u64 pos = 0x80;
+    s64 loop_at = -1;
+    while (bh && s->ast_off && s->ast_size && s->ast_first && pos + 0x20 <= s->f.size && first < s->total) {
+        if (!read_at(&s->f, pos, bh, 12)) break;
+        u32 bs = be32(bh), next = be32(bh + 8), per = bs / s->nch;
+        if (!bs || per * s->nch != bs || per > MAX_BLOCK || pos + 0x20 + bs > s->f.size) break;
+        if (n == cap) {
+            cap *= 2;
+            void *a = realloc(s->ast_off, cap * sizeof(u64)),
+                 *b = realloc(s->ast_size, cap * sizeof(u32)),
+                 *c = realloc(s->ast_first, cap * sizeof(u32));
+            if (a) s->ast_off = a;
+            if (b) s->ast_size = b;
+            if (c) s->ast_first = c;
+            if (!a || !b || !c) break;
+        }
+        s->ast_off[n] = pos + 0x20;
+        s->ast_size[n] = per;
+        s->ast_first[n] = first;
+        first += nibbles_to_samples(per * 2);
+        n++;
+        if (next <= pos) {
+            if (next >= 0x80) loop_at = next;
+            break;
+        }
+        if (next + 0x20 > s->f.size) break;
+        pos = next;
+    }
+    free(bh);
+    s->nblocks = n;
+    if (first < s->total) s->total = first;
+    if (loop_at >= 0)
+        for (u32 i = 0; i < n; i++)
+            if (s->ast_off[i] == (u64)loop_at + 0x20) {
+                s->loop = true;
+                s->loop_start = s->ast_first[i];
+                break;
+            }
+    return n > 0;
+}
+
 static bool open_btsnd(snd_t *s)
 {
     s->fmt = "BTSND";
@@ -518,6 +589,8 @@ static bool snd_open(snd_t *s, const char *path)
         ok = open_wav(s, h, hlen);
     } else if (!memcmp(h, "STRM", 4))
         ok = open_ast(s, h);
+    else if (!memcmp(h, " HALPST\0", 8))
+        ok = open_hps(s, h, hlen);
     else if (!memcmp(h, "BNS ", 4)) {
         s->layout = L_PLANAR;
         ok = open_bns(s, 0);
@@ -563,7 +636,8 @@ static u32 block_samples(const snd_t *s, u32 b)
     if (s->layout == L_INTERLEAVED)
         n = b + 1 == s->nblocks ? s->last_samples : s->spb;
     else if (s->layout == L_AST)
-        n = s->codec == CO_AFC ? s->ast_size[b] / 9 * 16 : s->ast_size[b] / 2;
+        n = s->codec == CO_AFC ? s->ast_size[b] / 9 * 16
+          : s->codec == CO_ADPCM ? nibbles_to_samples(s->ast_size[b] * 2) : s->ast_size[b] / 2;
     else
         n = s->spb;
     u32 first = block_first(s, b);
@@ -1115,6 +1189,19 @@ static bool play(const char *path)
             draw(&s, name, played > s.total ? s.total : played, paused, loop, pair, !drawn);
             drawn = true;
         }
+#ifdef GMW_AUTOTEST
+        /* test builds: a picture of the player after 5 s (a looping stream never ends by itself) */
+        if (frame == 300) {
+            FILE *lf = fopen("sd:/gmwtest.log", "a");
+            if (lf) {
+                fprintf(lf, "stream %s: %s ch %d rate %d total %u loop %d at %u blocks %u decoded %u\n", name,
+                        s.fmt, s.nch, s.rate, (unsigned)s.total, (int)s.loop, (unsigned)s.loop_start,
+                        (unsigned)s.nblocks, (unsigned)decoded_to);
+                fclose(lf);
+            }
+            if (ui_test_dump()) break;
+        }
+#endif
     }
 
     oq_close();

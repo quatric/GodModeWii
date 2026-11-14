@@ -139,6 +139,10 @@ bool arc_brsar_probe(const src_t *file, const char *name);
 archive_t *arc_brsar_open(const src_t *file, const char *name);
 bool arc_disc_probe(const src_t *file, const char *name);       /* ISO / GCM / WBFS / CISO */
 archive_t *arc_disc_open(const src_t *file, const char *name);
+bool arc_brwar_probe(const src_t *file, const char *name);
+archive_t *arc_brwar_open(const src_t *file, const char *name);
+bool arc_ssm_probe(const src_t *file, const char *name);
+archive_t *arc_ssm_open(const src_t *file, const char *name);
 bool arc_ccf_probe(const src_t *file, const char *name);
 archive_t *arc_ccf_open(const src_t *file, const char *name);
 bool arc_pac_probe(const src_t *file, const char *name);

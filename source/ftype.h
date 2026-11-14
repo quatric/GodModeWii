@@ -11,7 +11,7 @@
 
 typedef enum {
     FT_NONE,
-    FT_STREAM,          /* BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, AST, DSP, BTSND, SFX */
+    FT_STREAM,          /* BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, AST, DSP, BTSND, SFX, HPS */
     FT_AUDIO,           /* WAV, AIFF, MP3, FLAC, Ogg Vorbis */
     FT_MIDI,            /* standard MIDI, RIFF RMID */
     FT_SEQ,             /* RSEQ in a BRSAR */
