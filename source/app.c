@@ -77,6 +77,7 @@ static int list_rows(void) { return ui_rows() - 8; }
 /* Set for a plain cursor move: the screen is the same one, so rows are rewritten in place
  * instead of cleared first, which made the header bar blink. */
 static bool cursor_only;
+static int last_screen;   /* 1 = drive list, 2 = folder listing: a switch always repaints everything */
 
 /* ---------------------------------------------------------------- clipboard */
 
@@ -245,6 +246,8 @@ static void draw_browser(void)
     int off = clip_n ? 1 : 0;
     int total = nents + off;
 
+    if (last_screen != 2) cursor_only = false;
+    last_screen = 2;
     if (!cursor_only)
         ui_clear();
     cursor_only = false;
@@ -405,6 +408,8 @@ static void draw_home(void)
     if (home_cursor < home_scroll) home_scroll = home_cursor;
     if (home_cursor >= home_scroll + vis) home_scroll = home_cursor - vis + 1;
 
+    if (last_screen != 1) cursor_only = false;
+    last_screen = 1;
     if (!cursor_only)
         ui_clear();
     cursor_only = false;
