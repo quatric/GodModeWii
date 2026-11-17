@@ -25,6 +25,7 @@
  * so the small WADs of one DLC can be installed one after another.
  */
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -791,6 +792,7 @@ int wad_install_paths(char **paths, int n)
         return 0;
 
     int ok = 0, done = 0;
+    bool backed_up = false, warned = false;
     char report[1200] = "";
     size_t rl = 0;
     for (int i = 0; i < n; i++) {
@@ -800,12 +802,19 @@ int wad_install_paths(char **paths, int n)
         int r = install_one(paths[i], msg, sizeof(msg), note, sizeof(note), false);
         done++;
         if (r == 0) ok++;
+        if (note[0] == 'S') backed_up = true;
+        if (note[0] == 'W') warned = true;
         if (wads == 1) {
             char text[600];
             snprintf(text, sizeof(text), "%s\n\n%s%s%s", vfs_basename(paths[i]), msg,
                      note[0] ? "\n\n" : "", note);
-            ui_message(r == 0 ? "INSTALLED" : "INSTALL FAILED",
-                       r == 0 ? (note[0] == 'W' ? C_YELLOW : C_GREEN) : C_RED, text);
+            if (r == 0 && note[0] == 'S') {
+                /* installed, and only a save backup to report: no A press needed */
+                ui_splash(text);
+                usleep(3000000);
+            } else
+                ui_message(r == 0 ? "INSTALLED" : "INSTALL FAILED",
+                           r == 0 ? (note[0] == 'W' ? C_YELLOW : C_GREEN) : C_RED, text);
             return ok;
         }
         if (rl < sizeof(report) - 1)
@@ -816,7 +825,11 @@ int wad_install_paths(char **paths, int n)
     }
     char title[48];
     snprintf(title, sizeof(title), "INSTALLED %d OF %d", ok, done);
-    ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
+    if (ok == done && backed_up && !warned) {
+        ui_splash(report);
+        usleep(3000000);
+    } else
+        ui_message(title, ok == done ? C_GREEN : C_YELLOW, report);
     return ok;
 }
 
