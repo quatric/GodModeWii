@@ -120,7 +120,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Back up installed titles as WADs, the way YABDM does
 * Back up a `content.bin` from the SD card as a WAD
 * Export all saves as folders or `data.bin` files
-* Import a `data.bin` save to the NAND
+* Import a `data.bin` save to the NAND, even for a game or channel that has never been started
 * Back up the whole NAND as a BootMii `nand.bin`, with no BootMii needed
 * Back up the console keys only
 
@@ -134,6 +134,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 **HOME menu extras**
 
 * Miis export (`.miigx`)
+* Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
 * Clock and calendar

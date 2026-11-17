@@ -545,6 +545,68 @@ out:
     return ok;
 }
 
+
+/* The owner a title's save folder gets: its UID from sys/uid.sys (12-byte records: title ID, 2 bytes of
+ * padding, UID) and the group from its TMD. False if the title isn't installed. */
+static bool title_owner(u64 tid, u32 *uid, u16 *gid)
+{
+    char tdir[64];
+    bool is_dir;
+    snprintf(tdir, sizeof(tdir), "nand:/title/%08x/%08x", (unsigned)(tid >> 32), (unsigned)tid);
+    if (!vfs_stat(tdir, &is_dir, NULL) || !is_dir) return false;
+
+    bool found = false;
+    vfs_file f;
+    u8 *b = NULL;
+    if (vfs_open_read(&f, "nand:/sys/uid.sys")) {
+        u32 len = (u32)f.size;
+        if (len >= 12 && len <= 256 * 1024 && (b = memalign(32, (len + 31) & ~31u)) &&
+            vfs_read(&f, b, len) == (s32)len) {
+            for (u32 o = 0; o + 12 <= len; o += 12)
+                if (be64(b + o) == tid) {
+                    *uid = (u32)(b[o + 10] << 8 | b[o + 11]);
+                    found = true;
+                    break;
+                }
+        }
+        vfs_close(&f);
+    }
+    free(b);
+    if (!found) return false;
+
+    *gid = 0;
+    u32 sz = 0;
+    if (ES_GetStoredTMDSize(tid, &sz) >= 0 && sz && sz <= MAX_SIGNED_TMD_SIZE) {
+        u8 *t = memalign(32, (sz + 31) & ~31u);
+        if (t && ES_GetStoredTMD(tid, (signed_blob *)t, sz) >= 0)
+            *gid = ((tmd *)SIGNATURE_PAYLOAD((signed_blob *)t))->group_id;
+        free(t);
+    }
+    return true;
+}
+
+/* The save folder's owner: from the folder when it is there, otherwise the title's own (the folder isn't
+ * made until the game or channel runs for the first time). *missing says the folder has to be made. */
+static bool save_owner(u64 tid, const char *data, u32 *uid, u16 *gid, bool *missing)
+{
+    u8 attr, op, gp, ot;
+    *missing = false;
+    if (ISFS_GetAttr(data + 5, uid, gid, &attr, &op, &gp, &ot) >= 0) return true;
+    if (!title_owner(tid, uid, gid)) return false;
+    *missing = true;
+    return true;
+}
+
+/* Makes the save folder of an installed title that hasn't been started yet, the way ES does. */
+static bool make_save_dir(const char *data, u32 uid, u16 gid)
+{
+    if (ISFS_CreateDir(data + 5, 0, 3, 3, 0) < 0) {
+        bool is_dir;
+        if (!vfs_stat(data, &is_dir, NULL) || !is_dir) return false;
+    }
+    return ISFS_SetAttr(data + 5, uid, gid, 0, 3, 3, 0) >= 0;
+}
+
 void databin_import(const char *path)
 {
     char err[200] = "";
@@ -562,13 +624,13 @@ void databin_import(const char *path)
 
     char data[96];
     snprintf(data, sizeof(data), "nand:/title/%08x/%08x/data", (unsigned)(d.tid >> 32), (unsigned)d.tid);
-    u32 uid;
-    u16 gid;
-    u8 attr, op, gp, ot;
-    if (ISFS_GetAttr(data + 5, &uid, &gid, &attr, &op, &gp, &ot) < 0) {
+    u32 uid = 0;
+    u16 gid = 0;
+    bool missing;
+    if (!save_owner(d.tid, data, &uid, &gid, &missing)) {
         seterr(err, sizeof(err),
-               "Title %08x-%08x has no save folder on this Wii yet. Install it, or start the game once, then "
-               "import the save.", (unsigned)(d.tid >> 32), (unsigned)d.tid);
+               "Title %08x-%08x isn't installed on this Wii, so it has nowhere to keep a save. Install it first "
+               "(it doesn't need to be started).", (unsigned)(d.tid >> 32), (unsigned)d.tid);
         goto fail;
     }
 
@@ -576,15 +638,21 @@ void databin_import(const char *path)
     w2b_tid_ascii(d.tid, id);
     snprintf(q, sizeof(q),
              "Copy this save to the NAND?\n\n%s%s%s%08x-%08x (%s), %u file(s) and folder(s).\n\n"
-             "The save that is there now is replaced. It is copied to GodModeWii/save-backups/ on the SD card or "
-             "a USB drive first.",
+             "%s",
              d.name[0] ? "\"" : "", d.name, d.name[0] ? "\"\n" : "", (unsigned)(d.tid >> 32), (unsigned)d.tid, id,
-             (unsigned)d.nfiles);
+             (unsigned)d.nfiles,
+             missing ? "The game or channel hasn't been started yet: its save folder is made for it."
+                     : "The save that is there now is replaced. It is copied to GodModeWii/save-backups/ on the SD "
+                       "card or a USB drive first.");
     if (!ui_confirm("IMPORT SAVE", C_YELLOW, q)) goto done;
     if (!risk_ensure_unlocked()) goto done;
 
     char where[VFS_PATH_MAX] = "";
     u32 before = 0;
+    if (missing && !make_save_dir(data, uid, gid)) {
+        seterr(err, sizeof(err), "Couldn't make the save folder on the NAND.");
+        goto fail;
+    }
     ui_splash("Backing up the save that is there...");
     int b = wad_backup_save(d.tid, where, sizeof(where), &before);
     if (b < 0) {
@@ -625,11 +693,13 @@ void databin_import_autotest(const char *path)
         if (parse_header(&f, hdr, &d, err, sizeof(err))) {
             char data[96];
             snprintf(data, sizeof(data), "nand:/title/%08x/%08x/data", (unsigned)(d.tid >> 32), (unsigned)d.tid);
-            u32 uid;
-            u16 gid;
-            u8 attr, op, gp, ot;
-            if (ISFS_GetAttr(data + 5, &uid, &gid, &attr, &op, &gp, &ot) < 0)
-                snprintf(err, sizeof(err), "no save folder");
+            u32 uid = 0;
+            u16 gid = 0;
+            bool missing;
+            if (!save_owner(d.tid, data, &uid, &gid, &missing))
+                snprintf(err, sizeof(err), "title not installed");
+            else if (missing && !make_save_dir(data, uid, gid))
+                snprintf(err, sizeof(err), "can't make the save folder");
             else if (import_files(&f, hdr, &d, data, uid, gid, err, sizeof(err)))
                 rc = 0;
         }

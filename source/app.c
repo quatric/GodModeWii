@@ -25,6 +25,7 @@
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
+#include "miiimport.h"
 #include "virt.h"
 #include "ftp.h"
 #include "arcfs.h"
@@ -999,6 +1000,7 @@ enum {
     A_MKDIR,
     A_MKFILE,
     A_WADDUMP,
+    A_MIIDIR,
     A_INFO,
     A_USAGE,
     A_HEX,
@@ -1126,6 +1128,21 @@ static void databin_menu(const vfs_entry *en)
     }
 }
 
+/* A on a Mii file: look at it, or add it to the Wii's Miis. */
+static void mii_file_menu(const vfs_entry *en)
+{
+    const char *items[] = { "View", "Add to the Wii's Miis (plaza / Parade)", "More actions..." };
+    int r = ui_menu(en->name, items, NULL, 3, 0);
+    char path[VFS_PATH_MAX];
+    if (r == 0 && vfs_join(path, sizeof(path), cwd, en->name)) {
+        mii_file_view(path);
+    } else if (r == 1 && vfs_join(path, sizeof(path), cwd, en->name)) {
+        miiimport_file(path);
+    } else if (r == 2) {
+        actions_menu();
+    }
+}
+
 /* A on a .csm / .mym: install it as the Wii Menu's theme, or look inside. */
 static void theme_menu(const vfs_entry *en)
 {
@@ -1228,6 +1245,17 @@ static void actions_menu(void)
         en[n] = true;
         code[n++] = A_WADDUMP;
     }
+
+    char mii_label[48];
+    char mii_dir[VFS_PATH_MAX] = "";
+    if (on_entry && !nmarks && ents[e].is_dir)
+        vfs_join(mii_dir, sizeof(mii_dir), cwd, ents[e].name);
+    else
+        snprintf(mii_dir, sizeof(mii_dir), "%s", cwd);
+    snprintf(mii_label, sizeof(mii_label), "Import Miis in %s", on_entry && !nmarks && ents[e].is_dir ? "this folder" : "here");
+    items[n] = mii_label;
+    en[n] = mii_dir[0] && !vfs_is_archive(mii_dir) && dev >= 0 && !vfs_is_virtual(dev);
+    code[n++] = A_MIIDIR;
 
     items[n] = "Info / folder size";
     en[n] = on_entry || nmarks;
@@ -1348,6 +1376,10 @@ static void actions_menu(void)
             free_paths(tp, t);
             reload_keep();
         }
+        break;
+    case A_MIIDIR:
+        miiimport_folder(mii_dir);
+        reload_keep();
         break;
     case A_ALL:     select_all(true); break;
     case A_NONE:    select_all(false); break;
@@ -1774,9 +1806,12 @@ int app_run(void)
                         theme_menu(en);
                     else if (ft == FT_PROGRAM)
                         do_launch(en);
-                    else if (joined && !vfs_is_archive(cwd) && arc_name_has_ext(en->name, ".bin") &&
-                             databin_is_file(path))
+                    else if (joined && !vfs_is_archive(cwd) && (ft == FT_NONE || arc_name_has_ext(en->name, ".bin")) &&
+                             en->size >= 0x1000 && databin_is_file(path))
                         databin_menu(en);
+                    else if (ft == FT_MII && joined && !vfs_is_archive(cwd) && miiimport_is_name(en->name) &&
+                             !vfs_is_virtual(vfs_dev_of(cwd)))
+                        mii_file_menu(en);
                     else if (ftype_is_media(ft) && media_open_type(path, ft))
                         ;
                     else if (joined && arcfs_can_open(path))
