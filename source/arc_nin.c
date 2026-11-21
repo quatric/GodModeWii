@@ -610,6 +610,89 @@ static void rsar_rwar(archive_t *a, const src_t *f, uint64_t at, uint32_t size, 
     free(e);
 }
 
+/* Wave sounds: a WAVE sound is one wave of an RWSD whose samples sit raw in the group's wave block.
+ * Each one is shown as an RWAV made on the fly: a header, the wave's own info block (its offsets are
+ * relative to itself, so they stay valid) and the wave's samples straight from the archive.
+ * node: a = the wave info (absolute), b = its samples (absolute), size = the RWAV's size. */
+#define WSND_TAG 0x57534E44u
+
+static void wput32(uint8_t *p, uint32_t v)
+{
+    p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v;
+}
+
+/* Sizes the RWAV of the wave info at `wi`; with `out` (0x400 bytes) also writes its header. */
+static bool rwav_head(const src_t *f, uint64_t wi, uint8_t *out, uint32_t *hl, uint32_t *dl)
+{
+    uint8_t w[0x200];
+    uint64_t avail = wi < f->size ? f->size - wi : 0;
+    uint32_t n = avail < sizeof(w) ? (uint32_t)avail : (uint32_t)sizeof(w);
+    if (n < 0x18 || !src_read_full(f, wi, w, n)) return false;
+
+    unsigned fmt = w[0], ch = w[2];
+    uint32_t end = be32(w + 12), tab = be32(w + 16), ext = 0x18, data = 0;
+    if (fmt > 2 || !ch || ch > 2 || !end || (uint64_t)tab + 4 * ch > n) return false;
+    if (tab + 4 * ch > ext) ext = tab + 4 * ch;
+    for (unsigned c = 0; c < ch; c++) {
+        uint32_t ci = be32(w + tab + 4 * c);
+        if ((uint64_t)ci + 8 > n) return false;
+        uint32_t doff = be32(w + ci);
+        uint64_t bytes = fmt == 2 ? ((uint64_t)end + 15) / 16 * 8 : fmt == 1 ? (uint64_t)end * 2 : end;
+        if ((uint64_t)doff + bytes > 0x4000000u) return false;
+        if (doff + bytes > data) data = (uint32_t)(doff + bytes);
+        if (ci + 8 > ext) ext = ci + 8;
+        if (fmt == 2) {
+            uint32_t ai = be32(w + ci + 4);
+            if ((uint64_t)ai + 0x30 > n) return false;
+            if (ai + 0x30 > ext) ext = ai + 0x30;
+        }
+    }
+    uint32_t info = (8 + ext + 0x1F) & ~0x1Fu;
+    *hl = 0x20 + info + 8;
+    *dl = data;
+    if (out) {
+        memset(out, 0, 0x400);
+        memcpy(out, "RWAV", 4);
+        out[4] = 0xFE; out[5] = 0xFF; out[6] = 1; out[7] = 2;
+        wput32(out + 8, *hl + data);
+        out[0xD] = 0x20; out[0xF] = 2;
+        wput32(out + 0x10, 0x20);
+        wput32(out + 0x14, info);
+        wput32(out + 0x18, 0x20 + info);
+        wput32(out + 0x1C, 8 + data);
+        memcpy(out + 0x20, "INFO", 4);
+        wput32(out + 0x24, info);
+        memcpy(out + 0x28, w, ext);
+        memcpy(out + 0x20 + info, "DATA", 4);
+        wput32(out + 0x24 + info, 8 + data);
+    }
+    return true;
+}
+
+static int32_t rsar_read(archive_t *a, const tnode *n, uint64_t off, void *buf, uint32_t len)
+{
+    if (n->c != WSND_TAG) return raw_read(a, n, off, buf, len);
+    uint8_t head[0x400];
+    uint32_t hl, dl;
+    if (off >= n->size) return 0;
+    if (len > n->size - off) len = (uint32_t)(n->size - off);
+    if (!rwav_head(&a->src, n->a, head, &hl, &dl)) return -1;
+    uint8_t *o = buf;
+    uint32_t done = 0;
+    if (off < hl) {
+        uint32_t k = hl - (uint32_t)off < len ? hl - (uint32_t)off : len;
+        memcpy(o, head + off, k);
+        done = k;
+        off += k;
+    }
+    if (done < len) {
+        int32_t r = a->src.read(a->src.ctx, n->b + (off - hl), o + done, len - done);
+        if (r < 0) return r;
+        done += r;
+    }
+    return (int32_t)done;
+}
+
 archive_t *arc_brsar_open(const src_t *f, const char *name)
 {
     (void)name;
@@ -660,6 +743,7 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
         free(fname);
         goto out;
     }
+    a->read = rsar_read;
 
     for (uint32_t g = 0; g < gcnt; g++) {
         uint32_t ge = bu32(&in, gtab + 8 + g * 8ull);
@@ -727,6 +811,81 @@ archive_t *arc_brsar_open(const src_t *f, const char *name)
         tree_clean_name(nm);
         if (si < 0 && (si = tree_add(&a->tree, 0, "Sequences", true, 0, 0, 0, 0)) < 0) break;
         tree_add(&a->tree, si, nm, false, sz, off, 0, 0);
+    }
+
+    /* Wave sounds, by name: every WAVE sound whose wave sits raw in its group's wave block. */
+    int wsi = -1;
+    for (uint32_t i = 0; i < scnt; i++) {
+        uint32_t e = bu32(&in, stab + 8 + i * 8ull);
+        if ((e + 0x20ull > in.n) || in.b[e + 0x16] != 3) continue;
+        uint32_t fid = bu32(&in, e + 4ull), sinfo = bu32(&in, e + 0x1Cull);
+        uint32_t widx = bu32(&in, sinfo);
+        if (fid >= fcnt || widx == 0xFFFFFFFFu) continue;
+        uint32_t fe = bu32(&in, ftab + 8 + fid * 8ull);
+        uint32_t pt = bu32(&in, fe + 0x18ull), pc = bu32(&in, pt);
+        if (!pc || pc == 0xFFFFFFFFu) continue;
+        uint32_t pe = bu32(&in, pt + 8ull), gid = bu32(&in, pe), idx = bu32(&in, pe + 4ull);
+        if (gid >= gcnt) continue;
+        uint32_t ge = bu32(&in, gtab + 8 + gid * 8ull);
+        uint32_t it = bu32(&in, ge + 0x24ull), ic = bu32(&in, it);
+        if (idx >= ic || ic > in.n / 8) continue;
+        uint32_t ie = bu32(&in, it + 8 + idx * 8ull);
+        uint64_t rwsd = (uint64_t)bu32(&in, ge + 0x10ull) + bu32(&in, ie + 4ull);
+        uint64_t wblk = (uint64_t)bu32(&in, ge + 0x18ull) + bu32(&in, ie + 0xCull);
+        uint32_t rsz = bu32(&in, ie + 8ull);
+        if (!rsz || rsz == 0xFFFFFFFFu || rwsd + rsz > f->size || wblk >= f->size) continue;
+        uint8_t hd[0x20], wm[4];
+        if (!src_read_full(f, rwsd, hd, 0x20) || memcmp(hd, "RWSD", 4)) continue;
+        if (src_read_full(f, wblk, wm, 4) && !memcmp(wm, "RWAR", 4)) continue;   /* listed as waves */
+        /* the WAVE section: a count, then the offset of each wave info */
+        uint32_t wsec = 0;
+        for (unsigned k = 0, ns = be16(hd + 0xE); k < ns && k < 2; k++) {
+            uint8_t sh[8], mg[4];
+            if (!src_read_full(f, rwsd + 0x10 + k * 8, sh, 8)) break;
+            if (src_read_full(f, rwsd + be32(sh), mg, 4) && !memcmp(mg, "WAVE", 4)) wsec = be32(sh);
+        }
+        if (!wsec) continue;
+        /* the wave sound's note names the wave: DATA -> sound -> note table -> note */
+        uint32_t dsec = 0;
+        for (unsigned k = 0, ns = be16(hd + 0xE); k < ns && k < 2; k++) {
+            uint8_t sh[8], mg[4];
+            if (!src_read_full(f, rwsd + 0x10 + k * 8, sh, 8)) break;
+            if (src_read_full(f, rwsd + be32(sh), mg, 4) && !memcmp(mg, "DATA", 4)) dsec = be32(sh);
+        }
+        if (!dsec) continue;
+        uint8_t t[8];
+        uint32_t ws, notes, note, wnum;
+        uint64_t d0 = rwsd + dsec + 8;
+        if (!src_read_full(f, rwsd + dsec + 8, t, 4)) continue;
+        uint32_t dcnt = be32(t);
+        if (widx >= dcnt || dcnt > 0x10000) continue;
+        if (!src_read_full(f, rwsd + dsec + 0xC + widx * 8ull + 4, t, 4)) continue;
+        ws = be32(t);
+        if (!src_read_full(f, d0 + ws + 0x14, t, 4)) continue;
+        notes = be32(t);
+        if (!src_read_full(f, d0 + notes + 8, t, 4)) continue;
+        note = be32(t);
+        if (!src_read_full(f, d0 + note, t, 4)) continue;
+        wnum = be32(t);
+        uint8_t wt[4];
+        uint32_t wcnt;
+        if (!src_read_full(f, rwsd + wsec + 8, wt, 4)) continue;
+        wcnt = be32(wt);
+        if (wnum >= wcnt || wcnt > 0x10000) continue;
+        if (!src_read_full(f, rwsd + wsec + 0xC + wnum * 4ull, wt, 4)) continue;
+        uint64_t wi = rwsd + wsec + be32(wt);
+        uint8_t lc[4];
+        if (!src_read_full(f, wi + 20, lc, 4)) continue;
+        uint64_t samples = wblk + be32(lc);
+        uint32_t hl, dl;
+        if (!rwav_head(f, wi, NULL, &hl, &dl) || samples + dl > f->size) continue;
+        const char *sn = rsar_name(&sy, bu32(&in, e));
+        char nm[180];
+        if (sn) snprintf(nm, sizeof(nm), "%s.rwav", sn);
+        else snprintf(nm, sizeof(nm), "sound%04u.rwav", (unsigned)i);
+        tree_clean_name(nm);
+        if (wsi < 0 && (wsi = tree_add(&a->tree, 0, "Wave sounds", true, 0, 0, 0, 0)) < 0) break;
+        tree_add(&a->tree, wsi, nm, false, (uint64_t)hl + dl, wi, samples, WSND_TAG);
     }
 
     free(fname);

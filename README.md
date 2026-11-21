@@ -183,7 +183,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Format | Extensions | Notes |
 | --- | --- | --- |
 | 7z | `.7z` | |
-| BRSAR | `.brsar` | Groups, sequences, banks, sound files and waves |
+| BRSAR | `.brsar` | Groups, sequences, wave sounds by name, banks, sound files and waves |
 | EPUB | `.epub` | Each chapter's text, and its pictures. EPUB 2 and 3 |
 | PDF | `.pdf` | Each page's text, and every embedded image |
 | RAR | `.rar` | 1.5 to 5.x |
