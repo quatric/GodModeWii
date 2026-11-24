@@ -23,6 +23,11 @@ int wad_install_sd(char **paths, int n);
  * layout, decrypted contents): asks which one first. The real NAND isn't touched. Returns how many went in. */
 int wad_install_emunand(char **paths, int n);
 
+/* The 2 menu's "Delete WADs after installing": each WAD that installed in full is deleted (kept on a
+ * failure, a cancel or a read-only drive). Saved on the card (sd:/apps/GodModeWii/delete_wads). */
+bool wad_delete_after(void);
+void wad_set_delete_after(bool on);
+
 /* True for a DLC WAD (title type 00010005). */
 bool wad_is_dlc(const char *path);
 

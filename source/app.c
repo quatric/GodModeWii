@@ -1015,6 +1015,7 @@ enum {
     A_ALL,
     A_NONE,
     A_INVERT,
+    A_DELWAD,
     A_REFRESH,
     A_COUNT
 };
@@ -1298,6 +1299,11 @@ static void actions_menu(void)
     en[n] = nents > 0;
     code[n++] = A_INVERT;
 
+    items[n] = wad_delete_after() ? "Delete WADs after installing: ON (select to turn off)"
+                                  : "Delete WADs after installing: OFF (select to turn on)";
+    en[n] = true;
+    code[n++] = A_DELWAD;
+
     items[n] = "Refresh";
     en[n] = true;
     code[n++] = A_REFRESH;
@@ -1324,6 +1330,11 @@ static void actions_menu(void)
     case A_COPY:    do_copy_cut(false); break;
     case A_CUT:     do_copy_cut(true); break;
     case A_DELETE:  do_delete(); break;
+    case A_DELWAD:
+        wad_set_delete_after(!wad_delete_after());
+        status(C_GREEN, wad_delete_after() ? "WADs will be deleted after they install."
+                                           : "WADs are kept after they install.");
+        break;
     case A_RENAME:  do_rename(); break;
     case A_MKDIR:   do_mkdir(); break;
     case A_MKFILE:  do_mkfile(); break;

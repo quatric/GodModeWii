@@ -26,6 +26,7 @@
  */
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -761,6 +762,29 @@ out:
     return ret;
 }
 
+/* "Delete WADs after installing" (the 2 menu): on while this file exists, like the other settings. */
+#define DELWAD_FLAG "sd:/apps/GodModeWii/delete_wads"
+
+bool wad_delete_after(void) { return access(DELWAD_FLAG, F_OK) == 0; }
+
+void wad_set_delete_after(bool on)
+{
+    if (!on) {
+        unlink(DELWAD_FLAG);
+        return;
+    }
+    mkdir("sd:/apps", 0777);
+    mkdir("sd:/apps/GodModeWii", 0777);
+    FILE *f = fopen(DELWAD_FLAG, "wb");
+    if (f) fclose(f);
+}
+
+/* An installed WAD goes when the setting is on; a read-only place just keeps it. */
+static void drop_wad(const char *path)
+{
+    if (wad_delete_after()) vfs_remove(path, false);
+}
+
 int wad_install_paths(char **paths, int n)
 {
     int wads = 0;
@@ -801,7 +825,10 @@ int wad_install_paths(char **paths, int n)
         char msg[200], note[300];
         int r = install_one(paths[i], msg, sizeof(msg), note, sizeof(note), false);
         done++;
-        if (r == 0) ok++;
+        if (r == 0) {
+            ok++;
+            drop_wad(paths[i]);
+        }
         if (note[0] == 'S') backed_up = true;
         if (note[0] == 'W') warned = true;
         if (wads == 1) {
@@ -1020,7 +1047,10 @@ int wad_install_sd(char **paths, int n)
             r2 = unlocked ? install_one(paths[i], msg, sizeof(msg), note, sizeof(note), true) : -998;
             if (!unlocked) snprintf(msg, sizeof(msg), "Ticket not installed (NAND locked). Install %s with a WAD manager.",
                                     res.bogus[0] ? vfs_basename(res.bogus) : "its ticket");
-            if (r2 == 0) ok++;
+            if (r2 == 0) {
+                ok++;
+                drop_wad(paths[i]);
+            }
             snprintf(line, sizeof(line), "%s: %s %s. %s", name, res.dlc ? "DLC written to" : "Written to",
                      res.path, msg);
         }
@@ -1528,7 +1558,10 @@ int wad_install_emunand(char **paths, int n)
         char msg[260];
         int rc = emu_install_one(paths[i], root, msg, sizeof(msg));
         done++;
-        if (!rc) ok++;
+        if (!rc) {
+            ok++;
+            drop_wad(paths[i]);
+        }
         snprintf(line, sizeof(line), "%s: %s", vfs_basename(paths[i]), msg);
         if (rl < sizeof(report) - 1) rl += snprintf(report + rl, sizeof(report) - rl, "%s %s\n", rc ? "FAIL" : "OK  ", line);
         if (rl >= sizeof(report)) rl = sizeof(report) - 1;
