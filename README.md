@@ -91,13 +91,13 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 **Viewers and players**
 
 * 3D models (BRRES, J3D, HSF, HSD and more), lit, posed and textured, with BRRES animations
-* Images in every GX format, PNG, JPEG, WebP, TGA, BMP, GIF and PSD
+* Images in every GX format, PNG, JPEG, 3DS MPO, WebP, TGA, BMP, GIF and PSD
 * Banners and layouts (BRLYT with BRLAN animations)
-* Audio: BRSTM, BCSTM, BFSTM, DSP, WAV, MP3, FLAC, Ogg Vorbis and more
+* Audio: BRSTM, BCSTM, BFSTM, DSP, WAV, MP3, M4A, FLAC, Ogg Vorbis and more
 * Fast-forward and rewind in the audio player
 * Tracker modules: `.mod`, `.s3m`, `.xm`, `.it`
 * MIDI with SoundFonts, and BRSAR game sequences
-* Video: Mobiclip, THP and Flipnote, with sound
+* Video: Mobiclip, THP, Flipnote and Photo Channel (Motion-JPEG) videos, with sound
 * Miis, drawn on the Wii, with their details
 * Text formats: BMG, MSBT, BREFF, BRLYT, BRLAN, KMP
 
@@ -277,6 +277,7 @@ out, and **+** or the Actions menu to copy anything out.
 | Illustrator | `.ai` | Its embedded preview |
 | JPEG | `.jpg` `.jpeg` | |
 | Monster Games textures | `.tex` `.art` `.img` `.tm0` | Excite Truck, Excitebots |
+| MPO | `.mpo` | 3DS photos: both the left and the right picture |
 | Paon texture | `.d4` | Donkey Kong: Barrel Blast |
 | Photoshop | `.psd` `.psb` | The flattened image |
 | PLT0 | `.plt0` | As colour swatches |
@@ -314,6 +315,7 @@ out, and **+** or the Actions menu to copy anything out.
 | FLAC | `.flac` | Also in Ogg |
 | HAL HPS | `.hps` | Super Smash Bros. Melee, Kirby Air Ride. Loops as in the game |
 | Impulse Tracker | `.it` | |
+| M4A (AAC) | `.m4a` | What the Photo Channel plays. Needs `ppc-faad2` at build time |
 | Monster Games sound | `.sfx` | |
 | MP3 | `.mp3` | |
 | Ogg Vorbis | `.ogg` | |
@@ -341,6 +343,7 @@ out, and **+** or the Actions menu to copy anything out.
 | --- | --- | --- |
 | Flipnote | `.kwz` `.ppm` | |
 | Mobiclip | `.mo` | |
+| Motion-JPEG | `.avi` `.mov` | The Photo Channel's videos, with PCM sound |
 | THP | `.thp` | |
 
 **Text**
@@ -435,7 +438,7 @@ Known limits for each area (drives, discs, memory cards, archives, keys, disk fi
 You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus some portlibs:
 
 ```sh
-dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg
+dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
 export DEVKITPRO=/opt/devkitpro
 export DEVKITPPC=$DEVKITPRO/devkitPPC
 make

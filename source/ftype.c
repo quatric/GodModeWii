@@ -56,12 +56,20 @@ static ftype_t by_name(const char *name, const u8 *h, u32 n, u64 size)
     /* Illustrator: a PDF (or PostScript) with a preview image the viewer pulls out */
     if (arc_name_has_ext(name, ".ai") && n >= 8 && (M("%PDF") || M("%!PS"))) return FT_IMAGE;
     static const char *const stream[] = { ".dsp", ".btsnd", NULL };
-    static const char *const audio[] = { ".mp3", ".mp2", NULL };
+    static const char *const audio[] = { ".mp3", ".mp2", ".m4a", ".m4b", NULL };
     static const char *const image[] = { ".bti", ".txtr", NULL };
     if (ext_any(name, stream)) return FT_STREAM;
     if (ext_any(name, audio)) return FT_AUDIO;
     if (ext_any(name, image)) return FT_IMAGE;
     return FT_NONE;
+}
+
+bool ftype_is_mjpeg(const u8 *h, u32 n)
+{
+    if (n < 12) return false;
+    if (M("RIFF") && !memcmp(h + 8, "AVI ", 4)) return true;
+    return !memcmp(h + 4, "moov", 4) || !memcmp(h + 4, "mdat", 4) || !memcmp(h + 4, "wide", 4) ||
+           (!memcmp(h + 4, "ftyp", 4) && !memcmp(h + 8, "qt  ", 4));
 }
 
 /* "x.brres.lz": what is inside goes by the inner name (the viewers unwrap it when loading). */
@@ -115,10 +123,13 @@ ftype_t ftype_sniff(const u8 *h, u32 n, u64 size, const char *name)
         if (n >= 12 && M("FORM") && (!memcmp(h + 8, "AIFF", 4) || !memcmp(h + 8, "AIFC", 4)))
             return FT_AUDIO;
         if (M("fLaC") || M("OggS") || M("ID3")) return FT_AUDIO;
+        if (n >= 12 && !memcmp(h + 4, "ftyp", 4) && (!memcmp(h + 8, "M4A ", 4) || !memcmp(h + 8, "M4B ", 4)))
+            return FT_AUDIO;                                                            /* M4A (AAC) */
         /* tracker modules: XM, IT and S3M carry a magic (S3M's sits at 0x2C); a MOD's is at 0x438 and is
          * checked by ftype_detect() */
         if (n >= 0x30 && trk_probe(h, n, NULL)) return FT_AUDIO;
 
+        if (ftype_is_mjpeg(h, n)) return FT_VIDEO;
         if (M("MOC5") || M("THP\0") || M("PARA") || M("KFH")) return FT_VIDEO;
 
         if (be32(h) == 0x0020AF30u) return FT_IMAGE;                                   /* TPL */

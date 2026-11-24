@@ -558,7 +558,11 @@ static void parse_breft(set_t *s)
 static img_t *add_rgba(set_t *s, int w, int h, u8 *rgba, const char *kind)
 {
     if (!rgba) return NULL;
-    img_t *im = &s->img[0];
+    if (s->n >= MAX_IMAGES) {
+        free(rgba);
+        return NULL;
+    }
+    img_t *im = &s->img[s->n];
     memset(im, 0, sizeof(*im));
     im->fmt = IMG_RGBA;
     im->w = w;
@@ -566,7 +570,7 @@ static img_t *add_rgba(set_t *s, int w, int h, u8 *rgba, const char *kind)
     im->rgba = rgba;
     snprintf(im->label, sizeof(im->label), "%s", kind);
     s->kind = kind;
-    s->n = 1;
+    s->n++;
     return im;
 }
 
@@ -637,7 +641,7 @@ static void load_gif(set_t *s)
     if (rgba) add_rgba(s, w, h, rgba, "GIF");
 }
 
-static void load_jpeg(set_t *s)
+static void load_jpeg1(set_t *s, const char *kind)
 {
     struct jpeg_decompress_struct cinfo;
     struct jerr err;
@@ -686,7 +690,51 @@ static void load_jpeg(set_t *s)
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
     free(row);
-    add_rgba(s, w, h, rgba, "JPEG");
+    add_rgba(s, w, h, rgba, kind);
+}
+
+/* A 3DS / Multi-Picture Format photo: the second JPEG's offset from the MPF index (APP2) in the first
+ * one's header, 0 if there is none. */
+static u32 mpo_second(const u8 *b, u32 len)
+{
+    for (u32 p = 2; p + 4 <= len && b[p] == 0xFF && b[p + 1] != 0xDA; ) {
+        u32 n = (b[p + 2] << 8) | b[p + 3];
+        if (b[p + 1] == 0xE2 && n >= 8 + 8 + 16 && p + 2 + n <= len && !memcmp(b + p + 4, "MPF\0", 4)) {
+            const u8 *t = b + p + 8, *e = b + p + 2 + n;       /* the TIFF header every offset counts from */
+            bool le = t[0] == 'I';
+            #define R16(q) (le ? t[q] | t[(q) + 1] << 8 : t[q] << 8 | t[(q) + 1])
+            #define R32(q) (le ? R16(q) | R16((q) + 2) << 16 : R16(q) << 16 | R16((q) + 2))
+            u32 ifd = R32(4), cnt;
+            if (t + ifd + 2 > e) return 0;
+            cnt = R16(ifd);
+            for (u32 i = 0; i < cnt && t + ifd + 2 + (i + 1) * 12 <= e; i++) {
+                u32 en = ifd + 2 + i * 12, ent;
+                if (R16(en) != 0xB002) continue;               /* MP Entry: 16 bytes per image */
+                ent = R32(en + 8);
+                if (R32(en + 4) < 32 || t + ent + 32 > e) return 0;
+                u32 o = (u32)(t - b) + R32(ent + 16 + 8);
+                return o + 4 < len && b[o] == 0xFF && b[o + 1] == 0xD8 ? o : 0;
+            }
+            return 0;
+        }
+        p += 2 + n;
+    }
+    return 0;
+}
+
+static void load_jpeg(set_t *s)
+{
+    u32 o = mpo_second(s->buf, s->len);
+    load_jpeg1(s, o ? "MPO (left)" : "JPEG");
+    if (!o) return;
+    u8 *sb = s->buf;
+    u32 sl = s->len;
+    s->buf += o;
+    s->len -= o;
+    load_jpeg1(s, "MPO (right)");
+    s->buf = sb;
+    s->len = sl;
+    s->kind = "MPO";
 }
 
 static void load_webp(set_t *s)

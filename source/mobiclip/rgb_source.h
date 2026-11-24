@@ -34,5 +34,6 @@ typedef struct RgbSource {
 int kwz_open(RgbSource *out, const char *path);
 int ppm_open(RgbSource *out, const char *path);
 int thp_open(RgbSource *out, const char *path);
+int mjpeg_open(RgbSource *out, const char *path);   /* Motion-JPEG AVI / MOV (Wii Photo Channel) */
 
 #endif

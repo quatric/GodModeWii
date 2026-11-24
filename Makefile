@@ -24,6 +24,10 @@ LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate 
 
 LIBS	:=	-lbz2 -lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -lvorbisidec -logg -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)
+# M4A (AAC) playback: only when devkitPro's ppc-faad2 is installed (dkp-pacman -S ppc-faad2)
+ifneq ($(wildcard $(PORTLIBS_PATH)/ppc/lib/libfaad.a),)
+LIBS	:=	-lfaad $(LIBS)
+endif
 LIBDIRS	:=	$(CURDIR)/libwiiinput # headers: <input_wii.h>
 LIBDIRS	+=	$(CURDIR)/libwiiupdate
 # libpng, libjpeg, libwebp, zlib, libmad, tremor: devkitPro portlibs (ppc-libpng, ppc-libjpeg-turbo, ppc-libwebp, ...)

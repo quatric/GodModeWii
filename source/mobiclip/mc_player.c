@@ -27,6 +27,7 @@
 #include "input.h"
 #include "ui.h"
 #include "vfs.h"
+#include "ftype.h"
 
 static int has_ext(const char *s, const char *ext)
 {
@@ -37,7 +38,7 @@ static int has_ext(const char *s, const char *ext)
 bool video_is_name(const char *name)
 {
     return has_ext(name, ".mo") || has_ext(name, ".thp") ||
-           has_ext(name, ".kwz") || has_ext(name, ".ppm");
+           has_ext(name, ".kwz") || has_ext(name, ".ppm") || has_ext(name, ".avi") || has_ext(name, ".mov");
 }
 
 #define AUDIO_PACKET_FRAMES (64 * 1024)
@@ -486,14 +487,15 @@ static void play_rgb(RgbSource *src)
 bool video_play(const char *path)
 {
     /* which decoder: by the file's magic */
-    u8 head[4] = { 0 };
+    static u8 head[32] __attribute__((aligned(32)));
     vfs_file vf;
     if (!vfs_open_read(&vf, path)) return false;
-    s32 hn = vfs_read(&vf, head, 4);
+    s32 hn = vfs_read(&vf, head, 32);
     vfs_close(&vf);
-    if (hn < 3) return false;
+    if (hn < 12) return false;
     bool mo = !memcmp(head, "MOC5", 4), kwz = !memcmp(head, "KFH", 3), ppm = !memcmp(head, "PARA", 4);
-    if (!mo && !kwz && !ppm && memcmp(head, "THP", 4)) return false;
+    bool mj = ftype_is_mjpeg(head, hn);
+    if (!mo && !kwz && !ppm && !mj && memcmp(head, "THP", 4)) return false;
 
     ui_clear();
     ui_goto(ui_rows() / 2, ui_cols() / 2 - 5);
@@ -505,6 +507,7 @@ bool video_play(const char *path)
     if (rgb) {
         int r = kwz ? kwz_open(&src, path)
               : ppm ? ppm_open(&src, path)
+              : mj  ? mjpeg_open(&src, path)
               : thp_open(&src, path);
         if (r != 0) return false;
     } else {
