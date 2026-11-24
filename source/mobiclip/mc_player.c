@@ -523,8 +523,7 @@ bool video_play(const char *path)
     }
     if (rgb) play_rgb(&src);
     else play_file(path);
-    int w, h;
-    vid_detach(ui_framebuffer(&w, &h));
+    vid_detach(ui_front());
 
     /* Swallow the B / HOME press that stopped playback. */
     while (input_poll_nowait()) VIDEO_WaitVSync();

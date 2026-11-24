@@ -15,15 +15,45 @@
 #include "sfx.h"
 #include "wiilight.h"
 
+/* Everything draws into xfb, a back buffer; ui_flip copies it to `front`, the one the video
+ * hardware scans out, once per vertical retrace. Drawing straight into the displayed buffer
+ * showed every wipe and half-redrawn screen as a blip. */
 static void *xfb = NULL;
+static void *front = NULL;
+static u32 fb_bytes;
 static GXRModeObj *rmode = NULL;
 static int g_cols = 76, g_rows = 28;
+static vu32 frames, flipped_at;
+static vu8 flipping;
 
 void *ui_framebuffer(int *w, int *h)
 {
     if (w) *w = rmode ? rmode->fbWidth : 0;
     if (h) *h = rmode ? rmode->xfbHeight : 0;
     return xfb;
+}
+
+void *ui_front(void) { return front; }
+
+/* Shows what has been drawn. At most once per frame; the caller should come straight after a
+ * VIDEO_WaitVSync so the copy runs ahead of the beam. */
+void ui_flip(void)
+{
+    if (!front || flipping || frames == flipped_at) return;
+    flipping = 1;
+    flipped_at = frames;
+    /* K1 writes and GX copies bypass the cache: drop stale lines before reading */
+    DCInvalidateRange(MEM_K1_TO_K0(xfb), fb_bytes);
+    memcpy(MEM_K1_TO_K0(front), MEM_K1_TO_K0(xfb), fb_bytes);
+    DCFlushRange(MEM_K1_TO_K0(front), fb_bytes);
+    flipping = 0;
+}
+
+/* Long jobs that draw without polling input never reach ui_flip: show their progress anyway. */
+static void retrace_cb(u32 count)
+{
+    frames++;
+    if (frames - flipped_at >= 20) ui_flip();
 }
 
 #ifdef GMW_AUTOTEST
@@ -33,9 +63,10 @@ bool ui_test_dump(void)
     char name[32];
     snprintf(name, sizeof name, "sd:/shot_%d.yuv", n++);
     for (int i = 0; i < 10; i++) VIDEO_WaitVSync();
+    ui_flip();
     FILE *f = fopen(name, "wb");
     if (f) {
-        fwrite(xfb, 1, rmode->fbWidth * rmode->xfbHeight * 2, f);
+        fwrite(front, 1, rmode->fbWidth * rmode->xfbHeight * 2, f);
         fclose(f);
     }
     return true;
@@ -54,14 +85,18 @@ void ui_init(void)
     VIDEO_Init();
     rmode = VIDEO_GetPreferredMode(NULL);
     xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
+    front = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
+    fb_bytes = VIDEO_GetFrameBufferSize(rmode);
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
+    VIDEO_ClearFrameBuffer(rmode, front, COLOR_BLACK);
     console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
     /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw
      * over the screen. */
     devoptab_list[STD_ERR] = &discard_tab;
     VIDEO_Configure(rmode);
-    VIDEO_SetNextFramebuffer(xfb);
+    VIDEO_SetNextFramebuffer(front);
+    VIDEO_SetPostRetraceCallback(retrace_cb);
     VIDEO_SetBlack(false);
     VIDEO_Flush();
     VIDEO_WaitVSync();

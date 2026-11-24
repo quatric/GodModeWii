@@ -69,6 +69,10 @@ u32 ui_hint_under(void);
 
 /* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
 void *ui_framebuffer(int *w, int *h);
+/* ui_framebuffer is the back buffer; ui_flip shows it (once per frame, call right after a vsync) and
+ * ui_front is the one on screen. */
+void ui_flip(void);
+void *ui_front(void);
 
 #ifdef GMW_AUTOTEST
 /* Test builds only: saves the framebuffer as sd:/shot_N.yuv (YUY2) and says the viewer should

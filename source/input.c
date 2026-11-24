@@ -40,6 +40,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
     ptr_overlay_update();                           /* an arrow taken away by a redraw is back before the next frame */
     if (wait)
         VIDEO_WaitVSync();
+    ui_flip();
 
     INPUT_Update();
     ui_hint_update();
