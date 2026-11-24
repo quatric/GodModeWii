@@ -19,6 +19,12 @@
  *           (direct, a range table or an index table) leading to a region: wave index, ADSR,
  *           original key, volume, pan, tuning. WAVE: wave infos, when the waves aren't in an RWAR.
  *   RWAR    TABL of RWAV files: DSP-ADPCM, PCM16 or PCM8, optionally looping.
+ *
+ * The aux A send (command 0xD9) feeds a reverb with the network and constants of AXFX's standard
+ * reverb as modelled in ogumaza/wsf's ntdlib (MIT; rvl/axfx/reverb_std.cpp): per channel two combs
+ * in parallel, an allpass, a low-pass and a second allpass, with the 32 kHz line lengths scaled to
+ * 48 kHz. A game sets the reverb's parameters in its own code, not in the archive, so they are
+ * fixed here at plausible values.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,13 +134,83 @@ typedef struct {
     } stack[CALL_DEPTH];
     int sp;
     int prg, vol, vol2, pan, transpose, bend, range;
+    int fxa;                            /* aux A send, 0..127 */
     bool note_wait, tie, mono, cmp, mute;
     int att, dec, sus, rel;             /* -1: the region's */
     int16_t var[16];
     int tie_voice;
 } track_t;
 
+/* AXFX standard reverb (see the header comment): line lengths at 32 kHz, ×1.5 for 48 kHz. */
+#define RV_COMBS 2
+#define RV_APS   2
+#define RV_TIME  2.0f                   /* seconds to -60 dB */
+#define RV_COLOR 0.6f                   /* the allpasses' gain */
+#define RV_DAMP  0.5f                   /* low-pass weight is 1 - damping, at most 0.95 */
+#define RV_WET   0.35f
+static const int rv_len[RV_COMBS + RV_APS] = { 1789 * 3 / 2, 1999 * 3 / 2, 433 * 3 / 2, 149 * 3 / 2 };
+
+typedef struct {
+    float *line[2][RV_COMBS + RV_APS];  /* per channel: combs then allpasses */
+    int pos[RV_COMBS + RV_APS];
+    float comb_coef[RV_COMBS], lpf[2], lpf_coef;
+} reverb_t;
+
+static reverb_t *reverb_new(void)
+{
+    reverb_t *r = calloc(1, sizeof(*r));
+    if (!r) return NULL;
+    for (int c = 0; c < 2; c++)
+        for (int i = 0; i < RV_COMBS + RV_APS; i++) {
+            r->line[c][i] = calloc(rv_len[i], sizeof(float));
+            if (!r->line[c][i]) {
+                for (int cc = 0; cc < 2; cc++)
+                    for (int j = 0; j < RV_COMBS + RV_APS; j++) free(r->line[cc][j]);
+                free(r);
+                return NULL;
+            }
+        }
+    for (int i = 0; i < RV_COMBS; i++)
+        r->comb_coef[i] = powf(10.0f, -3.0f * rv_len[i] / (SEQ_RATE * RV_TIME));
+    r->lpf_coef = 1.0f - RV_DAMP < 0.95f ? 1.0f - RV_DAMP : 0.95f;
+    return r;
+}
+
+static void reverb_free(reverb_t *r)
+{
+    if (!r) return;
+    for (int c = 0; c < 2; c++)
+        for (int i = 0; i < RV_COMBS + RV_APS; i++) free(r->line[c][i]);
+    free(r);
+}
+
+/* One stereo sample in, the wet sample out. */
+static void reverb_run(reverb_t *r, const float in[2], float out[2])
+{
+    for (int c = 0; c < 2; c++) {
+        float sum = 0;
+        for (int i = 0; i < RV_COMBS; i++) {
+            float *d = &r->line[c][i][r->pos[i]], o = *d;
+            *d = in[c] + o * r->comb_coef[i];
+            sum += o;
+        }
+        float *d = &r->line[c][RV_COMBS][r->pos[RV_COMBS]], o = *d, st = sum + o * RV_COLOR;
+        *d = st;
+        float x = o - st * RV_COLOR;
+        x = (1.0f - r->lpf_coef) * x + r->lpf_coef * r->lpf[c];
+        r->lpf[c] = x;
+        d = &r->line[c][RV_COMBS + 1][r->pos[RV_COMBS + 1]];
+        o = *d;
+        st = x + o * RV_COLOR;
+        *d = st;
+        out[c] = (o - st * RV_COLOR) * RV_WET;
+    }
+    for (int i = 0; i < RV_COMBS + RV_APS; i++)
+        if (++r->pos[i] >= rv_len[i]) r->pos[i] = 0;
+}
+
 struct seq {
+    reverb_t *rv;                       /* made when a track first sends to aux A */
     /* files */
     uint8_t *rseq, *rbnk, *wdat;        /* RSEQ, RBNK, wave data (RWAR or raw) */
     uint32_t rseq_n, rbnk_n, wdat_n;
@@ -424,6 +500,7 @@ void seq_close(seq_t *s)
 {
     if (!s) return;
     free_files(s);
+    reverb_free(s->rv);
     free(s);
 }
 
@@ -865,6 +942,14 @@ static void run_track(seq_t *s, int ti)
             break;
         }
         case 0xD5: { int v = arg(s, t, A_U8, prefix); if (doit) t->vol2 = v; break; }
+        case 0xD9: {
+            int v = arg(s, t, A_U8, prefix);
+            if (doit) {
+                t->fxa = v;
+                if (v && !s->rv) s->rv = reverb_new();
+            }
+            break;
+        }
         case 0xDD: { int v = arg(s, t, A_U8, prefix); if (doit) t->mute = v != 0; break; }
         case 0xE0: case 0xE3: arg(s, t, A_S16, prefix); break;
         case 0xE1: { int v = arg(s, t, A_S16, prefix); if (doit && v > 0) s->tempo = v; break; }
@@ -1007,8 +1092,9 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
 
         uint32_t n = MS_FRAMES - s->sub;
         if (n > frames - done) n = frames - done;
-        float mix[MS_FRAMES * 2];
+        float mix[MS_FRAMES * 2], aux[MS_FRAMES * 2];
         memset(mix, 0, n * 2 * sizeof(float));
+        memset(aux, 0, n * 2 * sizeof(float));
         float master = s->sound_vol * (s->main_vol / 127.0f) * (s->main_vol / 127.0f) * 0.5f;
 
         for (int i = 0; i < MAX_TRACKS; i++) if (s->t[i].on) s->seen |= 1u << i;
@@ -1028,6 +1114,7 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
 
             float ang = p / 127.0f * 1.5707963f;
             float gl = g * cosf(ang) * 1.41421356f, gr = g * sinf(ang) * 1.41421356f;
+            float fs = s->rv ? t->fxa / 127.0f : 0;
             const wave_t *w = v->w;
             for (uint32_t k = 0; k < n; k++) {
                 uint32_t ip = (uint32_t)v->pos;
@@ -1047,9 +1134,21 @@ uint32_t seq_render(seq_t *s, int16_t *out, uint32_t frames)
                 float x = a + (b - a) * fr;
                 mix[k * 2] += x * gl;
                 mix[k * 2 + 1] += x * gr;
+                if (fs > 0) {
+                    aux[k * 2] += x * gl * fs;
+                    aux[k * 2 + 1] += x * gr * fs;
+                }
                 v->pos += v->step;
             }
         }
+        /* shortcut: the reverb tail stops with the last note, not after it, when the sequence ends */
+        if (s->rv)
+            for (uint32_t k = 0; k < n; k++) {
+                float wet[2];
+                reverb_run(s->rv, &aux[k * 2], wet);
+                mix[k * 2] += wet[0];
+                mix[k * 2 + 1] += wet[1];
+            }
         for (uint32_t k = 0; k < n; k++) {
             if (s->fade_step > 0) {
                 s->fade -= s->fade_step;
