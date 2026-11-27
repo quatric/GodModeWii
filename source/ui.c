@@ -22,7 +22,8 @@ static void *xfb = NULL;
 static void *front = NULL;
 static u32 fb_bytes;
 static GXRModeObj *rmode = NULL;
-static int g_cols = 76, g_rows = 28;
+static int g_cols = 72, g_rows = 27;
+static int g_x0 = 32, g_y0 = 24; /* the console's corner: a TV's overscan crops up to ~5% a side */
 static vu32 frames, flipped_at;
 static vu8 flipping;
 
@@ -89,7 +90,9 @@ void ui_init(void)
     fb_bytes = VIDEO_GetFrameBufferSize(rmode);
     VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
     VIDEO_ClearFrameBuffer(rmode, front, COLOR_BLACK);
-    console_init(xfb, 16, 16, rmode->fbWidth - 32, rmode->xfbHeight - 32,
+    g_x0 = (rmode->fbWidth * 5 / 100 + 7) & ~7;
+    g_y0 = (rmode->xfbHeight * 5 / 100 + 1) & ~1;
+    console_init(xfb, g_x0, g_y0, rmode->fbWidth - 2 * g_x0, rmode->xfbHeight - 2 * g_y0,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
     /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw
      * over the screen. */
@@ -111,6 +114,8 @@ void ui_init(void)
 
 int ui_cols(void) { return g_cols; }
 int ui_rows(void) { return g_rows; }
+int ui_cell_x(int col) { return g_x0 + 8 * col; }
+int ui_cell_y(int row) { return g_y0 + 16 * row; }
 
 /* ANSI cursor addressing is 1-based; callers use 0-based cells. */
 /* Fields already on screen: ui_field skips one that would draw exactly what is there (same text, same
@@ -122,7 +127,7 @@ static u32 row_gen[64] , clear_gen = 1;
 
 static void goto_raw(int row, int col)
 {
-    ptr_hide_range(16 + 16 * row, 32 + 16 * row);
+    ptr_hide_range(ui_cell_y(row), ui_cell_y(row + 1));
     printf("\x1b[%d;%dH", row + 1, col + 1);
 }
 

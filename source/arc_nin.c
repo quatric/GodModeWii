@@ -16,6 +16,7 @@
  *   BRWAR (.brwar, .rwar)             NW4R wave archive: its RWAV waves (playable)
  *   HAL SSM (.ssm)                    HAL Laboratory sound bank (Melee, Kururin Squash!): each sound's
  *                                     channels as plain DSP files (playable)
+ *   NARC (.narc, in some .carc)       Nintendo DS archive: its folders and files, little endian
  * Layouts match quatric's nintoolbox (Wiimm's SZS tools lineage).
  */
 #include <stdio.h>
@@ -1131,5 +1132,100 @@ archive_t *arc_pac_open(const src_t *f, const char *name)
     }
 
     if (a->tree.count <= 1) return raw_fail(a);
+    return a;
+}
+
+/* ---------------------------------------------------------------- NARC (Nintendo DS) */
+
+bool arc_narc_probe(const src_t *f, const char *name)
+{
+    (void)name;
+    uint8_t h[0x10];
+    return read_head(f, h, 0x10) && !memcmp(h, "NARC", 4) && h[4] == 0xFE && h[5] == 0xFF;
+}
+
+static uint16_t le16v(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+
+/* The FNT's directory `dir` (0-based) and below; files from its first file ID on. */
+static bool narc_dir(archive_t *a, const uint8_t *fnt, uint32_t fnt_len, const uint8_t *fat, uint32_t nfiles,
+                     uint64_t data, uint32_t dir, int parent, int depth)
+{
+    if (depth > 16 || (uint64_t)dir * 8 + 8 > fnt_len) return false;
+    uint32_t p = le32(fnt + dir * 8), id = le16v(fnt + dir * 8 + 4);
+    while (p < fnt_len && fnt[p]) {
+        uint8_t t = fnt[p++];
+        uint32_t len = t & 0x7F;
+        if (p + len > fnt_len) return false;
+        char nm[130];
+        memcpy(nm, fnt + p, len);
+        nm[len] = 0;
+        p += len;
+        tree_clean_name(nm);
+        if (t & 0x80) {                                     /* a folder: its ID follows */
+            if (p + 2 > fnt_len) return false;
+            uint32_t sub = le16v(fnt + p) & 0x0FFF;
+            p += 2;
+            int idx = tree_add(&a->tree, parent, nm, true, 0, 0, 0, 0);
+            if (idx < 0 || !narc_dir(a, fnt, fnt_len, fat, nfiles, data, sub, idx, depth + 1)) return false;
+        } else {
+            if (id >= nfiles) return false;
+            uint32_t s = le32(fat + id * 8), e = le32(fat + id * 8 + 4);
+            if (e >= s) tree_add(&a->tree, parent, nm, false, e - s, data + s, 0, 0);
+            id++;
+        }
+    }
+    return true;
+}
+
+archive_t *arc_narc_open(const src_t *f, const char *name)
+{
+    (void)name;
+    uint32_t len;
+    uint8_t *b = read_all(f, &len);
+    if (!b) return NULL;
+    /* three sections after the 0x10 header: BTAF (offsets), BTNF (names), GMIF (data) */
+    uint32_t p = le16v(b + 12), fat_at = 0, fat_len = 0, fnt_at = 0, fnt_len = 0, gmif = 0;
+    for (int k = 0; k < 3 && p + 8 <= len; k++) {
+        uint32_t sz = le32(b + p + 4);
+        if (sz < 8 || p + sz > len) break;
+        if (!memcmp(b + p, "BTAF", 4)) fat_at = p + 12, fat_len = sz - 12;
+        else if (!memcmp(b + p, "BTNF", 4)) fnt_at = p + 8, fnt_len = sz - 8;
+        else if (!memcmp(b + p, "GMIF", 4)) gmif = p + 8;
+        p += sz;
+    }
+    uint32_t nfiles = fat_at ? le16v(b + fat_at - 4) : 0;
+    if (!fat_at || !gmif || (uint64_t)nfiles * 8 > fat_len) {
+        free(b);
+        return NULL;
+    }
+    archive_t *a = raw_new("NARC", f);
+    if (!a) {
+        free(b);
+        return NULL;
+    }
+    /* named when the name table has more than its root (with nothing in it); else by number */
+    bool named = fnt_at && fnt_len > 8 && le32(b + fnt_at) < fnt_len && b[fnt_at + le32(b + fnt_at)] &&
+                 narc_dir(a, b + fnt_at, fnt_len, b + fat_at, nfiles, gmif, 0, 0, 0);
+    if (!named) {
+        tree_free(&a->tree);
+        tree_init(&a->tree);
+        for (uint32_t i = 0; i < nfiles; i++) {
+            uint32_t s = le32(b + fat_at + i * 8), e = le32(b + fat_at + i * 8 + 4);
+            if (e < s || gmif + (uint64_t)e > len) continue;
+            const uint8_t *m = b + gmif + s;
+            const char *ext = e - s < 4 ? ".bin" : !memcmp(m, "NCGR", 4) || !memcmp(m, "RGCN", 4) ? ".ncgr" :
+                              !memcmp(m, "NCLR", 4) || !memcmp(m, "RLCN", 4) ? ".nclr" :
+                              !memcmp(m, "NSCR", 4) || !memcmp(m, "RCSN", 4) ? ".nscr" :
+                              !memcmp(m, "NCER", 4) || !memcmp(m, "RECN", 4) ? ".ncer" :
+                              !memcmp(m, "NANR", 4) || !memcmp(m, "RNAN", 4) ? ".nanr" :
+                              !memcmp(m, "BMD0", 4) ? ".nsbmd" : !memcmp(m, "BTX0", 4) ? ".nsbtx" :
+                              !memcmp(m, "NARC", 4) ? ".narc" : !memcmp(m, "SDAT", 4) ? ".sdat" : ".bin";
+            char nm[32];
+            snprintf(nm, sizeof(nm), "%04u%s", (unsigned)i, ext);
+            tree_add(&a->tree, 0, nm, false, e - s, gmif + s, 0, 0);
+        }
+    }
+    free(b);
+    if (a->tree.count <= 1 && !nfiles) return raw_fail(a);
     return a;
 }

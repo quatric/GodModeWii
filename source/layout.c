@@ -1225,8 +1225,8 @@ bool lyt_view(const char *path)
         /* fit the layout's canvas in the screen, under the title lines when they show */
         /* the console's text starts 16 pixels in, 16 pixels a row: keep clear of rows 0, 1 and the
          * last */
-        float top = info ? 16 + 2 * 16 : 0,
-              bottom = info ? rm->efbHeight - (16 + 16 * (ui_rows() - 1)) : 0;
+        float top = info ? ui_cell_y(2) : 0,
+              bottom = info ? rm->efbHeight - ui_cell_y(ui_rows() - 1) : 0;
         float aw = rm->fbWidth, ah = rm->efbHeight - top - bottom;
         float sc = (aw / L->W < ah / L->H ? aw / L->W : ah / L->H) * zoom;
         float vw = L->W * sc, vh = L->H * sc;

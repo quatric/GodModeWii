@@ -270,6 +270,60 @@ static void run_import(const char *what, int total, int dest, const char *single
     ui_message(saved && t.added ? "MIIS IMPORTED" : "IMPORT MIIS", saved && t.added ? C_GREEN : C_YELLOW, msg);
 }
 
+bool miiimport_gold_pants(const uint8_t id[8])
+{
+    bool gold = !(mii_id_flags(id) & MII_ID_NORMAL);
+    if (!ui_confirm("GOLD PANTS", C_YELLOW,
+                    gold ? "Take this Mii's gold pants away?\n\nIts creation ID changes, so games that saved "
+                           "this Mii (Wii Sports records, Mario Kart licences) no longer know it. The Mii "
+                           "database is copied to GodModeWii/mii-backups/ first."
+                         : "Give this Mii gold pants?\n\nIt becomes a \"special\" Mii like the ones Nintendo "
+                           "gives out: the Mii Channel won't let you edit it, and it won't mingle. Its creation ID "
+                           "changes, so games that saved this Mii no longer know it. The Mii database is copied "
+                           "to GodModeWii/mii-backups/ first."))
+        return false;
+    if (!risk_ensure_unlocked())
+        return false;
+    ui_splash("Backing up the Mii database...");
+    char where[VFS_PATH_MAX] = "";
+    if (backup_db(where, sizeof(where)) < 0) {
+        ui_message("GOLD PANTS", C_RED,
+                   "Couldn't back up the Mii database (no writable SD card or USB drive, or the database can't be "
+                   "read), so nothing was changed.");
+        return false;
+    }
+    mii_db db = { 0 };
+    mii m;
+    const char *why = NULL;
+    int slot = -1, r = mii_db_load(&db);
+    if (r >= 0)
+        r = slot = mii_db_find(&db, id);
+    if (r >= 0)
+        r = mii_db_get(&db, slot, &m);
+    if (r >= 0) {
+        m.id[0] ^= MII_ID_NORMAL >> 24;  /* the ID is big-endian */
+        if (!gold)
+            m.local_only = 1;           /* a special Mii must not mingle (mii_check) */
+        r = mii_db_find(&db, m.id) >= 0 ? MII_E_EXISTS : mii_check(&m, &why);
+    }
+    if (r >= 0)
+        r = mii_db_put(&db, slot, &m);
+    if (r >= 0) {
+        ui_splash("Saving the Mii database...");
+        r = mii_db_save(&db);
+        if (r == MII_E_IO || r == MII_E_VERIFY)
+            r = mii_db_save(&db);
+    }
+    mii_db_free(&db);
+    char msg[VFS_PATH_MAX + 200];
+    if (r < 0)
+        snprintf(msg, sizeof(msg), "Nothing was changed: %s.\n\nBackup: %s", why ? why : mii_strerror(r), where);
+    else
+        snprintf(msg, sizeof(msg), "%s\n\nBackup: %s", gold ? "The gold pants are gone." : "Gold pants on.", where);
+    ui_message("GOLD PANTS", r < 0 ? C_RED : C_GREEN, msg);
+    return r >= 0;
+}
+
 void miiimport_file(const char *path)
 {
     int dest = pick_dest("ADD THIS MII TO", false);

@@ -3,7 +3,7 @@
 A text-mode file manager for the **Wii** and the **Wii U's vWii mode**, in the style of [GodMode9](https://github.com/d0k3/GodMode9).
 No fancy GUI: a console, a cursor and a lot of power.
 
-Version 0.15.1, by quatric & cmyksoda. Looking for the Wii U version? See [GodModeU](https://github.com/quatric/GodModeU).
+Version 0.16.0, by quatric & cmyksoda. Looking for the Wii U version? See [GodModeU](https://github.com/quatric/GodModeU).
 
 * Copy, move and delete files between every drive the console can see.
 * Open archives, disc images, saves and WADs like folders.
@@ -134,6 +134,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 **HOME menu extras**
 
 * Miis export (`.miigx`)
+* Gold pants: make a Mii in the Mii Channel "special" or normal again (MIIS, press -)
 * Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
@@ -363,12 +364,15 @@ job). Each viewer's buttons are in [docs/FORMATS.md](docs/FORMATS.md).
 
 ## Installing with Wiiload
 
-Wiiload sends things to the Wii over the network and installs them on the **SD card or a USB drive** (press **1** on the Wii to
-choose USB). On the Wii, open HOME → *Wiiload*, then from your computer:
+Wiiload sends things to the Wii over the network, or over a USB Gecko in a memory card slot, and installs them on the **SD
+card, a USB drive or an SD Gecko** (press **1** on the Wii for the next drive). The Wii warns when the Homebrew Channel can't
+load apps from that drive (not FAT, not the first partition, not the first USB drive). On the Wii, open HOME → *Wiiload*, then
+from your computer:
 
 ```sh
 zip -r myapp.zip myapp
 WIILOAD=tcp:192.168.1.23 wiiload myapp.zip
+WIILOAD=/dev/ttyUSB0 wiiload myapp.zip     # over a USB Gecko (COMn on Windows)
 ```
 
 * **Apps:** a `.dol` / `.elf`, or a `.zip` / `.7z` / `.rar` holding a program, is installed to `apps/<name>/` on the drive.
@@ -431,7 +435,7 @@ Developed against devkitPPC / libogc and tested mostly in Dolphin.
 **Tried on a Wii U (vWii):** the SD card; FAT32, NTFS and ext4 USB drives; a Wii U USB drive read with GodModeU's saved keys; the
 FTP server; exporting Miis.
 
-**Not yet verified on real hardware** (please report what you see): multi-drive and multi-LUN USB, SD Gecko, the SEEPROM / OTP
+**Not yet verified on real hardware** (please report what you see): multi-drive and multi-LUN USB, SD Gecko, Wiiload over a USB Gecko, the SEEPROM / OTP
 readers and the Console Keys drive, disc browsing, archives (zip / 7z / RAR, RVZ / WIA, Retro PAK), the model viewer, the audio
 player, the extra controllers, and the IR remote (sent from the sensor bar).
 

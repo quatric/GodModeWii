@@ -20,6 +20,7 @@ int njIsColor(void);
 unsigned char *njGetImage(void);
 int njGetImageSize(void);
 void njDone(void);
+void njRelease(void);   /* njDone, and frees the decoder itself */
 
 /* Enable THP unescaped-scan mode (raw 0xFF in entropy data). Persists across
  * njDecode() calls; call once with 1 for THP, it is off by default. */

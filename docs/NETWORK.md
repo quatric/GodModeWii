@@ -53,7 +53,13 @@ zip -r myapp.zip myapp
 WIILOAD=tcp:192.168.1.23 wiiload myapp.zip
 ```
 
-It installs to the SD card, or to USB after pressing **1**. What happens depends on what you send:
+A **USB Gecko** in either memory card slot takes uploads too, network or not, the way the Homebrew Channel does:
+`WIILOAD=/dev/ttyUSB0 wiiload myapp.zip` (`COMn` on Windows).
+
+It starts on the first drive the Homebrew Channel can load apps from; **1** goes to the next writable drive (SD card, each USB
+volume, SD Gecko). When the Homebrew Channel won't list apps put there, the screen says why: exFAT, NTFS or ext (it reads FAT
+only), a partition after the drive's first, or a USB drive after the first (HBC Reborn also reads the second, shown in yellow).
+What happens depends on what you send:
 
 | You send | What happens |
 | --- | --- |

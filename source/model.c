@@ -3703,8 +3703,8 @@ static void draw_range(const model_t *m, u32 done, u32 stop, int shade);
 
 /* the text rows kept clear of the picture: three at the top, the hint line at the bottom (the
  * console starts 16 pixels in, and a row is 16 pixels tall) */
-#define VIEW_TOP 64
-#define VIEW_BOTTOM 32
+#define VIEW_TOP ui_cell_y(3)
+#define VIEW_BOTTOM (rm->efbHeight - ui_cell_y(ui_rows() - 1))
 
 static void render(const model_t *m, float yaw, float pitch, float dist, int shade)
 {

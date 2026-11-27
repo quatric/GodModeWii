@@ -509,6 +509,16 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     }
 
     bool vwii_title = fix_ticket(tik) || vwii_flag;
+    /* For the SD card, as wad2bin's bogus WAD has it: a ticket issued to another console (shared DLC WADs
+     * carry their dumper's) loses that console's ID and ECDH data, which ES here can't use. */
+    if (sd_mode) {
+        u32 me = 0;
+        ES_GetDeviceID(&me);
+        w2b_portable_ticket(tik, h.tik_len, me);
+    }
+    /* SD card DLC: the songs are <index>.bin files on the card, but the game finds them through the title
+     * on the NAND, which ES only keeps with its content 0: that one goes on the NAND, the rest stay off. */
+    bool dlc_sd = sd_mode && TID_HI(tid) == 0x00010005;
     if (sysver >> 32 == 0) {                                /* an IOS */
         if (vwii_title != g_is_vwii) {
             snprintf(msg, msz,
@@ -563,7 +573,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     }
 
     /* ---- which contents are in the WAD (a DLC WAD may leave some out) ---- */
-    if (!sd_mode) {
+    if (!sd_mode || dlc_sd) {
         lay = malloc(sizeof(*lay));
         if (!lay) {
             ret = -996;
@@ -633,14 +643,14 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
 
     u64 total = 0, done = 0;
     for (int i = 0; i < ncont; i++)
-        if (!lay || lay->off[i] != W2B_ABSENT)
+        if ((!lay || lay->off[i] != W2B_ABSENT) && !(dlc_sd && be16(tmd + W_TMD_CONTENTS + i * 0x24 + 4)))
             total += round64((u32)be64(tmd + W_TMD_CONTENTS + i * 0x24 + 8));
 
     progress(name, "Installing ticket...", 0, total);
     ret = ES_AddTicket((signed_blob *)tik, h.tik_len, (signed_blob *)certs, h.certs_len,
                        (signed_blob *)crl, h.crl_len);
     if (ret < 0) goto out;
-    if (sd_mode) {
+    if (sd_mode && !dlc_sd) {
         /* the TMD, with no contents: a title on the SD card. A title already on the NAND keeps
          * what it has. */
         if (had_title) {
@@ -680,6 +690,8 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         u32 cid = be32(rec);
         u32 len = round64((u32)be64(rec + 8));
         if (lay->off[i] == W2B_ABSENT)               /* left out of this WAD */
+            continue;
+        if (dlc_sd && be16(rec + 4) != 0)            /* on the SD card instead */
             continue;
         u64 pos = lay->off[i];
         if (shared_present(rec, map, map_n)) {
@@ -739,7 +751,10 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
             snprintf(note, nsz, "Save data kept (%u file(s)). A backup is in %s",
                      (unsigned)files_before, backup);
     }
-    if (lay->present < ncont)
+    if (dlc_sd)
+        snprintf(msg, msz, "Ticket, TMD and content 0 put on the NAND (%08x-%08x v%u); the songs are on the SD card.",
+                 TID_HI(tid), TID_LO(tid), (unsigned)version);
+    else if (lay->present < ncont)
         snprintf(msg, msz, "Installed %08x-%08x v%u: the %u of its %d contents in this WAD (DLC contents already on "
                  "the NAND are kept).", TID_HI(tid), TID_LO(tid), (unsigned)version, (unsigned)lay->present, ncont);
     else
@@ -984,13 +999,14 @@ int wad_install_sd(char **paths, int n)
         return 0;
     }
 
-    char q[700];
+    char q[900];
     snprintf(q, sizeof(q),
              "Install %s%s%s to the SD card?\n\n"
              "Converted the way wad2bin does it, with this console's keys: a channel becomes "
              "private/wii/title/<ID>/content.bin and runs from the SD card menu (System Menu 4.0 or later); "
              "DLC becomes private/wii/data/<ID>/<index>.bin. The files only work on this Wii.\n\n"
-             "Its ticket and TMD are then put on the NAND (asks for the Konami code). A WAD whose ticket "
+             "Its ticket and TMD (for DLC, also its small content 0) then go on the NAND (asks for the Konami "
+             "code); a ticket made out to another console is made usable here first. A WAD whose ticket "
              "isn't for this console needs a System Menu IOS with the signing bug (or a cIOS for DLC).",
              wads == 1 ? "\"" : "", wads == 1 ? vfs_basename(one) : "these WADs", wads == 1 ? "\"" : "");
     if (wads > 1) {
@@ -998,7 +1014,7 @@ int wad_install_sd(char **paths, int n)
         snprintf(cnt, sizeof(cnt), "%d WADs", wads);
         char *p = strstr(q, "these WADs");
         if (p) {
-            char rest[700];
+            char rest[900];
             snprintf(rest, sizeof(rest), "%s", p + strlen("these WADs"));
             snprintf(p, sizeof(q) - (size_t)(p - q), "%s%s", cnt, rest);
         }

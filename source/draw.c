@@ -41,7 +41,7 @@ static struct { const char *label; int col, w, cmd; } items[CMD_COUNT] = {
     { "Save", 0, 0, CMD_SAVE }, { "Quit", 0, 0, CMD_QUIT },
 };
 #define TOOLBAR_ROW 4
-#define PALETTE_Y 52                /* swatches: 32 x 24 every 36 pixels */
+#define PALETTE_Y (ui_cell_y(2) + 4) /* swatches: 32 x 24 every 36 pixels, rows 2-3 */
 
 static u32 *cv;                     /* the picture */
 static u32 *undo_buf[MAX_UNDO];
@@ -408,7 +408,7 @@ void draw_run(void)
     int fw, fh;
     ui_framebuffer(&fw, &fh);
     cx0 = (fw - CW) / 2 & ~1;
-    cy0 = 112;
+    cy0 = ui_cell_y(6);
     cv = malloc(sizeof(u32) * CW * CH);
     if (!cv) {
         ui_message("SKETCHPAD", C_RED, "Not enough memory.");

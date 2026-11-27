@@ -855,7 +855,7 @@ static bool known_magic(const uint8_t *m)
                                         "REFT", "RARC", "Yaz0", "Yay0", "MESG", "J3D2", "THP\0",
                                         "IMD5", "BNR1", "BNR2", "WIBN", "RKGD", "RKMD", "MsgS",
                                         "GFAC", "ASH0", "CRAR", "SARC", "TPL\0",
-                                        "OCN.", "FJG\0", NULL };   /* Paon (DK: Barrel Blast) */
+                                        "OCN.", "FJG\0", "NARC", NULL };   /* Paon (DK: Barrel Blast) */
     for (int i = 0; tags[i]; i++)
         if (!memcmp(m, tags[i], 4)) return true;
     return be32(m) == 0x55AA382Du || be32(m) == 0x0020AF30u;
@@ -1234,7 +1234,8 @@ static archive_t *open_u8(const src_t *file, const char *name)
     uint8_t h[0x10];
     if (!src_read_full(file, base, h, 0x10)) return NULL;
     uint32_t root_off = be32(h + 4), hdr_size = be32(h + 8);
-    if (root_off != 0x20 || hdr_size < 0x20 + 12 || hdr_size > 64u * 1024 * 1024) return NULL;
+    /* hdr_size counts the nodes and names only: an empty archive is the root node and its "" (13 bytes) */
+    if (root_off != 0x20 || hdr_size < 12 + 1 || hdr_size > 64u * 1024 * 1024) return NULL;
 
     uint8_t *tab = malloc(hdr_size);
     if (!tab) {
@@ -1411,6 +1412,7 @@ static const fmt_t formats[] = {
     { "HAL SSM",     arc_ssm_probe,        arc_ssm_open },
     { "CCF",         arc_ccf_probe,        arc_ccf_open },
     { "PAC",         arc_pac_probe,        arc_pac_open },
+    { "NARC",        arc_narc_probe,       arc_narc_open },
     { "Retro PAK",   arc_retro_probe,      arc_retro_open },
     { "RST",         arc_rst_probe,        arc_rst_open },
     { "LZO",         arc_lzop_probe,       arc_lzop_open },

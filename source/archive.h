@@ -147,6 +147,8 @@ bool arc_ccf_probe(const src_t *file, const char *name);
 archive_t *arc_ccf_open(const src_t *file, const char *name);
 bool arc_pac_probe(const src_t *file, const char *name);
 archive_t *arc_pac_open(const src_t *file, const char *name);
+bool arc_narc_probe(const src_t *file, const char *name);
+archive_t *arc_narc_open(const src_t *file, const char *name);
 /* Retro Studios .pak (Metroid Prime, DKC Returns) */
 bool arc_retro_probe(const src_t *file, const char *name);
 archive_t *arc_retro_open(const src_t *file, const char *name);

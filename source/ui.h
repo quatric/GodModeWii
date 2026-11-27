@@ -9,6 +9,10 @@ enum { C_BLACK, C_RED, C_GREEN, C_YELLOW, C_BLUE, C_MAGENTA, C_CYAN, C_WHITE };
 void ui_init(void);
 int  ui_cols(void);
 int  ui_rows(void);
+/* Where text cell (row, col) starts on the framebuffer. The console keeps 5% in from each edge, inside
+ * what TVs crop off (overscan). */
+int  ui_cell_x(int col);
+int  ui_cell_y(int row);
 
 void ui_clear(void);
 /* Clears the whole screen, the border around the text area too: after a viewer drew over it. */

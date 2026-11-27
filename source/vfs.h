@@ -77,6 +77,8 @@ typedef struct {
     bool maybe_wiiu;     /* found but unreadable: possibly a Wii U drive without its keys */
     bool ntfs;           /* mounted with libntfs: no 4 GiB file limit */
     u8 ext;              /* 2, 3 or 4 for an ext volume, mounted read-only */
+    s8 drive;            /* USB: which drive (0-7) the partition is on */
+    bool extra_part;     /* USB: not the drive's first volume (mounted after it) */
 } vfs_dev;
 
 extern vfs_dev g_devs[DEV_COUNT];
@@ -91,6 +93,11 @@ void vfs_remount(void);                 /* re-detect SD / USB, refresh space */
 void vfs_update_space(int dev);
 
 int  vfs_dev_of(const char *path);      /* -1 if unknown */
+/* Why the Homebrew Channel (or HBC Reborn) can't load apps from this drive's apps/ folder, or NULL
+ * when it can. `soft` is set when only the original HBC can't (HBC Reborn can). */
+const char *vfs_hbc_problem(int dev, bool *soft);
+/* SD, SD Gecko and USB volumes that can be written (not ext, WFS or another read-only one) */
+bool vfs_dev_writable(int dev);
 bool vfs_is_virtual(int dev);           /* not FAT / NAND: SEEPROM, disc, memory cards, keys */
 /* GameCube memory card: .gci saves can be added / deleted */
 bool vfs_is_card(int dev);

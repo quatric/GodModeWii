@@ -5,7 +5,8 @@
  *     "HAXX", u8 major (0), u8 minor (5), u16 argument bytes, u32 bytes sent, u32 bytes unpacked
  * (all big endian; "bytes unpacked" is 0 when the data isn't zlib-compressed), then the data,
  * then the arguments: NUL-separated strings, the first being the file's name. Version 0.4
- * clients send the same header without compression.
+ * clients send the same header without compression. A USB Gecko in a memory card slot carries
+ * the same bytes (wiiload with WIILOAD=/dev/ttyUSB0 or COMn), as the Homebrew Channel takes them.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@
 #include <network.h>
 #include <zlib.h>
 #include <ogc/lwp_watchdog.h>
+#include <ogc/usbgecko.h>
 
 #include "wiiload.h"
 #include "ftp.h"
@@ -39,6 +41,8 @@
 #define LOG_LINES     8
 
 static u64 now_ms(void) { return ticks_to_millisecs(gettime()); }
+
+static int g_gecko = -1; /* the USB Gecko's slot (0 = A), or -1 */
 
 static char logbuf[LOG_LINES][96];
 static int log_n;
@@ -102,21 +106,30 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
     ui_field(2, 1, cols - 2, busy ? "Receiving" : "Waiting for wiiload");
     ui_color(C_WHITE, true);
 
-    ui_field(4, 1, cols - 2, "Address :  %u.%u.%u.%u  (port %d)", ip >> 24, (ip >> 16) & 255,
-             (ip >> 8) & 255, ip & 255, WIILOAD_PORT);
-    ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload <file>", ip >> 24,
-             (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+    if (ip) {
+        ui_field(4, 1, cols - 2, "Address :  %u.%u.%u.%u  (port %d)%s", ip >> 24, (ip >> 16) & 255,
+                 (ip >> 8) & 255, ip & 255, WIILOAD_PORT, g_gecko >= 0 ? "  + USB Gecko" : "");
+        ui_field(5, 1, cols - 2, "Send    :  WIILOAD=tcp:%u.%u.%u.%u wiiload <file>", ip >> 24,
+                 (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+    } else {
+        ui_field(4, 1, cols - 2, "Address :  no network: USB Gecko in slot %c only", 'A' + g_gecko);
+        ui_field(5, 1, cols - 2, "Send    :  WIILOAD=/dev/ttyUSB0 (or COMn) wiiload <file>");
+    }
     ui_color(C_YELLOW, true);
     ui_field(6, 1, cols - 2, "Drive   :  %s",
-             dev < 0 ? "no drive to put it on!" : dev == DEV_SD ? "SD card" : g_devs[dev].tag);
+             dev < 0 ? "no drive to put it on!" : dev == DEV_SD ? "SD card" : g_devs[dev].name);
+    bool soft = false;
+    const char *why = dev >= 0 ? vfs_hbc_problem(dev, &soft) : NULL;
+    ui_color(soft ? C_YELLOW : C_RED, true);
+    ui_field(7, 1, cols - 2, "%s", !why ? "" : soft ? "           Apps put here only show in HBC Reborn:"
+                                               : "           Apps put here won't show in the Homebrew Channel:");
+    ui_field(8, 1, cols - 2, "           %s", why ? why : "");
     ui_color(C_WHITE, false);
-    ui_field(7, 1, cols - 2, "Apps    :  .zip / .7z / .rar go into apps/; a .dol / .elf can run.");
+    ui_field(9, 1, cols - 2, "Apps    :  .zip / .7z / .rar go into apps/; a .dol / .elf can run.");
     ui_color(C_CYAN, true);
-    ui_field(8, 1, cols - 2, "WADs    :  each asks: to the NAND, to the SD card (wad2bin), or keep.");
+    ui_field(10, 1, cols - 2, "WADs    :  each asks: to the NAND, to the SD card (wad2bin), or keep.");
     ui_color(C_WHITE, false);
-    ui_field(9, 1, cols - 2, "Others  :  put at the drive's root; asks before replacing a file.");
-    ui_field(10, 1, cols - 2, "%s", "");
-    ui_field(11, 1, cols - 2, "%s", "");
+    ui_field(11, 1, cols - 2, "Others  :  put at the drive's root; asks before replacing a file.");
 
     if (busy) {
         char a[24], b[24];
@@ -144,17 +157,18 @@ static void draw(u32 ip, int dev, bool full, const char *busy, u64 done, u64 tot
 
     ui_color(C_CYAN, true);
     ui_field(rows - 2, 1, cols - 2,
-             busy ? "Hold B: cancel" : "1: SD card / USB drive    B / HOME: stop");
+             busy ? "Hold B: cancel" : "1: next drive    B / HOME: stop");
     ui_reset();
 }
 
 /* ---------------------------------------------------------------- receiving */
 
 typedef struct {
-    s32 sock;
+    s32 sock;    /* -1: the USB Gecko */
     u64 last;
     u32 ip;
     int dev;
+    int pre;     /* a byte already read (the Gecko's first), or -1 */
 } conn_t;
 
 /* Exactly n bytes, or false (closed, timed out, canceled). */
@@ -162,8 +176,19 @@ static bool recv_all(conn_t *c, void *buf, u32 n, const char *what, u64 done, u6
 {
     u8 *p = buf;
     u64 drawn = 0;
+    if (n && c->pre >= 0) {
+        *p++ = (u8)c->pre;
+        c->pre = -1;
+        n--;
+        done++;
+    }
     while (n) {
-        s32 r = net_recv(c->sock, p, n > CHUNK ? CHUNK : n, 0);
+        s32 r;
+        if (c->sock < 0) {
+            r = usb_recvbuffer_safe_ex(g_gecko, p, n > CHUNK ? CHUNK : n, 1000);
+            if (r <= 0) r = -EAGAIN;     /* nothing yet */
+        } else
+            r = net_recv(c->sock, p, n > CHUNK ? CHUNK : n, 0);
         if (r > 0) {
             p += r;
             n -= r;
@@ -369,8 +394,11 @@ static bool receive(conn_t *c, char *path, size_t pathsz, u8 *head, u32 *headn)
     }
     char sz[24];
     ui_fmt_size(sz, sizeof(sz), size);
-    wl_log("Received %s (%s) from %u.%u.%u.%u", name, sz, c->ip >> 24, (c->ip >> 16) & 255,
-           (c->ip >> 8) & 255, c->ip & 255);
+    if (c->sock < 0)
+        wl_log("Received %s (%s) over the USB Gecko", name, sz);
+    else
+        wl_log("Received %s (%s) from %u.%u.%u.%u", name, sz, c->ip >> 24, (c->ip >> 16) & 255,
+               (c->ip >> 8) & 255, c->ip & 255);
     return true;
 }
 
@@ -456,6 +484,9 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
         if (n >= 0) {
             vfs_remove(path, false);
             wl_log("Installed %d file%s to the %s", n, n == 1 ? "" : "s", g_devs[dev].tag);
+            bool soft;
+            if (vfs_hbc_problem(dev, &soft))
+                wl_log(soft ? "Only HBC Reborn will list it there" : "The Homebrew Channel won't list it there");
             if (wads.n) install_wads(wads.paths, wads.n);       /* they stay on the drive either way */
         } else {
             wl_log("Install failed: %s", err);
@@ -535,36 +566,84 @@ static bool handle(const char *path, const u8 *head, u32 headn, int dev, char *l
 
 /* ---------------------------------------------------------------- entry */
 
+/* The writable drive after `dev` (SD, SD Gecko slots, then each USB volume), round to the start; from -1,
+ * the first one the Homebrew Channel can load apps from, else the first writable one. */
+static int next_drive(int dev)
+{
+    static const int order[] = { DEV_SD, DEV_USB0, DEV_USB1, DEV_USB2, DEV_USB3, DEV_USB4, DEV_USB5,
+                                 DEV_USB6, DEV_USB7, DEV_GCA, DEV_GCB };
+    int n = sizeof(order) / sizeof(order[0]), at = -1;
+    if (dev < 0) {
+        for (int i = 0; i < n; i++)
+            if (vfs_dev_writable(order[i]) && !vfs_hbc_problem(order[i], NULL))
+                return order[i];
+    }
+    for (int i = 0; i < n; i++)
+        if (order[i] == dev) at = i;
+    for (int k = 1; k <= n; k++) {
+        int d = order[(at + k + n) % n];
+        if (vfs_dev_writable(d))
+            return d;
+    }
+    return -1;
+}
+
 bool wiiload_run(char *launch, size_t launchsz)
 {
-    if (!ftp_net_start()) return false;
-    u32 ip = net_gethostip();
-    if (!ip) {
-        ui_message("NETWORK", C_RED, "The console has no IP address.");
-        return false;
-    }
-    s32 ls = make_listener();
-    if (ls < 0) {
-        ui_message("WIILOAD", C_RED, "Couldn't open port 4299.");
-        return false;
-    }
+    /* a USB Gecko in either slot takes uploads too, with or without a network */
+    g_gecko = -1;
+    for (int ch = 0; ch < 2 && g_gecko < 0 && !g_is_vwii; ch++)
+        if (!g_devs[DEV_GCA + ch].mounted && usb_isgeckoalive(ch))
+            g_gecko = ch;
+    if (g_gecko >= 0)
+        usb_flush(g_gecko);
 
-    bool usb = false;
-    int dev = install_pick_device(false);
-    if (dev < 0) {
-        dev = install_pick_device(true);
-        usb = dev >= 0;
-    }
+    u32 ip = 0;
+    s32 ls = -1;
+    if (ftp_net_start()) {              /* with a Gecko, a network that won't come up is no stop */
+        ip = net_gethostip();
+        if (!ip && g_gecko < 0) {
+            ui_message("NETWORK", C_RED, "The console has no IP address.");
+            return false;
+        }
+        ls = ip ? make_listener() : -1;
+        if (ls < 0 && g_gecko < 0) {
+            ui_message("WIILOAD", C_RED, "Couldn't open port 4299.");
+            return false;
+        }
+        if (ls < 0) ip = 0;
+    } else if (g_gecko < 0)
+        return false;
+
+    int dev = next_drive(-1);
 
     log_n = 0;
-    wl_log("Listening on port %d", WIILOAD_PORT);
+    if (ls >= 0) wl_log("Listening on port %d", WIILOAD_PORT);
+    if (g_gecko >= 0) wl_log("USB Gecko found in slot %c: uploads over it work too", 'A' + g_gecko);
     bool launching = false, full = true;
     u64 last_draw = 0;
 
     while (!g_quit_request) {
+        /* the Gecko: a first byte waiting means an upload has started */
+        u8 first;
+        if (g_gecko >= 0 && dev >= 0 && usb_recvbuffer_safe_ex(g_gecko, &first, 1, 10) == 1) {
+            conn_t c = { -1, now_ms(), 0, dev, first };
+            char path[VFS_PATH_MAX];
+            u8 head[0x100];
+            u32 headn = 0;
+            bool got = first == 'H' && receive(&c, path, sizeof(path), head, &headn);
+            if (!got) usb_flush(g_gecko);
+            if (got && handle(path, head, headn, dev, launch, launchsz)) {
+                launching = true;
+                break;
+            }
+            full = true;
+            last_draw = 0;
+        }
+
         struct sockaddr_in a;
         u32 al = sizeof(a);
-        s32 s = net_accept(ls, (struct sockaddr *)&a, &al);
+        s32 s = ls >= 0 ? net_accept(ls, (struct sockaddr *)&a, &al) : -1;
         if (s >= 0) {
             u32 pip = ntohl(a.sin_addr.s_addr);
             if (!lan_peer(a.sin_addr.s_addr)) {
@@ -576,7 +655,7 @@ bool wiiload_run(char *launch, size_t launchsz)
                 net_close(s);
             } else {
                 net_fcntl(s, F_SETFL, IOS_NONBLOCK);
-                conn_t c = { s, now_ms(), pip, dev };
+                conn_t c = { s, now_ms(), pip, dev, -1 };
                 char path[VFS_PATH_MAX];
                 u8 head[0x100];
                 u32 headn = 0;
@@ -600,13 +679,13 @@ bool wiiload_run(char *launch, size_t launchsz)
         u32 btn = DetectInput(IN_DOWN);
         if (btn & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
         if (btn & WPAD_BUTTON_1) {
-            int d = install_pick_device(!usb);
-            if (d >= 0) {
-                usb = !usb;
+            int d = next_drive(dev);
+            if (d >= 0 && d != dev) {
                 dev = d;
-                wl_log("Installing onto the %s", usb ? g_devs[dev].tag : "SD card");
+                wl_log("Putting what comes onto the %s", dev == DEV_SD ? "SD card" : g_devs[dev].name);
             } else
-                wl_log("No %s found", usb ? "SD card" : "USB drive");
+                wl_log("No other drive to put it on");
+            full = true;
             last_draw = 0;
         }
 
@@ -617,6 +696,6 @@ bool wiiload_run(char *launch, size_t launchsz)
         }
     }
 
-    net_close(ls);
+    if (ls >= 0) net_close(ls);
     return launching;
 }

@@ -85,5 +85,8 @@ bool w2b_peek(const src_t *wad, uint64_t *tid);
  * World Tour / 5 DLC by wad2bin's list, otherwise the DLC's own ID in upper case). */
 void w2b_tid_ascii(uint64_t tid, char out[5]);
 uint64_t w2b_parent_tid(uint64_t dlc_tid);
+/* Makes a ticket usable on this console the way wad2bin does: one that is homebrew or was issued to
+ * another console loses its console ID and ECDH data and is fakesigned. True when it was changed. */
+bool w2b_portable_ticket(uint8_t *tik, uint32_t len, uint32_t console_id);
 
 #endif

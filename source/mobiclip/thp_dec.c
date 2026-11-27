@@ -197,7 +197,7 @@ static void thp_close(RgbSource *s)
 {
     ThpCtx *c = s->priv;
     if (!c) return;
-    njDone();
+    njRelease();
     if (c->f) fclose(c->f);
     free(c->file_buf); free(c->frame_buf);
     free(c->buf); free(c->vid_off); free(c->vid_sz);

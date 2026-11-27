@@ -71,9 +71,9 @@ void ptr_overlay_update(void)
 bool ptr_cell(int *row, int *col)
 {
     int x, y;
-    if (!ptr_get(&x, &y) || x < 16 || y < 16) return false;
-    *col = (x - 16) / 8;                        /* the console: 16 pixels in, 8 x 16 cells */
-    *row = (y - 16) / 16;
+    if (!ptr_get(&x, &y) || x < ui_cell_x(0) || y < ui_cell_y(0)) return false;
+    *col = (x - ui_cell_x(0)) / 8;              /* the console's 8 x 16 cells */
+    *row = (y - ui_cell_y(0)) / 16;
     return true;
 }
 

@@ -53,6 +53,41 @@ static bool nand_ready;
 
 /* ---------------------------------------------------------------- paths */
 
+/* What both HBCs mount (fail0verflow/hbc, Monsterray/hbc-reborn): libfat's FAT volume of the SD card,
+ * the SD Gecko slots and the first USB drive (HBC Reborn: the first two), which is the drive's first FAT
+ * partition. Neither reads exFAT, NTFS or ext. */
+const char *vfs_hbc_problem(int dev, bool *soft)
+{
+    if (soft) *soft = false;
+    if (dev < 0 || dev >= DEV_COUNT || dev == DEV_NAND || vfs_is_virtual(dev) || !g_devs[dev].mounted)
+        return "the Homebrew Channel only loads apps from the SD card or a USB drive";
+    const vfs_dev *d = &g_devs[dev];
+    if (d->exfat) return "it is exFAT: the Homebrew Channel only loads apps from FAT32 (or FAT16)";
+    if (d->ntfs)  return "it is NTFS: the Homebrew Channel only loads apps from FAT32 (or FAT16)";
+    if (d->ext)   return "it is ext: the Homebrew Channel only loads apps from FAT32 (or FAT16)";
+    if (dev >= DEV_USB0 && dev <= DEV_USB7) {
+        if (strstr(d->note, "WFS") || strstr(d->note, "read-only"))
+            return "the Homebrew Channel can't read this drive";
+        if (d->extra_part)
+            return "it isn't the drive's first partition: the Homebrew Channel only looks at that one";
+        if (d->drive >= 2)
+            return "the Homebrew Channel only looks at the first USB drive (HBC Reborn: the first two)";
+        if (d->drive == 1) {
+            if (soft) *soft = true;
+            return "it's the second USB drive: only HBC Reborn looks there (the original HBC: first only)";
+        }
+    }
+    return NULL;
+}
+
+bool vfs_dev_writable(int dev)
+{
+    if (dev != DEV_SD && dev != DEV_GCA && dev != DEV_GCB && (dev < DEV_USB0 || dev > DEV_USB7))
+        return false;
+    const vfs_dev *d = &g_devs[dev];
+    return d->mounted && !d->ext && !strstr(d->note, "WFS") && !strstr(d->note, "read-only");
+}
+
 int vfs_dev_of(const char *path)
 {
     for (int i = 0; i < DEV_COUNT; i++)
@@ -336,6 +371,8 @@ static void usb_close_all(void)
         g_devs[DEV_USB0 + i].note[0] = '\0';
         g_devs[DEV_USB0 + i].exfat = false;
         g_devs[DEV_USB0 + i].ntfs = false;
+        g_devs[DEV_USB0 + i].drive = i;
+        g_devs[DEV_USB0 + i].extra_part = false;
         snprintf(usb_dev_name[i], sizeof(usb_dev_name[i]), "USB Drive %d", i + 1);
         g_devs[DEV_USB0 + i].name = usb_dev_name[i];
     }
@@ -344,6 +381,13 @@ static void usb_close_all(void)
     for (int i = 0; i < uhandles_open; i++)
         USBStorage_Close(&uhandle[i]);
     uhandles_open = 0;
+}
+
+/* USB devices IOS can list with the mass-storage filter that are something else: the Wii Speak and the
+ * GameCube controller adapter (libwiiinput drives them). */
+static bool not_storage(u16 vid, u16 pid)
+{
+    return vid == 0x057E && (pid == 0x0308 || pid == 0x0337);
 }
 
 /* Returns how many volumes (drive / LUN) were found. Devices behind a hub are
@@ -370,11 +414,19 @@ static int usb_scan_once(void)
 
     int slot = 0;
     for (int d = 0; d < cnt && slot < USB_SLOTS && uhandles_open < USB_SLOTS; d++) {
+        if (not_storage(list[d].vid, list[d].pid)) {
+            usb_seen--;
+            continue;
+        }
         usbstorage_handle *h = &uhandle[uhandles_open];
         memset(h, 0, sizeof(*h));
         ubuf_active = true;
         s32 orr = USBStorage_Open(h, list[d].device_id, list[d].vid, list[d].pid);
         ubuf_active = false;
+        if (orr == USBSTORAGE_ENOINTERFACE) {   /* no bulk-only storage interface: not a drive at all */
+            usb_seen--;
+            continue;
+        }
         if (orr < 0) {
             snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X cannot be opened (%d)", list[d].vid,
                      list[d].pid, (int)orr);
@@ -482,7 +534,10 @@ static int usb_device_count(void)
     }
     if (USB_GetDeviceList(list, 32, USB_CLASS_MASS_STORAGE, &cnt) < 0)
         return 0;
-    return cnt;
+    int n = 0;
+    for (int i = 0; i < cnt; i++)
+        n += !not_storage(list[i].vid, list[i].pid);
+    return n;
 }
 
 /* Drives behind a hub spin up and enumerate one after another, so first wait
@@ -798,6 +853,8 @@ static void mount_usb_extras(void)
             if (!mount_extra(DEV_USB0 + k, name, &usb_iface[i], &parts[p]))
                 continue;
             vfs_dev *d = &g_devs[DEV_USB0 + k];
+            d->drive = i;
+            d->extra_part = true;
             snprintf(usb_dev_name[k], sizeof(usb_dev_name[k]), "USB Drive %d, part. %d", i + 1,
                      p + 1);
             d->name = usb_dev_name[k];
@@ -813,7 +870,8 @@ static void mount_usb(int tries)
         int n = usb_device_count();
         stable = (n == last) ? stable + 1 : 0;
         last = n;
-        if (n > 0 && stable >= 1)
+        /* a drive is in and the count held; or none, three times running (not the full wait) */
+        if (stable >= (n > 0 ? 1 : 2))
             break;
         usleep(400000);
     }
@@ -826,6 +884,8 @@ static void mount_usb(int tries)
         }
 
     for (int i = 0; i < USB_SLOTS; i++) {
+        g_devs[DEV_USB0 + i].drive = i;
+        g_devs[DEV_USB0 + i].extra_part = false;
         if (!uslot[i].ok)
             continue;
         char name[8];
@@ -909,6 +969,17 @@ static void mount_gecko(void)
         return;
     mount_fat(DEV_GCA, "gca", &__io_gcsda);
     mount_fat(DEV_GCB, "gcb", &__io_gcsdb);
+    /* an SD Gecko whose card libfat can't read: list it with why, not leave it out */
+    const DISC_INTERFACE *io[2] = { &__io_gcsda, &__io_gcsdb };
+    for (int i = 0; i < 2; i++) {
+        vfs_dev *d = &g_devs[DEV_GCA + i];
+        d->note[0] = '\0';
+        d->always_show = false;
+        if (!d->mounted && io[i]->isInserted()) {
+            d->always_show = true;
+            snprintf(d->note, sizeof(d->note), "SD Gecko: card not readable (FAT32?)");
+        }
+    }
 }
 
 static void unmount_one(int dev, const char *name)

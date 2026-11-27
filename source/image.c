@@ -1097,7 +1097,7 @@ static void blit(const u8 *rgba, int w, int h, int scale, int panx, int pany, in
     u8 *fb = ui_framebuffer(&fw, &fh);
     if (!fb) return;
     /* between the two top text lines and the bottom one */
-    int top = 48, bottom = fh - 32;
+    int top = ui_cell_y(2), bottom = ui_cell_y(ui_rows() - 1);
     int vw = fw, vh = bottom - top;
     int cx = w / 2 + panx, cy = h / 2 + pany;
     for (int y = top; y < bottom; y++) {        /* the text lines above and below are left alone */

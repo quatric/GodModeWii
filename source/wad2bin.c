@@ -798,18 +798,25 @@ static int make_dlc_bins(const wad_t *w, const char *root, const w2b_keys_t *k, 
 
 /* A copy of the ticket, fakesigned when it is homebrew or was issued to a console other than
  * `console_id` (0: any console-bound ticket), the way wad2bin and dlc-wad-splitter do it. */
+bool w2b_portable_ticket(uint8_t *tik, uint32_t len, uint32_t console_id)
+{
+    uint32_t tb = sig_len(rb32(tik));
+    if (!tb || len < tb + 0x124) return false;
+    uint32_t owner = rb32(tik + tb + 0x98);
+    if (!zero_sig(tik, tb) && (!owner || owner == console_id)) return false;
+    memset(tik + 4, 0, tb - 0x3C - 4);
+    memset(tik + tb + 0x40, 0, 0x3C);                     /* ECDH data */
+    wb32(tik + tb + 0x98, 0);                             /* console ID */
+    fakesign(tik + tb, len - tb, tik + tb + 0x122);
+    return true;
+}
+
 static uint8_t *portable_ticket(const wad_t *w, uint32_t console_id)
 {
     uint8_t *tik = malloc(w->tik_sz);
     if (!tik) return NULL;
     memcpy(tik, w->tik, w->tik_sz);
-    uint32_t tb = sig_len(rb32(tik)), owner = rb32(tik + tb + 0x98);
-    if (zero_sig(tik, tb) || (owner && owner != console_id)) {
-        memset(tik + 4, 0, tb - 0x3C - 4);
-        memset(tik + tb + 0x40, 0, 0x3C);                 /* ECDH data */
-        wb32(tik + tb + 0x98, 0);                         /* console ID */
-        fakesign(tik + tb, w->tik_sz - tb, tik + tb + 0x122);
-    }
+    w2b_portable_ticket(tik, w->tik_sz, console_id);
     return tik;
 }
 

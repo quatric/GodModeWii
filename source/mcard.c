@@ -6,6 +6,8 @@
 #include <malloc.h>
 #include <unistd.h>
 #include <ogc/card.h>
+#include <ogc/usbgecko.h>
+#include <sdcard/gcsd.h>
 
 #include "mcard.h"
 
@@ -170,7 +172,13 @@ void mcard_refresh(int dev)
         return;
     }
     if (r == CARD_ERROR_WRONGDEVICE) {
-        set_note(dev, "not a memory card");
+        /* the slot holds a Gecko: say which, so it isn't taken for a broken card */
+        if (g_devs[chn ? DEV_GCB : DEV_GCA].mounted || (chn ? &__io_gcsdb : &__io_gcsda)->isInserted())
+            set_note(dev, "an SD Gecko: see SD Gecko %c", 'A' + chn);
+        else if (usb_isgeckoalive(chn))
+            set_note(dev, "a USB Gecko: Wiiload receives over it");
+        else
+            set_note(dev, "not a memory card");
         return;
     }
     if (r < 0) {

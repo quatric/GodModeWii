@@ -19,4 +19,10 @@ void miiimport_file(const char *path);
  * there, the Mii Parade first. */
 void miiimport_folder(const char *dir);
 
+/* Gives a plaza Mii gold pants or takes them away: clears or sets the "normal" bit of its creation
+ * ID (a "special" Mii, as Nintendo gives out). The database is backed up first; asks before. True if
+ * it was changed. A special Mii is kept local only (the Wii won't send one). */
+#include <stdint.h>
+bool miiimport_gold_pants(const uint8_t id[8]);
+
 #endif

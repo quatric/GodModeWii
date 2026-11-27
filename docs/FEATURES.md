@@ -161,15 +161,18 @@ time.
 
 * **Miis:** the Wii's Miis, drawn on the Wii by MiiKit from the Wii Menu's face models and the Mii Channel's bodies (nothing goes
   online). They are exported as `/savemiis/<Name>.miigx`, the files SaveGame Manager GX writes and installs. **2** changes the
-  expression. In Dolphin, turn off Graphics > Hacks > "Store EFB Copies to Texture Only".
+  expression. **-** gives the Mii gold pants (a "special" Mii: the Mii Channel won't edit it, and it doesn't mingle) or takes
+  them away; that changes its creation ID, so games that saved the Mii no longer know it, and the database is backed up first.
+  In Dolphin, turn off Graphics > Hacks > "Store EFB Copies to Texture Only".
 * **Sketchpad:** draw with the Wii Remote pointer, a USB mouse, a pen tablet or a uDraw GameTablet (pressure sets the brush width).
   16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as `.jpg` in `GodModeWii/drawings/`.
 * **Voice memos:** record with a Wii Speak or a USB microphone into `GodModeWii/voice/memo_NNN.wav`, then play or delete them.
 * **IR remote:** sends TV, receiver, set-top box (and fan, AC, projector...) codes from the sensor bar. **New preset** picks a
   device from `irdb.dat` (all 8,900 of Flipper-IRDB's remotes, by category and manufacturer), then each of its buttons gets a button on any controller: Wii Remote, Nunchuk, Classic, GameCube pad, Pro
-  Controller, GamePad or DualShock 3, each by its own buttons. **Send it now** tries a code. In the remote, a mapped button sends
+  Controller, GamePad or DualShock 3, each by its own buttons, including HOME and the Wii Remote's Power button. A code can
+  have several buttons. The buttons are listed A to Z; a name a remote has twice is "Name (2)". **Send it now** tries a code. In the remote, a mapped button sends
   its code and repeats it while held; **HOME + Left / Right** switches preset (the controller buzzes once per preset number and the
-  disc slot light blinks, so it works without looking); **HOME** leaves. Presets can be renamed, moved and deleted, and are saved
+  disc slot light blinks, so it works without looking); **HOME** leaves (hold it a second when HOME sends a code). Presets can be renamed, moved and deleted, and are saved
   in `apps/GodModeWii/ir_presets.txt`. Hold **1** (Y on other pads) at start-up to open it straight away. Your own devices and
   buttons go in `apps/GodModeWii/irdb_custom.xml`, made on first use with commented examples to copy; updates never replace it. No sounds play in
   the remote, and the sensor bar is switched back on after each code so the pointer keeps working.

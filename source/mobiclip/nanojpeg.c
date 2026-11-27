@@ -172,6 +172,8 @@ int njGetPrecision(void);
 // allocated at run-time by NanoJPEG. It is still possible to decode another
 // image after a njDone() call.
 void njDone(void);
+// njDone, and gives back the decoder's own memory (half a megabyte) too.
+void njRelease(void);
 
 #endif//_NANOJPEG_H
 
@@ -357,7 +359,9 @@ typedef struct _nj_ctx {
     unsigned char *rgb;
 } nj_context_t;
 
-static nj_context_t nj;
+/* Half a megabyte (the Huffman tables): on the heap while a video plays, not in MEM1 for good. */
+static nj_context_t *njp;
+#define nj (*njp)
 
 /* THP video stores an *unescaped* entropy scan: a raw 0xFF byte in the coded
  * data is NOT byte-stuffed as 0xFF 0x00, and the scan carries no restart/EOI
@@ -1309,11 +1313,19 @@ NJ_INLINE void njConvert(void) {
 }
 
 void njInit(void) {
-    njFillMem(&nj, 0, sizeof(nj_context_t));
+    if (!njp) njp = njAllocMem(sizeof(nj_context_t));
+    if (njp) njFillMem(njp, 0, sizeof(nj_context_t));
+}
+
+void njRelease(void) {
+    njDone();
+    njFreeMem(njp);
+    njp = NULL;
 }
 
 void njDone(void) {
     int i;
+    if (!njp) return;
     for (i = 0;  i < 3;  ++i)
         if (nj.comp[i].pixels) njFreeMem((void*) nj.comp[i].pixels);
     if (nj.rgb) njFreeMem((void*) nj.rgb);
@@ -1322,6 +1334,8 @@ void njDone(void) {
 
 nj_result_t njDecode(const void* jpeg, const int size) {
     njDone();
+    if (!njp) njInit();
+    if (!njp) return NJ_OUT_OF_MEM;
     nj.pos = (const unsigned char*) jpeg;
     nj.size = size & 0x7FFFFFFF;
     if (nj.size < 2) return NJ_NO_JPEG;

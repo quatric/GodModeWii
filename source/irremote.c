@@ -55,7 +55,7 @@ typedef struct {
     bool ext;             /* a Wii Remote extension's button (raw_ext), else the device's own (raw) */
     u32  bit;
     char ext_name[12];    /* "Nunchuk" / "Classic", when ext */
-    char signal[32];
+    char signal[40];      /* the remote's button: "Power", or "Power (2)" for a second one of that name */
 } binding;
 
 typedef struct {
@@ -65,7 +65,7 @@ typedef struct {
     int nbinds;
 } preset;
 
-static preset presets[MAX_PRESETS];
+static preset *presets; /* MAX_PRESETS of them while the remote is open (130 KB), else NULL */
 static int npresets, current;
 static ir_db db;
 
@@ -85,7 +85,14 @@ typedef struct {
     const char *name;
 } btn;
 
+/* A Wii Remote's power button: not a button bit (pressing it turns the remote off), so it gets one of its own */
+#define POWER_BIT 0x80000000u
+#define HOLD_TO_LEAVE_MS 1000 /* when HOME sends a code, holding it this long leaves instead */
+
 static const btn wiimote_btns[] = {
+#ifndef __WIIU__
+    {POWER_BIT, "Power"},
+#endif
     {WPAD_BUTTON_A, "A"}, {WPAD_BUTTON_B, "B"}, {WPAD_BUTTON_1, "1"}, {WPAD_BUTTON_2, "2"},
     {WPAD_BUTTON_PLUS, "+"}, {WPAD_BUTTON_MINUS, "-"}, {WPAD_BUTTON_UP, "Up"}, {WPAD_BUTTON_DOWN, "Down"},
     {WPAD_BUTTON_LEFT, "Left"}, {WPAD_BUTTON_RIGHT, "Right"}, {WPAD_BUTTON_HOME, "HOME"},
@@ -204,7 +211,7 @@ static u32 bindable(int kind, bool ext, const char *ext_name, u32 pressed)
         if (!t)
             return bit;
         for (size_t k = 0; k < n; k++)
-            if (t[k].bit == bit && strcmp(t[k].name, "HOME"))
+            if (t[k].bit == bit)
                 return bit;
     }
     return 0;
@@ -411,6 +418,7 @@ static int pick_device(void)
             pretty(labels[k], sizeof labels[k], cats[k]);
             items[k] = labels[k];
         }
+        ui_clear();
         int c = ui_menu("WHAT IS IT?", items, NULL, nc, 0);
         const char *cat = c >= 0 && c < nc ? cats[c] : NULL;
         free(cats), free(labels), free(items);
@@ -435,6 +443,7 @@ static int pick_device(void)
                 break;
             }
             qsort(makers, nm, sizeof *makers, by_name);
+            ui_clear();
             int m = ui_menu("MANUFACTURER", makers, NULL, nm, 0);
             const char *maker = m >= 0 ? makers[m] : NULL;
             free(makers);
@@ -454,6 +463,8 @@ static int pick_device(void)
                 di[nd] = dl[nd];
                 idx[nd++] = (int)i;
             }
+            if (nd)
+                ui_clear();
             int d = nd ? ui_menu(maker, di, NULL, nd, 0) : -1;
             int pick = d >= 0 ? idx[d] : -1;
             free(idx), free(dl), free(di);
@@ -465,9 +476,36 @@ static int pick_device(void)
 
 /* ---------------------------------------------------------------- sending */
 
+/* "Power", or "Power (2)" for the second button of that name: some remotes list a name more than once,
+ * with other codes (other models or years). */
+static void signal_label(const ir_remote *r, size_t i, char *out, size_t size)
+{
+    int k = 1;
+    for (size_t j = 0; j < i; j++)
+        k += !strcmp(r->signals[j].name, r->signals[i].name);
+    if (k > 1)
+        snprintf(out, size, "%s (%d)", r->signals[i].name, k);
+    else
+        snprintf(out, size, "%s", r->signals[i].name);
+}
+
+static const ir_signal *find_signal(const ir_remote *r, const char *label)
+{
+    for (size_t i = 0; i < r->count; i++)
+        if (!strcmp(r->signals[i].name, label))
+            return &r->signals[i];
+    const char *p = strrchr(label, '(');
+    int k = p && p > label && p[-1] == ' ' ? atoi(p + 1) : 0;
+    size_t len = p ? (size_t)(p - 1 - label) : 0;
+    for (size_t i = 0; k >= 2 && i < r->count; i++)
+        if (strlen(r->signals[i].name) == len && !strncmp(r->signals[i].name, label, len) && --k == 0)
+            return &r->signals[i];
+    return NULL;
+}
+
 static void send(const ir_remote *r, const char *name, bool repeat, char *status, size_t size)
 {
-    const ir_signal *s = IR_FindSignal(r, name);
+    const ir_signal *s = find_signal(r, name);
     if (!s) {
         snprintf(status, size, "\"%s\" is not in this remote", name);
         return;
@@ -555,22 +593,42 @@ static bool learn(const char *signal, binding *out)
     ui_color(C_WHITE, false);
     ui_field(6, 2, cols - 4, "Any button of any controller: a Wii Remote, Nunchuk, Classic,");
     ui_field(7, 2, cols - 4, "GameCube pad, Pro Controller, GamePad or USB pad.");
+#ifndef __WIIU__
+    ui_field(8, 2, cols - 4, "The Wii Remote's Power button works too (it turns that remote off).");
+#endif
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "HOME (Start on a GameCube pad) Cancel");
+    ui_field(rows - 2, 1, cols - 2, "Hold HOME (Start on a GameCube pad) Cancel");
     ui_reset();
 
     INPUT_Update();
     read_devices(NULL, NULL); /* what is already held (the A that chose this) does not count */
+    INPUT_WiimotePowerPressed();
     learn_ctx l = {out, false};
+    u64 home_at = 0;
     for (;;) {
         DetectInput(IN_DOWN);
-        u32 held = INPUT_ButtonsHeld();
-        if (held & WPAD_BUTTON_HOME) {
+        bool home = INPUT_ButtonsHeld() & WPAD_BUTTON_HOME;
+        if (INPUT_WiimotePowerPressed()) {
+            memset(out, 0, sizeof *out);
+            out->kind = INPUT_DEV_WIIMOTE;
+            out->bit = POWER_BIT;
+            l.got = true;
+            home = false;
+        } else {
+            read_devices(learn_each, &l);
+        }
+        /* the button that is HOME (or Start) counts once let go; held, it cancels */
+        if (home && !home_at)
+            home_at = now_ms();
+        if (home && now_ms() - home_at > HOLD_TO_LEAVE_MS) {
             input_flush();
             return false;
         }
-        read_devices(learn_each, &l);
-        if (l.got) {
+        if (!home && (l.got || home_at)) {
+            if (!l.got) {
+                home_at = 0;
+                continue;
+            }
             copy(out->signal, sizeof out->signal, signal);
             input_flush();
             return true;
@@ -588,13 +646,15 @@ typedef struct {
     char *status;
     size_t status_size;
     bool home;               /* HOME held: no codes, D-pad changes preset */
+    bool home_new;           /* ...since this frame */
+    int home_bind;           /* the binding of the button that is HOME, sent when it is let go quickly */
 } remote_ctx;
 
 static void remote_each(int index, const input_device *d, u32 new_raw, u32 new_ext, void *ctx)
 {
     (void)index;
     remote_ctx *c = ctx;
-    if (c->home || (!new_raw && !new_ext))
+    if (!new_raw && !new_ext)
         return;
     for (int i = 0; i < c->p->nbinds; i++) {
         const binding *b = &c->p->binds[i];
@@ -603,12 +663,44 @@ static void remote_each(int index, const input_device *d, u32 new_raw, u32 new_e
         bool hit = b->ext ? !strcmp(d->name, b->ext_name) && (new_ext & b->bit) : (new_raw & b->bit) != 0;
         if (!hit)
             continue;
+        if (c->home) { /* only the button that is HOME, pressed this frame, waits to be let go */
+            if (c->home_new && c->home_bind < 0)
+                c->home_bind = i;
+            continue;
+        }
         send(c->r, b->signal, false, c->status, c->status_size);
         c->sent_bind = i;
         c->sent_key = (d->kind & 7) * 8 + (d->port & 7);
         c->sent_at = now_ms();
         return;
     }
+}
+
+static const preset *sort_p;
+static int by_binding(const void *a, const void *b)
+{
+    const binding *x = &sort_p->binds[*(const int *)a], *y = &sort_p->binds[*(const int *)b];
+    int c = strcasecmp(x->signal, y->signal);
+    if (!c) {
+        char lx[48], ly[48];
+        bind_label(x, lx, sizeof lx);
+        bind_label(y, ly, sizeof ly);
+        c = strcasecmp(lx, ly);
+    }
+    return c ? c : *(const int *)a - *(const int *)b;
+}
+
+/* HOME sends a code in this preset (so leaving takes holding it) */
+static bool home_mapped(const preset *p)
+{
+    for (int i = 0; i < p->nbinds; i++) {
+        char l[48];
+        bind_label(&p->binds[i], l, sizeof l);
+        size_t n = strlen(l);
+        if ((n > 5 && !strcmp(l + n - 5, " HOME")) || (n > 6 && !strcmp(l + n - 6, " Start")))
+            return true;
+    }
+    return false;
 }
 
 static void draw_remote(const preset *p, const char *status)
@@ -627,18 +719,25 @@ static void draw_remote(const preset *p, const char *status)
         ui_color(C_YELLOW, true);
         ui_field(row, 2, cols - 4, "No buttons are mapped yet: leave with HOME and pick \"Edit its buttons\".");
     }
-    for (int i = 0; i < p->nbinds && row <= last; i++, row++) {
+    int order[MAX_BINDS];
+    for (int i = 0; i < p->nbinds; i++)
+        order[i] = i;
+    sort_p = p;
+    qsort(order, p->nbinds, sizeof *order, by_binding);
+    for (int k = 0; k < p->nbinds && row <= last; k++, row++) {
+        const binding *b = &p->binds[order[k]];
         char label[48];
-        bind_label(&p->binds[i], label, sizeof label);
-        ui_color(C_WHITE, true);
-        ui_field(row, 2, 24, "%s", label);
+        bind_label(b, label, sizeof label);
         ui_color(C_WHITE, false);
-        ui_field(row, 27, cols - 29, "%s", p->binds[i].signal);
+        ui_field(row, 2, 30, "%s", b->signal);
+        ui_color(C_WHITE, true);
+        ui_field(row, 33, cols - 35, "%s", label);
     }
     ui_color(C_GREEN, true);
     ui_field(rows - 3, 1, cols - 2, "%s", status);
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "HOME+Left/Right Other preset (buzzes its number)   HOME Leave");
+    ui_field(rows - 2, 1, cols - 2, "HOME+Left/Right Other preset (buzzes its number)   %s",
+             home_mapped(p) ? "Hold HOME Leave" : "HOME Leave");
     ui_reset();
 }
 
@@ -657,12 +756,14 @@ static void run_remote(void)
     bool loaded = load_remote(&presets[current], &r);
     char status[96];
     snprintf(status, sizeof status, loaded ? "Ready" : "This preset's remote is not in the remote list");
-    remote_ctx c = {&presets[current], &r, -1, 0, 0, status, sizeof status, false};
+    remote_ctx c = {&presets[current], &r, -1, 0, 0, status, sizeof status, false, false, -1};
     sfx_cancel();
     INPUT_Update();
     read_devices(NULL, NULL);
+    INPUT_WiimotePowerPressed();
 
     bool dirty = true, home_used = false, home_was = false;
+    u64 home_at = 0;
     for (;;) {
         if (dirty) {
             draw_remote(c.p, status);
@@ -671,6 +772,21 @@ static void run_remote(void)
         u32 down = DetectInput(IN_DOWN);
         u32 held = INPUT_ButtonsHeld();
         c.home = held & WPAD_BUTTON_HOME;
+        c.home_new = c.home && !home_was;
+        if (c.home_new) {
+            home_at = now_ms();
+            c.home_bind = -1;
+        }
+
+        /* a Wii Remote's power button (that remote turns off; any button wakes it) */
+        if (INPUT_WiimotePowerPressed() && loaded) {
+            for (int i = 0; i < c.p->nbinds; i++)
+                if (c.p->binds[i].kind == INPUT_DEV_WIIMOTE && c.p->binds[i].bit == POWER_BIT) {
+                    send(&r, c.p->binds[i].signal, false, status, sizeof status);
+                    dirty = true;
+                    break;
+                }
+        }
 
         if (c.home && (down & (WPAD_BUTTON_LEFT | WPAD_BUTTON_RIGHT)) && npresets > 1) {
             home_used = true;
@@ -679,6 +795,7 @@ static void run_remote(void)
             loaded = load_remote(&presets[current], &r);
             c.p = &presets[current];
             c.sent_bind = -1;
+            c.home_bind = -1;
             snprintf(status, sizeof status, loaded ? "Preset %d: %s" : "Preset %d: its remote is missing",
                      current + 1, c.p->name);
             draw_remote(c.p, status);
@@ -699,9 +816,15 @@ static void run_remote(void)
             continue;
         }
         if (home_was && !c.home) {
-            if (!home_used)
-                break;
+            if (!home_used) {
+                /* a mapped HOME sends its code when tapped; held longer (or not mapped) it leaves */
+                if (c.home_bind < 0 || now_ms() - home_at >= HOLD_TO_LEAVE_MS)
+                    break;
+                send(&r, c.p->binds[c.home_bind].signal, false, status, sizeof status);
+                dirty = true;
+            }
             home_used = false;
+            c.home_bind = -1;
         }
         home_was = c.home;
 
@@ -733,6 +856,13 @@ static void run_remote(void)
 
 /* ---------------------------------------------------------------- editing */
 
+static char (*sort_names)[40];
+static int by_signal_name(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b, c = strcasecmp(sort_names[x], sort_names[y]);
+    return c ? c : x - y;
+}
+
 static void edit_buttons(preset *p)
 {
     if (!db_open())
@@ -742,41 +872,59 @@ static void edit_buttons(preset *p)
         ui_message("IR REMOTE", C_RED, "This preset's remote is not in irdb.dat any more.");
         return;
     }
-    char (*labels)[96] = malloc(r.count * sizeof *labels);
+    /* its buttons by name, A to Z; a name the remote has twice is "Name (2)" */
+    char (*names)[40] = malloc(r.count * sizeof *names);
+    int *order = malloc(r.count * sizeof *order);
+    char (*labels)[112] = malloc(r.count * sizeof *labels);
     const char **items = malloc((r.count + 1) * sizeof *items);
+    for (size_t i = 0; names && order && i < r.count; i++) {
+        signal_label(&r, i, names[i], sizeof names[i]);
+        order[i] = (int)i;
+    }
+    if (names && order) {
+        sort_names = names;
+        qsort(order, r.count, sizeof *order, by_signal_name);
+    }
     char status[96] = "";
     int sel = 0;
-    while (labels && items) {
+    while (names && order && labels && items) {
         items[0] = "Done";
-        for (size_t i = 0; i < r.count; i++) {
-            char mapped[64] = "", one[48];
+        for (size_t k = 0; k < r.count; k++) {
+            const char *name = names[order[k]];
+            char mapped[72] = "", one[48];
             int n = 0;
-            for (int k = 0; k < p->nbinds; k++)
-                if (!strcmp(p->binds[k].signal, r.signals[i].name) && n++ == 0) {
-                    bind_label(&p->binds[k], one, sizeof one);
-                    snprintf(mapped, sizeof mapped, "%s", one);
+            for (int b = 0; b < p->nbinds; b++)
+                if (!strcmp(p->binds[b].signal, name)) {
+                    bind_label(&p->binds[b], one, sizeof one);
+                    if (n++)
+                        strncat(mapped, ", ", sizeof mapped - strlen(mapped) - 1);
+                    strncat(mapped, one, sizeof mapped - strlen(mapped) - 1);
                 }
-            if (n > 1)
-                snprintf(mapped + strlen(mapped), sizeof mapped - strlen(mapped), " +%d", n - 1);
-            snprintf(labels[i], sizeof labels[i], "%-24.24s %s", r.signals[i].name, n ? mapped : "-");
-            items[i + 1] = labels[i];
+            snprintf(labels[k], sizeof labels[k], "%-24.24s %s", name, n ? mapped : "-");
+            items[k + 1] = labels[k];
         }
+        ui_clear(); /* nothing left behind from a bigger window before */
         int c = ui_menu_ex(p->name, items, NULL, r.count + 1, sel, "A Choose   B Done");
         if (c <= 0)
             break;
         sel = c;
-        const ir_signal *s = &r.signals[c - 1];
-        const char *acts[] = {"Assign a button", "Send it now (test)", "Remove its buttons"};
-        int a = ui_menu(s->name, acts, NULL, 3, 0);
+        const char *name = names[order[c - 1]];
+        int has = 0;
+        for (int b = 0; b < p->nbinds; b++)
+            has += !strcmp(p->binds[b].signal, name);
+        const char *acts[] = {has ? "Add another button for it" : "Assign a button", "Send it now (test)",
+                              "Remove its buttons"};
+        bool on[] = {true, true, has > 0};
+        int a = ui_menu(name, acts, on, 3, 0);
         if (a == 0) {
             binding b;
-            if (!learn(s->name, &b))
+            if (!learn(name, &b))
                 continue;
             if (p->nbinds >= MAX_BINDS) {
                 ui_message("IR REMOTE", C_YELLOW, "This preset has as many buttons as it can hold.");
                 continue;
             }
-            /* a button does one thing: take it from whatever it did before */
+            /* a button does one thing: take it from whatever it did before (a code can have several) */
             for (int k = 0; k < p->nbinds;) {
                 binding *o = &p->binds[k];
                 if (o->kind == b.kind && o->ext == b.ext && o->bit == b.bit && !strcmp(o->ext_name, b.ext_name))
@@ -787,17 +935,19 @@ static void edit_buttons(preset *p)
             p->binds[p->nbinds++] = b;
             save_or_warn();
         } else if (a == 1) {
-            send(&r, s->name, false, status, sizeof status);
+            send(&r, name, false, status, sizeof status);
             ui_message("IR REMOTE", C_GREEN, status);
-        } else if (a == 2) {
+        } else if (a == 2 && has) {
             for (int k = 0; k < p->nbinds;)
-                if (!strcmp(p->binds[k].signal, s->name))
+                if (!strcmp(p->binds[k].signal, name))
                     p->binds[k] = p->binds[--p->nbinds];
                 else
                     k++;
             save_or_warn();
         }
     }
+    free(names);
+    free(order);
     free(labels);
     free(items);
     IR_FreeRemote(&r);
@@ -832,6 +982,7 @@ static void preset_menu(int i)
 {
     const char *acts[] = {"Use it", "Edit its buttons", "Rename", "Move up (earlier when cycling)", "Delete"};
     bool on[] = {true, true, true, i > 0, true};
+    ui_clear();
     int a = ui_menu(presets[i].name, acts, on, 5, 0);
     switch (a) {
     case 0:
@@ -878,14 +1029,42 @@ static const char HELP[] =
     "Sends TV, receiver and set-top box codes from " SENDER ", with the buttons of any controller.\n\n"
     "New preset: pick the device, then give each of its buttons a button on any controller (Wii Remote, "
     "Nunchuk, Classic, GameCube pad, Pro Controller, GamePad or USB pad).\n\n"
-    "In the remote: press a mapped button to send its code; hold it to repeat. HOME + Left / Right "
+    "A code can have several buttons (on one controller or more): pick it again and add another. HOME "
+#ifndef __WIIU__
+    "and the Wii Remote's Power button can be mapped too (Power turns that remote off; any button wakes it). "
+#else
+    "can be mapped too. "
+#endif
+    "\n\nIn the remote: press a mapped button to send its code; hold it to repeat. HOME + Left / Right "
     "switches preset, and the controller buzzes once per preset number (1st = one buzz), so it works with "
-    "the TV on another input. HOME on its own leaves.\n\n"
+    "the TV on another input. HOME on its own leaves (hold it for a second when HOME sends a code).\n\n"
     "Shortcut: hold 1 (Y on a GamePad, Classic or GameCube pad) while the app starts.\n\n"
     "More devices or buttons: add them to irdb_custom.xml in " APP_DIR "/ (it has examples to copy).";
 
+/* The presets and the remote list only while the IR remote is open. */
+static bool ir_open(void)
+{
+    if (!presets)
+        presets = calloc(MAX_PRESETS, sizeof *presets);
+    if (!presets) {
+        ui_message("IR REMOTE", C_RED, "Not enough memory to open the IR remote.");
+        return false;
+    }
+    return true;
+}
+
+static void ir_close(void)
+{
+    IR_DbFree(&db);
+    free(presets);
+    presets = NULL;
+    npresets = 0;
+}
+
 void irremote_run(bool quick)
 {
+    if (!ir_open())
+        return;
     presets_load();
     if (quick && npresets)
         run_remote();
@@ -901,6 +1080,7 @@ void irremote_run(bool quick)
         }
         items[n++] = "New preset (pick a device)";
         items[n++] = "Help";
+        ui_clear();
         int r = ui_menu_ex("IR REMOTE", items, NULL, n, sel, "A Select   B Back");
         if (r < 0)
             break;
@@ -912,6 +1092,7 @@ void irremote_run(bool quick)
         else
             ui_message("IR REMOTE", C_CYAN, HELP);
     }
+    ir_close();
 }
 
 bool irremote_shortcut_held(void)
@@ -963,6 +1144,10 @@ void irremote_autotest(void)
     fprintf(lg, "irremote send nec %d %u ms (110 expected), rc6 %d %u ms\n", nec, (unsigned)(s1 - s0), rc6,
             (unsigned)(s2 - s1));
 
+    if (!ir_open()) {
+        fclose(lg);
+        return;
+    }
     presets_load();
     fprintf(lg, "irremote presets %d\n", npresets);
     if (npresets) {
@@ -976,5 +1161,6 @@ void irremote_autotest(void)
         ui_test_dump();
     }
     fclose(lg);
+    ir_close();
 }
 #endif

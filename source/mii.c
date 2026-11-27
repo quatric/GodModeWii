@@ -17,6 +17,7 @@
 #include "arcfs.h"
 #include "miiface.h"
 #include "media.h"
+#include "miiimport.h"
 
 #define RFL_PATH  "nand:/shared2/menu/FaceLib/RFL_DB.dat"
 #define RFL_SLOTS 100
@@ -49,8 +50,8 @@ static int fav_color(const u8 *r)
 }
 
 /* Pixel position of a console cell (the console starts 16 pixels in; cells are 8 x 16). */
-static int cell_x(int col) { return 16 + col * 8; }
-static int cell_y(int row) { return 16 + row * 16; }
+static int cell_x(int col) { return ui_cell_x(col); }
+static int cell_y(int row) { return ui_cell_y(row); }
 
 #define MII_ROWS (MIIFACE_HEIGHT / 16)  /* the picture's size in console cells */
 #define MII_COLS (MIIFACE_WIDTH / 8)
@@ -196,7 +197,7 @@ static int marked_count(void)
 
 /* Everything is drawn in place, over what was there: clearing the screen first flickers. full
  * clears it, after a dialog. */
-static void draw(const char *title, int cursor, int top, int rows, bool full)
+static void draw(const char *title, int cursor, int top, int rows, bool full, bool nand)
 {
     int cols = ui_cols(), list_w = cols - PANEL_W - 1, pc = cols - PANEL_W + 1;
     if (full) {
@@ -222,8 +223,8 @@ static void draw(const char *title, int cursor, int top, int rows, bool full)
     const mii_t *m = &miis[cursor];
     draw_details(m->data, m->name, m->creator, 3 + MII_ROWS, pc, PANEL_W - 2);
     ui_color(C_CYAN, true);
-    ui_field(ui_rows() - 2, 1, cols - 2, "A Mark   1 Mark all   + Export   2 Face: %s   B Back",
-             miiface_expression_name(expression));
+    ui_field(ui_rows() - 2, 1, cols - 2, "A Mark  1 Mark all  + Export  2 Face: %s%s  B Back",
+             miiface_expression_name(expression), nand ? "  - Gold pants" : "");
     ui_reset();
     draw_face(m->data, 3, pc + (PANEL_W - 2 - MII_COLS) / 2);  /* last: text would draw over it */
 }
@@ -331,6 +332,7 @@ static void mii_list(const char *path, const char *title)
     }
 
     open_faces();
+    bool nand = !strcmp(path, RFL_PATH);    /* the Wii's own database: it can be changed */
     int cursor = 0, top = 0, rows = ui_rows() - 6;
     bool full = true;
     u32 p = 0;
@@ -338,7 +340,7 @@ static void mii_list(const char *path, const char *title)
         if (cursor < top) top = cursor;
         if (cursor >= top + rows) top = cursor - rows + 1;
         if (full || p)
-            draw(title, cursor, top, rows, full);
+            draw(title, cursor, top, rows, full, nand);
         full = tell_dolphin();
         if (full)
             continue;
@@ -358,6 +360,19 @@ static void mii_list(const char *path, const char *title)
             int dev = pick_drive();
             if (dev >= 0)
                 export(dev, marked_count() ? -1 : cursor);
+            full = true;
+        }
+        if (nand && (p & WPAD_BUTTON_MINUS)) {
+            u8 id[8];
+            memcpy(id, miis[cursor].data + 0x18, sizeof(id));
+            if (miiimport_gold_pants(id)) {
+                free(miis);
+                miis = NULL;
+                if (!load(path) || !nmiis)
+                    break;
+                if (cursor >= nmiis)
+                    cursor = nmiis - 1;
+            }
             full = true;
         }
         if (p & WPAD_BUTTON_2)

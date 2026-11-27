@@ -1336,6 +1336,10 @@ static void run_install(void)
     if (n >= 0) {
         vfs_remove(path, false);
         ftp_log("Installed %d file%s to %s", n, n == 1 ? "" : "s", g_devs[dev].tag);
+        bool soft;
+        const char *why = vfs_hbc_problem(dev, &soft);
+        if (why)
+            ftp_log("%s: %s", soft ? "Only HBC Reborn lists apps there" : "HBC won't list apps there", why);
     } else {
         ftp_log("Install failed: %s", err);
         ftp_log("The archive was kept: %s", vfs_basename(path));
