@@ -1066,7 +1066,7 @@ void vfs_init(void)
     mount_gecko();
     mount_usb(8);
     virt_refresh(DEV_SEEPROM);
-    virt_refresh(DEV_DISC);
+    virt_disc_peek();
     virt_refresh(DEV_MCA);
     virt_refresh(DEV_MCB);
     virt_refresh(DEV_KEYS);
@@ -1085,7 +1085,7 @@ void vfs_remount(void)
     mount_usb(4);
     g_devs[DEV_NAND].mounted = nand_ready;
     virt_refresh(DEV_SEEPROM);
-    virt_refresh(DEV_DISC);
+    virt_disc_peek();
     virt_refresh(DEV_MCA);
     virt_refresh(DEV_MCB);
     virt_refresh(DEV_KEYS);

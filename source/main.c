@@ -397,6 +397,11 @@ int main(int argc, char **argv)
                 continue;
             }
             /* "@setting": setting.txt read, a field written and put back; "@hbcreborn <ID>": that install */
+            if (!strcmp(line, "@disc")) {
+                extern void virt_disc_autotest(void);
+                virt_disc_autotest();
+                continue;
+            }
             if (!strcmp(line, "@setting")) {
                 extern void setting_autotest(void);
                 setting_autotest();

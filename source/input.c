@@ -4,6 +4,7 @@
 #include <input_wii.h>
 
 #include "input.h"
+#include "virt.h"
 #include "pointer.h"
 #include "ui.h"
 #include "sfx.h"
@@ -43,6 +44,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
     ui_flip();
 
     INPUT_Update();
+    virt_disc_idle();
     ui_hint_update();
     ptr_overlay_update();
     alarm_poll();

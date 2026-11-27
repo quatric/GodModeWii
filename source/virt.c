@@ -39,6 +39,17 @@ static const char *fst_names;
 static int fst_shift;       /* Wii stores offsets divided by 4 */
 static u32 part_raw_off;    /* Wii data partition, to reopen it after a drive reset */
 
+/* The motor is stopped when the disc isn't needed: at start-up, once nothing has read it for DISC_IDLE_MS,
+ * and when a disc is put in while nobody uses it. The next read spins it up again (a stopped drive needs a
+ * reset, its disc ID read and the partition opened again). */
+#define DISC_IDLE_MS 20000
+static volatile bool motor_on;
+static volatile u64 disc_used_at;
+static bool cover_in;       /* a disc was in at the last look */
+static u64 cover_seen_at;
+static u64 disc_ms(void) { return ticks_to_millisecs(gettime()); }
+static bool spin_up(void);
+
 /* Parts of the disc that are not in the file table, shown as sys/ and disc.iso */
 typedef struct {
     const char *name;
@@ -119,6 +130,8 @@ static bool unenc_once(void *buf, u32 len, u32 off4)
  * past bad sectors (tol_on) use libogc's patient read, which gets more of a scratched disc back. */
 static bool raw_read(u64 off, void *buf, u32 len, bool in_partition)
 {
+    disc_used_at = disc_ms();
+    if (!motor_on && !spin_up()) return false;
     if (in_partition) return DI_Read(buf, len, (u32)(off >> 2)) == 0;
     if (tol_on) return DI_UnencryptedRead(buf, len, (u32)(off >> 2)) == 0;
     return unenc_once(buf, len, (u32)(off >> 2));
@@ -139,10 +152,39 @@ static bool drive_up(void)
         u64 id;
         if (DI_ReadDiscID(&id) == 0) {
             mounted_id = id;
+            motor_on = true;
+            disc_used_at = disc_ms();
             return true;
         }
     }
     return false;
+}
+
+static void motor_off(void)
+{
+    motor_on = false;
+    DI_StopMotor();
+}
+
+/* After the motor was stopped: up again, the same disc, its partition open. False for another disc (left
+ * for refresh_disc to notice) or none. */
+static bool spin_up(void)
+{
+    u64 was = mounted_id;
+    if (!drive_up()) return false;
+    if (disc_kind != DISC_NONE && mounted_id != was) {
+        mounted_id = was;
+        motor_off();
+        return false;
+    }
+    if (partition_open && DI_OpenPartition(part_raw_off) != 0) {
+        DI_Reset();
+        if (DI_ReadDiscID(&mounted_id) != 0 || DI_OpenPartition(part_raw_off) != 0) {
+            mounted_id = was;
+            return false;
+        }
+    }
+    return true;
 }
 
 static void drive_reset(void)
@@ -390,6 +432,20 @@ static bool load_fst(u64 fst_off, u32 fst_size)
     return true;
 }
 
+static void di_start(void)
+{
+    if (di_started) return;
+    if (!g_is_dolphin) {
+        IosPatch_DIReadLimit(false);
+        /* Opening a Wii partition makes ES set HW_AHBPROT from the game's TMD, which locks
+         * the keys, SEEPROM and later disc reads; this ES patch keeps it off. */
+        IosPatch_AHBPROT(false);
+    }
+    DI_UseCache(false);
+    DI_Init();
+    di_started = true;
+}
+
 static void refresh_disc(void)
 {
     vfs_dev *d = &g_devs[DEV_DISC];
@@ -398,8 +454,8 @@ static void refresh_disc(void)
     if (d->mounted && disc_kind != DISC_NONE && di_fd >= 0) {
         u32 cover = 0;
         u64 id;
-        if (DI_GetCoverRegister(&cover) == 0 && (cover & DVD_COVER_DISC_INSERTED) && DI_ReadDiscID(&id) == 0 &&
-            id == mounted_id)
+        if (DI_GetCoverRegister(&cover) == 0 && (cover & DVD_COVER_DISC_INSERTED) &&
+            (motor_on ? DI_ReadDiscID(&id) == 0 && id == mounted_id : spin_up()))
             return;
     }
 
@@ -415,17 +471,7 @@ static void refresh_disc(void)
         return;
     }
 
-    if (!di_started) {
-        if (!g_is_dolphin) {
-            IosPatch_DIReadLimit(false);
-            /* Opening a Wii partition makes ES set HW_AHBPROT from the game's TMD, which locks
-             * the keys, SEEPROM and later disc reads; this ES patch keeps it off. */
-            IosPatch_AHBPROT(false);
-        }
-        DI_UseCache(false);
-        DI_Init();
-        di_started = true;
-    }
+    di_start();
     if (di_fd < 0) {
         set_note(DEV_DISC, "drive unavailable");
         return;
@@ -437,7 +483,7 @@ static void refresh_disc(void)
         return;
     }
     if (!drive_up()) {
-        DI_StopMotor();
+        motor_off();
         set_note(DEV_DISC, "disc not readable");
         return;
     }
@@ -448,7 +494,7 @@ static void refresh_disc(void)
         return;
 
     if (!read_retry(0, di_buf, 0x440, false)) {
-        DI_StopMotor();
+        motor_off();
         set_note(DEV_DISC, "disc not readable");
         return;
     }
@@ -864,10 +910,81 @@ void virt_shutdown(void)
     mcard_shutdown();
     disc_forget();
     if (di_started) {
-        DI_StopMotor();
+        motor_off();
         DI_Close();
         di_started = false;
     }
     free(di_buf);
     di_buf = NULL;
 }
+
+/* ---------------------------------------------------------------- spinning down */
+
+void virt_disc_peek(void)
+{
+    vfs_dev *d = &g_devs[DEV_DISC];
+    if (d->mounted) return;             /* read in already: the idle check stops it */
+    if (g_is_vwii) { set_note(DEV_DISC, "not available in vWii"); return; }
+    if (!AHBPROT_DISABLED) { set_note(DEV_DISC, "needs Homebrew Channel (AHBPROT)"); return; }
+    di_start();
+    if (di_fd < 0) { set_note(DEV_DISC, "drive unavailable"); return; }
+    u32 cover = 0;
+    cover_in = DI_GetCoverRegister(&cover) == 0 && (cover & DVD_COVER_DISC_INSERTED);
+    cover_seen_at = disc_ms();
+    if (!cover_in) {
+        set_note(DEV_DISC, "no disc");
+        return;
+    }
+    set_note(DEV_DISC, "disc in: open it to read it");
+    motor_off();                        /* left spinning by whatever ran before */
+}
+
+void virt_disc_idle(void)
+{
+    if (!di_started || di_fd < 0) return;
+    u64 t = disc_ms();
+    if (t - disc_used_at < 2000 || t - cover_seen_at < 1000) return;    /* in use, or looked just now */
+    cover_seen_at = t;
+    u32 cover = 0;
+    if (DI_GetCoverRegister(&cover) != 0) return;
+    bool in = cover & DVD_COVER_DISC_INSERTED;
+    if (in && !cover_in) {              /* put in just now: the drive spins it up by itself */
+        motor_on = true;
+        disc_used_at = t;
+    }
+    cover_in = in;
+    if (motor_on && t - disc_used_at >= DISC_IDLE_MS)
+        motor_off();
+}
+
+#ifdef GMW_AUTOTEST
+/* "@disc": not read at start-up, then read, stopped once idle, and spun up again by the next reads. */
+void virt_disc_autotest(void)
+{
+    FILE *lg = fopen("sd:/gmwtest.log", "a");
+    if (!lg) return;
+    virt_disc_peek();
+    fprintf(lg, "disc peek: mounted %d note \"%s\" motor %d\n", g_devs[DEV_DISC].mounted, g_devs[DEV_DISC].note, motor_on);
+    refresh_disc();
+    fprintf(lg, "disc read: mounted %d kind %d note \"%s\" motor %d\n", g_devs[DEV_DISC].mounted, disc_kind,
+            g_devs[DEV_DISC].note, motor_on);
+    if (g_devs[DEV_DISC].mounted && di_buf) {
+        disc_used_at = disc_ms() - DISC_IDLE_MS - 1;
+        cover_seen_at = 0;
+        virt_disc_idle();
+        fprintf(lg, "disc idle: motor %d\n", motor_on);
+        bool raw = read_retry(0, di_buf, 0x20, false);
+        fprintf(lg, "disc raw read after stop: %d motor %d id %.6s\n", raw, motor_on, (const char *)di_buf);
+        if (partition_open) {
+            disc_used_at = disc_ms() - DISC_IDLE_MS - 1;
+            cover_seen_at = 0;
+            virt_disc_idle();
+            bool part = read_retry(0, di_buf, 0x20, true);
+            fprintf(lg, "disc partition read after stop: %d motor %d id %.6s\n", part, motor_on, (const char *)di_buf);
+        }
+        refresh_disc();
+        fprintf(lg, "disc revisit: mounted %d motor %d\n", g_devs[DEV_DISC].mounted, motor_on);
+    }
+    fclose(lg);
+}
+#endif

@@ -13,6 +13,7 @@
 # The 3D model viewer draws with the GPU: run it with GFX=Vulkan (or OGL / Metal) so Dolphin renders,
 # and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
 # @wiiload waits for one wiiload upload (send it to tcp:127.0.0.1 while this runs).
+# DISC=/path/to/game.iso puts that disc in the drive (Dolphin's default ISO); @disc tests spinning it down.
 # AUDIO=True also saves what was played as OUTDIR/dspdump.wav.
 # NAND=/path/to/Wii runs on a copy of that emulated NAND (left in OUTDIR/.dolphin/user/Wii afterwards).
 # @put:LOCAL:SDPATH copies a file onto the card without opening it (e.g. @put:x.app:/GodModeWii/a.csm).
@@ -57,6 +58,7 @@ cat > "$work/user/Config/Dolphin.ini" <<EOF
 [General]
 WiiSDCardPath = $sd
 [Core]
+DefaultISO = ${DISC:-}
 WiiSDCard = True
 WiiSDCardAllowWrites = True
 WiiSDCardEnableFolderSync = False

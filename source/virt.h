@@ -25,6 +25,12 @@ s32  virt_read(vfs_file *f, void *buf, u32 len);
 bool virt_seek(vfs_file *f, u64 off);
 void virt_close(vfs_file *f);
 void virt_shutdown(void);
+/* At start-up and on remount: whether a disc is in, without spinning it (the motor is stopped);
+ * it is read when the drive is opened. */
+void virt_disc_peek(void);
+/* Called every frame: stops the disc motor once nothing has read the disc for 20 s, and after a
+ * disc was put in that nobody reads. */
+void virt_disc_idle(void);
 
 /* While on, unreadable disc sectors are zero-filled instead of failing the read,
  * and their byte ranges are collected (offsets relative to the file being read). */
