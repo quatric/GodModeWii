@@ -52,7 +52,20 @@
 * **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
   libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, ported and made read-only by `scripts/build_libext4.sh`.
 * **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
-* **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, ISFS) and **libfat**.
+* **[Aeplet's IOS](https://github.com/Aeplet/IOS)** by Aep (MIT) — `source/ahbprot.c` is its `ios.c`: mkwcat's `/dev/sha`
+  exploit turning HW_AHBPROT off at start-up when the loader left it on.
+* **[libwiiinput](https://github.com/quatric/libwiiinput)** (quatric) — every controller, the pen tablets and uDraw, the Wii Speak
+  and USB microphones. Inside it: USB pads read with **[Nintendont](https://github.com/FIX94/Nintendont)**'s `controller.ini`
+  layouts (FIX94 and the Nintendont contributors, used with permission), the GameCube controller adapter after
+  **[wup-028-bslug](https://github.com/Chadderz121/wup-028-bslug)** by Alex Chadwick and Nintendont, and the HID pad and Wii Remote
+  queue code from **[RiftWii](https://github.com/KakarottoCake/RiftWii)**'s contributors (GPL-3.0-or-later).
+* **[libwiiupdate](https://github.com/quatric/libwiiupdate)** (quatric) — the update check and installer, and the HTTPS downloads
+  (HBC Reborn), with **[Mbed TLS](https://github.com/Mbed-TLS/mbedtls)** (Apache-2.0) and **[miniz](https://github.com/richgel999/miniz)**
+  by Rich Geldreich (MIT) inside.
+* **[FAAD2](https://github.com/knik0/faad2)** (GPL-2.0, devkitPro's `ppc-faad2`) — AAC sound in M4A files.
+* **[libdvm](https://github.com/devkitPro/libdvm)** and **[fatfs-mod](https://github.com/devkitPro/fatfs-mod)** (devkitPro, with
+  ChaN's **FatFs**) — exFAT drives, built by `scripts/build_exfat_libfat.sh`.
+* **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, libwiikeyboard, ISFS) and **libfat**.
 
 ## Formats and references
 
@@ -98,6 +111,11 @@
 * **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
 * **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
 * **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.
+* **[The Homebrew Channel](https://github.com/fail0verflow/hbc)** (fail0verflow; with **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)**)
+  — the Wiiload protocol (network and USB Gecko) and which drives and partitions it loads apps from, for Wiiload's warning.
+* **ThemeMii** — the `.mym` theme format that the theme installer converts.
+* **neek2o**, **uneek**, **WiiFlow** and **Dolphin** — the emulated NAND layout that WADs are installed into.
+* **USB Loader GX** — starting a title by ID, the newest first, which the launcher does the same way.
 
 ## Inspiration
 

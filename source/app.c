@@ -777,6 +777,19 @@ static void show_credits(void)
         "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.\n\n"
         "Miis: drawn on the Wii by MiiKit (github.com/cmyksoda/MiiKit), from hbc-reborn's sdk/mii.",
 
+        "Game discs: TinyLoad (marcan, Segher, Andre Heider, Nuke). NAND backup: nanddumper@IOS (thepikachugamer) "
+        "with mkwcat's /dev/sha exploit; AHBPROT at start-up: Aeplet's IOS (Aep, MIT). Wii Menu themes: csm-installer "
+        "(Naim2000) and cmyksoda's mym-to-csm. boot1 / boot2 identification: facts from RGD SDBoot Installer. HBC Reborn "
+        "(Monsterray) is installed from its releases.\n\n"
+        "MIDI: TinySoundFont (Bernhard Schelling) with Gervill's soundbank. AAC: FAAD2. Drives: libntfs (Extrems, NTFS-3G), "
+        "lwext4 (Grzegorz Kostka) with Extrems' libdvm driver, devkitPro's libdvm and FatFs (ChaN) for exFAT.",
+
+        "Controllers: libwiiinput, with Nintendont's controller.ini layouts (FIX94 and contributors), wup-028-bslug "
+        "(Alex Chadwick) and RiftWii's HID and queue code; libwiidrc and libwupc (FIX94), libsicksaxis (xerpi).\n\n"
+        "IR remote: WiiIR (Dakota Thorpe) through libwiiir, Flipper-IRDB's remotes. Disc slot light: GlowWii. Sketchpad "
+        "tools: PictoCard. Updates and downloads: libwiiupdate, with Mbed TLS and miniz.\n\n"
+        "Full list with licenses: docs/CREDITS.md.",
+
         "MoonShell (Moonlight) inspired us a lot: the interface sounds are MoonShell 2.10's (GPL v2 or "
         "later), and the clock, calendar, calculator and alarm follow its own.\n\n"
         "Thanks for using GodModeWii!\n\n"

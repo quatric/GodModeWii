@@ -27,6 +27,7 @@
 #include "risk.h"
 #include "ftp.h"
 #include "runtimeiospatch.h"
+#include "ahbprot.h"
 #include "launch.h"
 #include "arcfs.h"
 #include "irremote.h"
@@ -175,6 +176,10 @@ int main(int argc, char **argv)
 
     SYS_SetResetCallback(on_reset);
     SYS_SetPowerCallback(on_power);
+
+    /* Started without HW_AHBPROT off (no <ahb_access/>, a forwarder, another loader): turn it off. */
+    if (!AHBPROT_DISABLED && !g_is_dolphin)
+        ahbprot_disable();
 
     /* NAND permissions: the same ISFS patch FSToolBox-Mod applies, and only
      * that one (the hash / identify / setuid patches are not needed here). */
