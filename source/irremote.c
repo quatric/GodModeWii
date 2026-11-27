@@ -6,8 +6,8 @@
  * The same file is in GodModeWii and GodModeU.
  *
  * Presets live in <app folder>/ir_presets.txt; the remotes come from
- * irdb.xml (Flipper-IRDB), irdb_custom.xml (the user's own) and, when that
- * category is opened, irdb_converted.xml.
+ * irdb.dat (Flipper-IRDB) and irdb_custom.xml (the user's own, written as a
+ * commented template the first time).
  *
  * No sounds play here: any sound still playing is stopped before a code is
  * sent, and leaving or switching presets is told with rumble (and on the Wii
@@ -68,7 +68,6 @@ typedef struct {
 static preset presets[MAX_PRESETS];
 static int npresets, current;
 static ir_db db;
-static bool converted_read;
 
 static u64 now_ms(void)
 {
@@ -308,47 +307,68 @@ static void save_or_warn(void)
 
 /* ---------------------------------------------------------------- the remote list */
 
+/* irdb_custom.xml as a template the first time: examples to copy, all commented out */
+static void custom_template(void)
+{
+    FILE *f = fopen(APP_DIR "/irdb_custom.xml", "r");
+    if (f) {
+        fclose(f);
+        return;
+    }
+    f = fopen(APP_DIR "/irdb_custom.xml", "w");
+    if (!f)
+        return;
+    fputs("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+          "<!-- Your own remotes. They show up in the IR remote next to the built-in list, and app updates\n"
+          "     never replace this file.\n\n"
+          "     A device needs a manufacturer, a name and a category (a new category is fine). Each\n"
+          "     <ButtonEntry> is one button; its <Data> is the code, in one of three forms:\n\n"
+          "       Protocol:address,command   NEC, NECext, NEC42, NEC42ext, Samsung32, RC5, RC5X, RC6,\n"
+          "                                  SIRC, SIRC15, SIRC20, Kaseikyo, RCA, Pioneer or JVC, with the\n"
+          "                                  address and command as Flipper-IRDB writes them (0x hex or\n"
+          "                                  decimal; a Flipper .ir file's \"address: 04 00 00 00\" is 0x04)\n"
+          "       raw timings                microseconds, mark first, with frequency=\"38000\" and\n"
+          "                                  duty=\"0.33\" on the <Data> tag\n"
+          "       RAW:pronto                 a learned Pronto hex code (0000 ...)\n\n"
+          "     Copy the example out of this comment, between <Manufacturers> and </Manufacturers>,\n"
+          "     and change it:\n\n"
+          "  <Manufacturer name=\"My brand\">\n"
+          "    <DeviceList>\n"
+          "      <DeviceEntry name=\"Living room TV\" category=\"TVs\">\n"
+          "        <ButtonEntry name=\"Power\"><Data>NEC:0x04,0x08</Data></ButtonEntry>\n"
+          "        <ButtonEntry name=\"Vol_up\"><Data>NECext:0x7F00,0xEA15</Data></ButtonEntry>\n"
+          "        <ButtonEntry name=\"Input\"><Data frequency=\"38000\" duty=\"0.33\">9000 4500 560 560 560 1690 560</Data></ButtonEntry>\n"
+          "        <ButtonEntry name=\"Mute\"><Data>RAW:0000 006D 0002 0000 0157 00AC 0015 0689</Data></ButtonEntry>\n"
+          "      </DeviceEntry>\n"
+          "    </DeviceList>\n"
+          "  </Manufacturer>\n"
+          "-->\n"
+          "<Manufacturers>\n"
+          "</Manufacturers>\n",
+          f);
+    fclose(f);
+}
+
 static bool db_open(void)
 {
     if (db.count)
         return true;
-    ui_splash("Reading the remote list (irdb.xml)...");
-    IR_DbAdd(&db, APP_DIR "/irdb.xml");
+    ui_splash("Reading the remote list (irdb.dat)...");
+    custom_template();
+    IR_DbAdd(&db, APP_DIR "/irdb.dat");
     IR_DbAdd(&db, APP_DIR "/irdb_custom.xml");
     input_flush();
     if (db.count)
         return true;
     ui_message("NO REMOTE LIST", C_YELLOW,
-               "irdb.xml was not found in " APP_DIR "/. It comes in the release zip next to the app: copy it "
-               "there (irdb_converted.xml too, for more remotes).");
+               "irdb.dat was not found in " APP_DIR "/. It comes in the release zip next to the app: copy it "
+               "there.");
     return false;
 }
 
-static bool converted_exists(void)
-{
-    FILE *f = converted_read ? NULL : fopen(APP_DIR "/irdb_converted.xml", "rb");
-    if (f)
-        fclose(f);
-    return f != NULL;
-}
-
-static void converted_open(void)
-{
-    if (converted_read)
-        return;
-    ui_splash("Reading irdb_converted.xml (this one is big)...");
-    converted_read = IR_DbAdd(&db, APP_DIR "/irdb_converted.xml") == 0;
-    input_flush();
-}
-
-/* A preset's remote, reading the converted list if it is there. */
 static bool load_remote(const preset *p, ir_remote *r)
 {
     int i = IR_DbFind(&db, p->category, p->maker, p->device);
-    if (i < 0 && !converted_read && converted_exists()) {
-        converted_open();
-        i = IR_DbFind(&db, p->category, p->maker, p->device);
-    }
     return i >= 0 && IR_DbLoad(&db, i, r) == 0;
 }
 
@@ -369,8 +389,7 @@ static int by_name(const void *a, const void *b)
 static int pick_device(void)
 {
     for (;;) {
-        /* categories, with the converted list's own when it is not read yet */
-        const char **cats = malloc((db.count + 2) * sizeof *cats);
+        const char **cats = malloc((db.count + 1) * sizeof *cats);
         if (!cats)
             return -1;
         int nc = 0;
@@ -382,7 +401,6 @@ static int pick_device(void)
                 cats[nc++] = db.devices[i].category;
         }
         qsort(cats, nc, sizeof *cats, by_name);
-        bool more = converted_exists();
         char (*labels)[64] = malloc((nc + 1) * sizeof *labels);
         const char **items = malloc((nc + 1) * sizeof *items);
         if (!labels || !items) {
@@ -393,17 +411,11 @@ static int pick_device(void)
             pretty(labels[k], sizeof labels[k], cats[k]);
             items[k] = labels[k];
         }
-        if (more)
-            items[nc] = "Converted (6,900 more remotes, slow to open)";
-        int c = ui_menu("WHAT IS IT?", items, NULL, nc + more, 0);
+        int c = ui_menu("WHAT IS IT?", items, NULL, nc, 0);
         const char *cat = c >= 0 && c < nc ? cats[c] : NULL;
         free(cats), free(labels), free(items);
-        if (c < 0)
+        if (!cat)
             return -1;
-        if (!cat) {
-            converted_open();
-            continue;
-        }
 
         for (;;) {
             /* manufacturers that make one */
@@ -727,7 +739,7 @@ static void edit_buttons(preset *p)
         return;
     ir_remote r;
     if (!load_remote(p, &r)) {
-        ui_message("IR REMOTE", C_RED, "This preset's remote is not in irdb.xml any more.");
+        ui_message("IR REMOTE", C_RED, "This preset's remote is not in irdb.dat any more.");
         return;
     }
     char (*labels)[96] = malloc(r.count * sizeof *labels);
@@ -870,7 +882,7 @@ static const char HELP[] =
     "switches preset, and the controller buzzes once per preset number (1st = one buzz), so it works with "
     "the TV on another input. HOME on its own leaves.\n\n"
     "Shortcut: hold 1 (Y on a GamePad, Classic or GameCube pad) while the app starts.\n\n"
-    "More devices or buttons: add them to irdb_custom.xml in " APP_DIR "/ (the same format as irdb.xml).";
+    "More devices or buttons: add them to irdb_custom.xml in " APP_DIR "/ (it has examples to copy).";
 
 void irremote_run(bool quick)
 {
@@ -909,7 +921,7 @@ bool irremote_shortcut_held(void)
 }
 
 #ifdef GMW_AUTOTEST
-/* "@irremote" (test builds): every device of irdb.xml read and encoded, a timed send of a NEC and an RC6
+/* "@irremote" (test builds): every device of irdb.dat read and encoded, a timed send of a NEC and an RC6
  * code, and the remote's screen for the first preset, saved like a viewer's. Results in sd:/gmwtest.log. */
 void irremote_autotest(void)
 {
@@ -919,7 +931,7 @@ void irremote_autotest(void)
         return;
     u64 t0 = now_ms();
     IR_DbFree(&db);
-    int added = IR_DbAdd(&db, APP_DIR "/irdb.xml");
+    int added = IR_DbAdd(&db, APP_DIR "/irdb.dat");
     u64 t1 = now_ms();
     size_t buttons = 0, bad = 0, unencodable = 0;
     for (size_t i = 0; i < db.count; i++) {

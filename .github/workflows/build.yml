@@ -47,7 +47,7 @@ jobs:
       - name: Build
         run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
 
-      - name: Build the IR remote list (irdb.xml) from Flipper-IRDB
+      - name: Build the IR remote list (irdb.dat) from Flipper-IRDB
         run: |
           git clone -q --depth 1 https://github.com/Lucaslhm/Flipper-IRDB irdb-src
           make -C libwiiir irdb IRDB=$PWD/irdb-src
@@ -55,7 +55,7 @@ jobs:
       - name: Package for the Homebrew Channel
         run: |
           mkdir -p dist/apps/GodModeWii
-          cp libwiiir/irdb.xml libwiiir/irdb_converted.xml dist/apps/GodModeWii/
+          cp libwiiir/irdb.dat dist/apps/GodModeWii/
           cp GodModeWii-xz.dol dist/apps/GodModeWii/boot.dol
           cp apps/GodModeWii/meta.xml apps/GodModeWii/icon.png dist/apps/GodModeWii/
           cp README.md LICENSE dist/apps/GodModeWii/

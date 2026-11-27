@@ -466,7 +466,7 @@ calculator and alarm follow its own.
 * [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
 * TiVo: the easter-egg interface sounds
 * [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema
-* [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB) (CC0): the IR remote's device list, as `irdb.xml`
+* [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB) (CC0): the IR remote's device list, as `irdb.dat`
 * [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
 * [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
 * [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher
