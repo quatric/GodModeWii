@@ -38,6 +38,7 @@
 #include "input.h"
 #include "otp.h"
 #include "seeprom.h"
+#include "setting.h"
 #include "runtimeiospatch.h"
 #include "nd_stage1_bin.h"
 #include "nd_realcode_bin.h"
@@ -272,54 +273,10 @@ static int read_page(u32 idx, u8 *out)
 
 /* ---------------------------------------------------------------- console details */
 
-static char setting[0x100] ATTRIBUTE_ALIGN(32);
-static bool setting_ok;
-
-static void setting_load(void)
-{
-    static const u32 key[8] = { 0xfaf4e9d3, 0xa74e9c39, 0x73e7ce9d, 0x3b76edda,
-                                0xb56bd7ae, 0x5dbb76ed, 0xdbb76fdf, 0xbf7ffefd };
-    if (setting_ok) return;
-    s32 fd = ISFS_Open("/title/00000001/00000002/data/setting.txt", ISFS_OPEN_READ);
-    if (fd < 0) return;
-    s32 r = ISFS_Read(fd, setting, sizeof(setting));
-    ISFS_Close(fd);
-    if (r != (s32)sizeof(setting)) return;
-    size_t n = strnlen(setting, sizeof(setting));
-    u32 *w = (u32 *)setting;
-    for (int i = 0; i < 8; i++)
-        for (int j = i; j < 0x40; j += 8) w[j] ^= key[i];
-    memset(setting + n, 0, sizeof(setting) - n);
-    setting_ok = true;
-}
-
-static bool setting_find(const char *item, char *out, size_t n)
-{
-    if (!setting_ok) return false;
-    const char *p = setting;
-    size_t il = strlen(item);
-    while (*p && p < setting + sizeof(setting)) {
-        const char *eq = strchr(p, '='), *end = strchr(p, '\r');
-        if (!end) end = strchr(p, '\n');
-        if (!eq || !end) break;
-        if ((size_t)(eq - p) == il && !memcmp(p, item, il)) {
-            size_t vl = (size_t)(end - eq - 1);
-            if (vl >= n) return false;
-            memcpy(out, eq + 1, vl);
-            out[vl] = 0;
-            return true;
-        }
-        while (*end && isspace((unsigned char)*end)) end++;
-        p = end;
-    }
-    return false;
-}
-
 static void serial_of(char out[24])
 {
     char code[4], serno[12];
-    setting_load();
-    if (setting_find("CODE", code, sizeof(code)) && setting_find("SERNO", serno, sizeof(serno)))
+    if (setting_get("CODE", code, sizeof(code)) && setting_get("SERNO", serno, sizeof(serno)))
         snprintf(out, 24, "%s%s", code, serno);
     else
         snprintf(out, 24, "UNKNOWN");
@@ -327,8 +284,7 @@ static void serial_of(char out[24])
 
 static const char *model_of(char model[16])
 {
-    setting_load();
-    if (!setting_find("MODEL", model, 16)) {
+    if (!setting_get("MODEL", model, 16)) {
         snprintf(model, 16, "UNKNOWN");
         return "UNKNOWN";
     }
@@ -602,4 +558,110 @@ void nanddump_menu(void)
     const char *items[] = { "Whole NAND (nand.bin + keys.bin, about 529 MB)", "Console keys only (keys.bin)" };
     int r = ui_menu("BACK UP THE NAND (nanddumper@IOS)", items, NULL, 2, 0);
     if (r >= 0) run(r == 0);
+}
+
+/* ---------------------------------------------------------------- boot1 / boot2 */
+
+/* SHA-1s that page 1 of a boot2 block holds at 0x6B8 (its content's hash in the boot2 TMD) for each
+ * official boot2 and the two RGD loaders; BootMii as boot2 has "BM" and its version at 0x676. */
+static const struct { const char *name; u8 sha[20]; } boot2_ids[] = {
+    { "boot2v1",  { 0xFD,0x53,0x7E,0x4E,0xD7,0x9A,0x3F,0xB3,0xE0,0x35,0xC5,0x10,0x1A,0xCC,0x48,0xF1,0x9E,0x5D,0xE1,0x05 } },
+    { "boot2v2",  { 0xBD,0x0F,0x4F,0xC7,0xDF,0xE0,0xD8,0xF1,0x37,0x54,0x9E,0xB3,0x6F,0xBF,0xD5,0x6B,0x3D,0xAE,0x84,0xEE } },
+    { "boot2v3",  { 0xEA,0x5C,0x22,0x73,0xC8,0xAB,0xAD,0x2B,0x13,0x64,0x7B,0xB4,0xCB,0x2D,0x20,0xF0,0xF9,0x49,0x29,0x51 } },
+    { "boot2v4",  { 0xEB,0xFC,0x36,0x20,0x0D,0xDB,0x3E,0x32,0x8D,0xA1,0xC5,0x2B,0x23,0x3D,0xFC,0x8C,0xAF,0x60,0xB6,0x71 } },
+    { "boot2v5",  { 0x4F,0x99,0xBA,0xDF,0x98,0x8E,0x3F,0xD7,0xA8,0x21,0x2C,0xCA,0x35,0xD5,0x3C,0xBB,0x9E,0x7B,0x7C,0xBC } },
+    { "SDBoot (RGD)",   { 0xE5,0x30,0xDE,0xAF,0x73,0x0D,0x24,0xE0,0xA8,0xE0,0x8D,0xCA,0xC0,0x94,0x39,0x01,0x46,0x36,0x1A,0x5E } },
+    { "NANDBoot (RGD)", { 0xD3,0x84,0x29,0xDA,0xBB,0x18,0xF2,0x47,0xCC,0xF5,0x24,0x47,0x78,0xD4,0x66,0x6B,0x2E,0xFB,0x3F,0x29 } },
+};
+
+int nanddump_boot_report(char *out, size_t n)
+{
+    char err[200] = "";
+    int p = 0;
+    out[0] = '\0';
+    if (g_is_dolphin || g_is_vwii) {
+        snprintf(out, n, "%s", g_is_dolphin ? "Dolphin has no NAND chip to read." :
+                                              "vWii has no boot1 / boot2 of its own (the Wii U boots it).");
+        return -1;
+    }
+    ui_splash("Getting into IOS...");
+    int ret = realcode_init();
+    if (ret < 0) {
+        snprintf(out, n, "Couldn't run code in IOS (the /dev/sha exploit gave %d).", ret);
+        return -1;
+    }
+    ui_splash("Reading the boot blocks...");
+    if (patch_flash_access(err, sizeof(err)) < 0) {
+        snprintf(out, n, "%s.", err);
+        return -1;
+    }
+    fl_fd = IOS_Open("/dev/flash", 0);
+    if (fl_fd < 0 || IOS_Ioctl(fl_fd, 1, NULL, 0, &fl, sizeof(fl)) < 0) {
+        snprintf(out, n, "Couldn't open /dev/flash (%d).", fl_fd);
+        if (fl_fd >= 0) IOS_Close(fl_fd);
+        fl_fd = -1;
+        return -1;
+    }
+    u32 data_sz = 1u << fl.page_size, pages = 1u << (fl.block_size - fl.page_size);
+    u8 *pg = memalign(64, data_sz + (1u << fl.spare_size));
+    if (!pg) {
+        IOS_Close(fl_fd);
+        fl_fd = -1;
+        snprintf(out, n, "Out of memory.");
+        return -1;
+    }
+
+    /* boot1: told apart by one byte of its (encrypted) first page */
+    int r = read_page(0, pg);
+    char b1 = '?';
+    if (r == 0 || r == FLASH_ECC)
+        b1 = pg[0x40] == 0x99 ? 'a' : pg[0x40] == 0xC1 ? 'b' : pg[0x40] == 0xFC ? 'c' : pg[0x40] == 0x48 ? 'd' : '?';
+    p += snprintf(out + p, n - p, "boot1%c%s\n", b1,
+                  b1 == 'a' || b1 == 'b' ? "  (BootMii can be installed as boot2)"
+                  : b1 == '?' ? "  (not recognised)" : "  (BootMii only as an IOS: boot1 checks boot2's signature)");
+
+    /* blocks 0-7: bad ones, and ECC trouble in their pages */
+    u32 bad = 0, corrected = 0, uncorrectable = 0, ioerr = 0;
+    char badlist[40] = "";
+    char found[7][40];
+    for (u32 b = 0; b < 8; b++) {
+        if (b) found[b - 1][0] = '\0';
+        for (u32 i = 0; i < pages; i++) {
+            r = read_page(b * pages + i, pg);
+            if (i < 2 && (r == 0 || r == FLASH_ECC_CRIT) && pg[data_sz + fl.check_byte_ofs] != 0xFF) {
+                bad++;
+                snprintf(badlist + strlen(badlist), sizeof(badlist) - strlen(badlist), " %u", (unsigned)b);
+                if (b) snprintf(found[b - 1], sizeof(found[0]), "bad block");
+                break;
+            }
+            if (r == FLASH_ECC) corrected++;
+            else if (r == FLASH_ECC_CRIT) uncorrectable++;
+            else if (r < 0) ioerr++;
+            if (b && i == 1 && (r == 0 || r == FLASH_ECC)) {
+                for (size_t k = 0; k < sizeof(boot2_ids) / sizeof(boot2_ids[0]); k++)
+                    if (!memcmp(pg + 0x6B8, boot2_ids[k].sha, 20))
+                        snprintf(found[b - 1], sizeof(found[0]), "%s", boot2_ids[k].name);
+                if (!found[b - 1][0] && pg[0x676] == 'B' && pg[0x677] == 'M')
+                    snprintf(found[b - 1], sizeof(found[0]), "BootMii %.3s", (const char *)pg + 0x678);
+            }
+        }
+    }
+    free(pg);
+    IOS_Close(fl_fd);
+    fl_fd = -1;
+
+    p += snprintf(out + p, n - p, "Boot blocks 0-7: %s%s%s\n", bad ? "bad block(s):" : "no bad blocks", badlist,
+                  uncorrectable || ioerr ? "  (!)" : "");
+    p += snprintf(out + p, n - p, "  ECC corrected %u, uncorrectable %u, read errors %u\n", (unsigned)corrected,
+                  (unsigned)uncorrectable, (unsigned)ioerr);
+    p += snprintf(out + p, n - p, "boot2 copies:");
+    int shown = 0;
+    for (int b = 1; b < 8; b++)
+        if (found[b - 1][0]) {
+            p += snprintf(out + p, n - p, "%s block %d %s", shown ? "," : "", b, found[b - 1]);
+            shown++;
+        }
+    if (!shown) p += snprintf(out + p, n - p, " none recognised");
+    snprintf(out + p, n - p, "\n");
+    return 0;
 }

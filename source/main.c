@@ -396,6 +396,17 @@ int main(int argc, char **argv)
                 }
                 continue;
             }
+            /* "@setting": setting.txt read, a field written and put back; "@hbcreborn <ID>": that install */
+            if (!strcmp(line, "@setting")) {
+                extern void setting_autotest(void);
+                setting_autotest();
+                continue;
+            }
+            if (!strncmp(line, "@hbcreborn ", 11)) {
+                extern void hbcreborn_autotest(const char *id);
+                hbcreborn_autotest(line + 11);
+                continue;
+            }
             /* one wiiload upload (sent from the PC), logged */
             if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);

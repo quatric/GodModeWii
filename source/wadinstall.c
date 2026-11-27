@@ -875,6 +875,19 @@ int wad_install_paths(char **paths, int n)
     return ok;
 }
 
+int wad_install_one(const char *path, char *msg, size_t msz)
+{
+    if (!risk_ensure_unlocked()) {
+        snprintf(msg, msz, "The NAND is locked, so nothing was installed.");
+        return -1;
+    }
+    char note[300] = "";
+    int r = install_one(path, msg, msz, note, sizeof(note), false);
+    if (note[0])
+        snprintf(msg + strlen(msg), msz - strlen(msg), "\n\n%s", note);
+    return r;
+}
+
 /* ---------------------------------------------------------------- to the SD card (wad2bin) */
 
 bool wad_console_keys(w2b_keys_t *k, char *why, size_t wn)

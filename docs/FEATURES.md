@@ -126,6 +126,24 @@ HOME menu → *Back up the NAND / keys*, using [nanddumper@IOS](https://github.c
 * IOS stays patched until it is next reloaded, so booting a game disc is refused until GodModeWii is restarted. Not available in
   Dolphin.
 
+### Console
+
+HOME menu → *Console*.
+
+* *Show console info*: the model (from `setting.txt`: Wii, Family Edition, Wii mini, NDEV, or vWii), region, serial number,
+  console ID, boot2's version from ES, and the SEEPROM's two boot2 counters (version and update tag).
+* *Check boot1 / boot2* reads the boot blocks (0–7) through `/dev/flash`, the way the NAND backup does: boot1's revision (a and b
+  can run BootMii as boot2; c and d check boot2's signature), bad blocks and ECC trouble in those blocks, and what each boot2 copy
+  is (boot2v1–v5, BootMii, RGD SDBoot or NANDBoot). Only reads. Not in Dolphin or vWii.
+* *Edit setting.txt*: AREA, GAME, VIDEO, DVD, MODEL, CODE, SERNO and MPCH, with the known values to pick from. Each value is
+  changed in place, the rest of the file stays as it was, and the old file is copied to `GodModeWii/setting-backups/` first
+  (copy it back to undo). Needs the Konami code. A wrong region or serial can stop discs, channels or the Wii Shop working.
+* *Install / update HBC Reborn* gets [HBC Reborn](https://github.com/Monsterray/hbc-reborn)'s latest release from GitHub and
+  replaces the installed Homebrew Channel in place, under its own title ID: LULZ and OHBC from their WAD, an older JODI or HAXX
+  from the LULZ WAD given that ID. With none or several installed, it asks. The WAD is checked against the release's
+  `SHA256SUMS`, kept in `GodModeWii/hbc-reborn/`, and installed like any WAD (the Konami code, save data kept).
+* On a Wii mini, the drive list and the network say that it has no SD card slot or Wi-Fi.
+
 ## Wii Menu themes
 
 **Dangerous.** Press **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces the System Menu's layout

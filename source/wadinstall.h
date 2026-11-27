@@ -13,6 +13,9 @@
 /* Installs each of the `n` WADs at `paths` (one confirmation for all). Returns how many were
  * installed (0 when declined). */
 int wad_install_paths(char **paths, int n);
+/* One WAD to the NAND without asking first (the caller already did): the Konami code, then the same
+ * install and checks. 0 when installed; msg says what happened. */
+int wad_install_one(const char *path, char *msg, size_t msz);
 
 /* Installs each WAD to the SD card instead (wad2bin): content.bin / <index>.bin made with this
  * console's keys, then the ticket and TMD on the NAND. Asks first (and which key for DLC).

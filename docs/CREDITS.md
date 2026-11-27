@@ -103,6 +103,8 @@
 
 * **[MoonCalc](https://www.gamebrew.org/wiki/MoonCalc)** and **Morning Timer** (for MoonShell) — the calculator and the alarm clock.
 * **Terminal** on macOS — the default profiles the themes follow.
+* **[RGD SDBoot Installer](https://github.com/RedBeesRGD/rgdboot-installer)** by root1024, DeadlyFoez, RedBees and others — how boot1's revision and each boot2 copy are recognised, and where the SEEPROM keeps boot2's counters (*Console*, `source/nanddump.c`, `source/sysinfo.c`); facts only, none of its AGPL code.
+* **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)** by Monsterray — the Homebrew Channel that *Console* installs from its releases.
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modeled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
 * **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.

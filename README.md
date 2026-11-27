@@ -123,6 +123,10 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Import a `data.bin` save to the NAND, even for a game or channel that has never been started
 * Back up the whole NAND as a BootMii `nand.bin`, with no BootMii needed
 * Back up the console keys only
+* Console info: model, region, serial and boot2's version; boot1's revision (a–d), bad blocks in the boot blocks and what
+  each boot2 copy is (official, BootMii, RGD SDBoot / NANDBoot), read from the NAND chip
+* Edit `setting.txt` (region, video, model, serial), backed up first
+* Install or update HBC Reborn from its latest GitHub release, replacing the installed Homebrew Channel in place
 
 **Network**
 
@@ -435,7 +439,7 @@ Developed against devkitPPC / libogc and tested mostly in Dolphin.
 **Tried on a Wii U (vWii):** the SD card; FAT32, NTFS and ext4 USB drives; a Wii U USB drive read with GodModeU's saved keys; the
 FTP server; exporting Miis.
 
-**Not yet verified on real hardware** (please report what you see): multi-drive and multi-LUN USB, SD Gecko, Wiiload over a USB Gecko, the SEEPROM / OTP
+**Not yet verified on real hardware** (please report what you see): the boot1 / boot2 check, installing HBC Reborn, multi-drive and multi-LUN USB, SD Gecko, Wiiload over a USB Gecko, the SEEPROM / OTP
 readers and the Console Keys drive, disc browsing, archives (zip / 7z / RAR, RVZ / WIA, Retro PAK), the model viewer, the audio
 player, the extra controllers, and the IR remote (sent from the sensor bar).
 

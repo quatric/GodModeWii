@@ -23,6 +23,7 @@
 #endif
 
 #include "vfs.h"
+#include "setting.h"
 #include "virt.h"
 #include "arcfs.h"
 #include "mcard.h"
@@ -960,6 +961,8 @@ static void mount_sd(void)
         mount_ntfs(DEV_SD, "sd", &sd_iface);
     if (!g_devs[DEV_SD].mounted && !g_devs[DEV_SD].note[0])
         mount_ext(DEV_SD, "sd", &sd_iface);
+    if (!g_devs[DEV_SD].mounted && !g_devs[DEV_SD].note[0] && setting_is_mini())
+        snprintf(g_devs[DEV_SD].note, sizeof(g_devs[DEV_SD].note), "the Wii mini has no SD card slot");
 }
 
 static void mount_gecko(void)

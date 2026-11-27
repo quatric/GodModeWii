@@ -22,6 +22,7 @@
 #include "waddump.h"
 #include "databin.h"
 #include "nanddump.h"
+#include "sysinfo.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -1438,6 +1439,7 @@ static bool system_menu(void)
         M_GAME,
         M_SAVES,
         M_NAND,
+        M_CONSOLE,
         M_ABOUT,
         M_LOADER,
         M_WIIMENU,
@@ -1452,8 +1454,8 @@ static bool system_menu(void)
             draw_home();
 
         char theme_item[48];
-        const char *items[26];
-        int code[26];
+        const char *items[32];
+        int code[32];
         int n = 0;
 
         if (risk_unlocked() && !risk_forced()) {
@@ -1485,6 +1487,7 @@ static bool system_menu(void)
         items[n] = theme_item;                                          code[n++] = M_THEME;
         items[n] = "Export all saves";                                  code[n++] = M_SAVES;
         items[n] = "Back up the NAND / keys (nanddumper@IOS)";          code[n++] = M_NAND;
+        items[n] = "Console (info, boot1 / boot2, setting.txt, HBC Reborn)"; code[n++] = M_CONSOLE;
         items[n] = "About / credits";                                   code[n++] = M_ABOUT;
         items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
         items[n] = "Exit to Wii Menu";                                  code[n++] = M_WIIMENU;
@@ -1572,6 +1575,9 @@ static bool system_menu(void)
         case M_SAVES:
             saves_export_all();
             reload_keep_safe();
+            return false;
+        case M_CONSOLE:
+            sysinfo_run();
             return false;
         case M_NAND:
             nanddump_menu();

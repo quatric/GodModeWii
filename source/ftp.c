@@ -31,6 +31,7 @@
 #include <ogc/lwp_watchdog.h>
 
 #include "ftp.h"
+#include "setting.h"
 #include "app.h"
 #include "ui.h"
 #include "sfx.h"
@@ -1444,8 +1445,9 @@ static bool net_bring_up(void)
             sfx_play(SFX_CLICK);                /* the click, now that the network is up */
             return true;
         } else if (started) {
-            ui_message("NETWORK", C_RED,
-                       "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
+            ui_message("NETWORK", C_RED, setting_is_mini()
+                       ? "Couldn't connect to the network: the Wii mini has no Wi-Fi. A USB LAN adapter may work."
+                       : "Couldn't connect to the network.\n\nCheck the connection in Wii Settings > Internet and try again.");
             return false;
         } else if (now_ms() - quiet_since >= 500) {
             /* the update check retries with 50 ms gaps */
