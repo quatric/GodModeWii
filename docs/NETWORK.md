@@ -4,7 +4,7 @@ All three servers only accept computers on your local network, and speak plain, 
 
 ## FTP server
 
-HOME → *FTP server (read-only)* or *(read/write)*. The screen shows the address; there is no user name or password (any is accepted). Every mounted drive is a folder (`/sd`, `/usb1`, `/nand`, `/disc` …).
+HOME → *FTP server* → *Read-only* or *Read/write*. The screen shows the address; there is no user name or password (any is accepted). Every mounted drive is a folder (`/sd`, `/usb1`, `/nand`, `/disc` …).
 
 It is built to be harder to break and abuse than ftpii:
 
@@ -21,7 +21,7 @@ Commands: `LIST`, `NLST`, `MLSD`, `RETR` (with `REST`), `STOR`, `DELE`, `MKD`, `
 
 ## FTP install server
 
-HOME → *FTP install server (archives to SD)* or *(archives to USB)*. Upload a **`.zip`, `.7z` or `.rar`** and it is unpacked onto
+HOME → *FTP server* → *Install server* (onto the SD card, or onto a USB drive). Upload a **`.zip`, `.7z` or `.rar`** and it is unpacked onto
 the drive, then deleted:
 
 | Archive holds | Goes to |

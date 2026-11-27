@@ -1421,10 +1421,7 @@ static bool system_menu(void)
     enum {
         M_LOCK,
         M_REMOUNT,
-        M_FTP_RO,
-        M_FTP_RW,
-        M_FTP_SD,
-        M_FTP_USB,
+        M_FTP,
         M_WIILOAD,
         M_MIIS,
         M_DRAW,
@@ -1464,10 +1461,7 @@ static bool system_menu(void)
         }
 
         items[n] = "Remount drives (SD / Gecko / USB)";                 code[n++] = M_REMOUNT;
-        items[n] = "FTP server (read-only)";                            code[n++] = M_FTP_RO;
-        items[n] = "FTP server (read/write)";                           code[n++] = M_FTP_RW;
-        items[n] = "FTP install server (archives to SD)";               code[n++] = M_FTP_SD;
-        items[n] = "FTP install server (archives to USB)";              code[n++] = M_FTP_USB;
+        items[n] = "FTP server";                                        code[n++] = M_FTP;
         items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
         items[n] = "Boot game disc (TinyLoad)";                         code[n++] = M_GAME;
         items[n] = "Miis";                                              code[n++] = M_MIIS;
@@ -1513,16 +1507,21 @@ static bool system_menu(void)
             cwd[0] = '\0';
             status(C_GREEN, "Drives re-scanned.");
             return false;
-        case M_FTP_RO:
-        case M_FTP_RW:
-        case M_FTP_SD:
-        case M_FTP_USB:
+        case M_FTP: {
+            const char *modes[] = {
+                "Read-only (browse and download)",
+                "Read/write (upload, rename, delete)",
+                "Install server: archives unpacked onto the SD card",
+                "Install server: archives unpacked onto a USB drive",
+            };
+            int m = ui_menu("FTP SERVER", modes, NULL, 4, 0);
+            if (m < 0)
+                break;                  /* back to this menu */
             sfx_cancel();               /* the click comes once the network is up */
-            ftp_run(code[r] == M_FTP_RW, code[r] == M_FTP_SD    ? FTP_INSTALL_SD
-                                         : code[r] == M_FTP_USB ? FTP_INSTALL_USB
-                                                                : FTP_INSTALL_OFF);
+            ftp_run(m == 1, m == 2 ? FTP_INSTALL_SD : m == 3 ? FTP_INSTALL_USB : FTP_INSTALL_OFF);
             reload_keep_safe();
             return false;
+        }
         case M_WIILOAD: {
             sfx_cancel();
             char prog[VFS_PATH_MAX];
