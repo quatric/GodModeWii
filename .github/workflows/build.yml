@@ -49,6 +49,7 @@ jobs:
 
       - name: Build the IR remote list (irdb.dat) from Flipper-IRDB
         run: |
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev zlib1g-dev >/dev/null
           git clone -q --depth 1 https://github.com/Lucaslhm/Flipper-IRDB irdb-src
           make -C libwiiir irdb IRDB=$PWD/irdb-src
 
