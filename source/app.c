@@ -40,6 +40,7 @@
 #include "tinyload_elf.h"
 #include "usage.h"
 #include "sweeper.h"
+#include "irremote.h"
 
 volatile bool g_quit_request;
 volatile bool g_power_request;
@@ -1427,6 +1428,7 @@ static bool system_menu(void)
         M_MIIS,
         M_DRAW,
         M_MEMOS,
+        M_IR,
         M_SFX,
         M_LIGHT,
         M_ALARM,
@@ -1469,6 +1471,7 @@ static bool system_menu(void)
         items[n] = "Miis";                                              code[n++] = M_MIIS;
         items[n] = "Sketchpad (draw)";                                  code[n++] = M_DRAW;
         items[n] = "Voice memos (record / play)";                       code[n++] = M_MEMOS;
+        items[n] = "IR remote (TV / AV control)";                       code[n++] = M_IR;
         items[n] = sfx_enabled() ? "Sound effects: ON (select to turn off)"
                                  : "Sound effects: OFF (select to turn on)";
                                                                         code[n++] = M_SFX;
@@ -1555,6 +1558,10 @@ static bool system_menu(void)
             return false;
         case M_MEMOS:
             memo_run();
+            reload_keep_safe();
+            return false;
+        case M_IR:
+            irremote_run(false);
             reload_keep_safe();
             return false;
         case M_SFX:

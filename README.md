@@ -137,6 +137,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
+* IR remote: TV, receiver and set-top box codes from the sensor bar (Flipper-IRDB's remotes), on any controller's buttons, in named presets
 * Clock and calendar
 * Alarm clock with a beep and the disc slot light
 * Sleep timer with white noise, for 15 to 90 minutes or until you turn it off
@@ -419,6 +420,10 @@ mode forced on* once, and from then on nothing asks for a warning or the code ag
 (It's saved as `force.cfg` in `apps/GodModeWii/` on the SD card.) Take your time: a code that is part way in keeps the screen up
 for up to 15 seconds.
 
+**IR remote shortcut:** hold **1** (Y on a GamePad, Classic or GameCube pad) while GodModeWii starts to go straight to the IR
+remote with the last preset. In the remote, **HOME + Left / Right** switches preset and the controller buzzes once per preset
+number, so you can change it with the TV on another input; **HOME** on its own leaves.
+
 ## Status
 
 Developed against devkitPPC / libogc and tested mostly in Dolphin.
@@ -428,7 +433,7 @@ FTP server; exporting Miis.
 
 **Not yet verified on real hardware** (please report what you see): multi-drive and multi-LUN USB, SD Gecko, the SEEPROM / OTP
 readers and the Console Keys drive, disc browsing, archives (zip / 7z / RAR, RVZ / WIA, Retro PAK), the model viewer, the audio
-player, and the extra controllers.
+player, the extra controllers, and the IR remote (sent from the sensor bar).
 
 Known limits for each area (drives, discs, memory cards, archives, keys, disk file systems, PDF, EPUB...) are in
 [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
@@ -460,6 +465,8 @@ calculator and alarm follow its own.
 * [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
 * [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
 * TiVo: the easter-egg interface sounds
+* [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema
+* [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB) (CC0): the IR remote's device list, as `irdb.xml`
 * [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
 * [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
 * [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher

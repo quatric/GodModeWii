@@ -8,7 +8,7 @@ include $(DEVKITPPC)/wii_rules
 TARGET		:=	GodModeWii
 BUILD		:=	build
 UNARR		:=	source/unarr source/unarr/common source/unarr/zip source/unarr/rar source/unarr/_7z source/unarr/lzmasdk
-SOURCES		:=	source source/mobiclip source/zstd source/ajpg libwiiinput/source $(UNARR)
+SOURCES		:=	source source/mobiclip source/zstd source/ajpg libwiiinput/source libwiiir/source $(UNARR)
 DATA		:=	data res
 INCLUDES	:=	source source/mobiclip source/zstd source/ajpg $(UNARR)
 
@@ -30,6 +30,7 @@ LIBS	:=	-lfaad $(LIBS)
 endif
 LIBDIRS	:=	$(CURDIR)/libwiiinput # headers: <input_wii.h>
 LIBDIRS	+=	$(CURDIR)/libwiiupdate
+LIBDIRS	+=	$(CURDIR)/libwiiir # headers: <ir_wii.h>; its sources are built in (SOURCES)
 # libpng, libjpeg, libwebp, zlib, libmad, tremor: devkitPro portlibs (ppc-libpng, ppc-libjpeg-turbo, ppc-libwebp, ...)
 LIBDIRS	+=	$(PORTLIBS_PATH)/ppc
 # Optional controller support (build the libraries first with

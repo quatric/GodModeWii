@@ -13,6 +13,10 @@
 * **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
 * **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
   (`source/wiilight.c`, `source/wiilight_patterns.h`).
+* **[WiiIR](https://github.com/dakotath/WiiIR)** (Dakota Thorpe, Apache-2.0, used with permission) — the IR remote: sending codes
+  from the sensor bar and the `irdb.xml` schema, through [libwiiir](https://github.com/quatric/libwiiir) (`libwiiir/`).
+* **[Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB)** (CC0) — the IR remote's devices, packed as `irdb.xml` and
+  `irdb_converted.xml` when a release is built. The protocols follow Flipper Zero's infrared app.
 * **[PictoCard](https://github.com/larsenv/PictoCard-Client)** (larsenv) — the doodle pad's palette, brush sizes and tools
   (`source/draw.c`).
 * **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak

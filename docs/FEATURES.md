@@ -165,6 +165,15 @@ time.
 * **Sketchpad:** draw with the Wii Remote pointer, a USB mouse, a pen tablet or a uDraw GameTablet (pressure sets the brush width).
   16 colours, four brush sizes, draw / fill / erase, undo and clear. Saved as `.jpg` in `GodModeWii/drawings/`.
 * **Voice memos:** record with a Wii Speak or a USB microphone into `GodModeWii/voice/memo_NNN.wav`, then play or delete them.
+* **IR remote:** sends TV, receiver, set-top box (and fan, AC, projector...) codes from the sensor bar. **New preset** picks a
+  device from `irdb.xml` (Flipper-IRDB's remotes, by category and manufacturer; *Converted* opens 6,900 more from
+  `irdb_converted.xml`), then each of its buttons gets a button on any controller: Wii Remote, Nunchuk, Classic, GameCube pad, Pro
+  Controller, GamePad or DualShock 3, each by its own buttons. **Send it now** tries a code. In the remote, a mapped button sends
+  its code and repeats it while held; **HOME + Left / Right** switches preset (the controller buzzes once per preset number and the
+  disc slot light blinks, so it works without looking); **HOME** leaves. Presets can be renamed, moved and deleted, and are saved
+  in `apps/GodModeWii/ir_presets.txt`. Hold **1** (Y on other pads) at start-up to open it straight away. Your own devices and
+  buttons go in `apps/GodModeWii/irdb_custom.xml`, in the same format as `irdb.xml`; updates never replace it. No sounds play in
+  the remote, and the sensor bar is switched back on after each code so the pointer keeps working.
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii). Each can be turned off in HOME and is
   remembered.
 * **Clock and calendar**, after MoonShell's: big digits with the seconds and AM / PM, the date, and the month with today marked

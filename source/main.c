@@ -29,6 +29,7 @@
 #include "runtimeiospatch.h"
 #include "launch.h"
 #include "arcfs.h"
+#include "irremote.h"
 
 /* Stay on the IOS the loader started us with (IOS58 under the Homebrew
  * Channel). Reloading IOS would drop the HW_AHBPROT access the NAND
@@ -220,6 +221,10 @@ int main(int argc, char **argv)
     }
     /* already forced on from an earlier start: no dialog again (it was shown when it was turned on) */
 
+    /* 1 (Y on other pads) held while starting: straight to the IR remote */
+    if (irremote_shortcut_held())
+        irremote_run(true);
+
 #ifdef GMW_AUTOTEST
     /* Test builds only: open each path listed in sd:/gmwtest.txt (the viewers dump the screen),
      * then stop. */
@@ -335,6 +340,12 @@ int main(int argc, char **argv)
                 ui_goto(8, 0); ui_bg(C_GREEN); ui_color(C_BLACK, false); printf(" green bar ");
                 ui_reset();
                 ui_test_dump();
+                continue;
+            }
+            /* "@irremote": every device in irdb.xml read and encoded, a timed send, the remote's screen */
+            if (!strcmp(line, "@irremote")) {
+                extern void irremote_autotest(void);
+                irremote_autotest();
                 continue;
             }
             /* "@pride": the Pride theme on the drive list, a folder and a dialog */
