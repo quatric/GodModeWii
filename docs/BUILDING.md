@@ -3,7 +3,7 @@
 You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc2 and libfat, plus these portlibs:
 
 ```sh
-dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
+dkp-pacman -S ppc-libpng-apng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
 ```
 
 ```sh
@@ -22,8 +22,8 @@ Off by default; the CI and release builds turn them all on. Build each library o
 
 | Flag | Adds | Build first |
 | --- | --- | --- |
-| `WITH_EXFAT=1` | exFAT and GPT (devkitPro's libdvm rebuilt with `FF_FS_EXFAT` and `FF_LBA64`, into `portlibs/exfat`) | `scripts/build_exfat_libfat.sh` (git, python3, cmake, network) |
-| `WITH_EXT4=1` | ext2 / 3 / 4 (needs `WITH_EXFAT=1`) | `scripts/build_libext4.sh` (git, network) |
+| `WITH_EXFAT=1` | exFAT and GPT (Extrems' libdvm, the libfat for libogc2, with its FatFs, into `portlibs/exfat`) | `scripts/build_exfat_libfat.sh` (git, network) |
+| `WITH_EXT4=1` | ext2 / 3 / 4 (lwext4 and libdvm's ext4 driver; needs `WITH_EXFAT=1`) | `scripts/build_libext4.sh` (git, network) |
 | `WITH_NTFS=1` | NTFS | `scripts/build_libntfs.sh` (git, network) |
 | `WITH_SICKSAXIS=1` | PS3 SIXAXIS / DualShock 3 | `scripts/build_controller_portlibs.sh` (git, python3, network) |
 | `WITH_WIIDRC=1` | Wii U GamePad | `scripts/build_controller_portlibs.sh` (git, python3, network) |

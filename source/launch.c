@@ -17,7 +17,7 @@
 #include "vfs.h"
 #include "ui.h"
 #include "archive.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 #include "appboot_bin.h"
 
 #define APP_ADDR   0x92000000u          /* where the booter looks for the program */
@@ -201,7 +201,7 @@ void launch_go(void)
     /* Same IOS again, keeping HW_AHBPROT off for the program when we have it. */
     s32 ios = IOS_GetVersion();
     if (AHBPROT_DISABLED && ios > 0 && ios < 200 && !g_is_dolphin)
-        IosPatch_AHBPROT(false);
+        iospatch_ahbprot();
     if (ios > 0)
         __IOS_LaunchNewIOS(ios);
     if (AHBPROT_DISABLED)

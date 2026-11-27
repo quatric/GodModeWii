@@ -957,6 +957,8 @@ static bool sd_read(DISC_INTERFACE *d, sec_t sector, sec_t n, void *buf)
 static void mount_sd(void)
 {
     static DISC_INTERFACE sd_iface;
+    /* libogc2 fills in the card's size on startup: start it before copying, or the copy says 0 sectors */
+    __io_wiisd.startup(&__io_wiisd);
     memcpy(&sd_iface, &__io_wiisd, sizeof(sd_iface));
     /* libogc2 declares the callbacks const; sd_iface is this file's own non-const copy */
     *(FN_MEDIUM_READSECTORS *)&sd_iface.readSectors = sd_read;

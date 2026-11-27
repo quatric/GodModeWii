@@ -37,7 +37,7 @@
 #include <ogc/ipc.h>
 
 #include "ahbprot.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 
 static const u32 stage0[] = {
     0x4903468D, /* ldr r1, =0x10100000; mov sp, r1; */

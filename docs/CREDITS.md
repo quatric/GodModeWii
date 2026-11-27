@@ -29,9 +29,11 @@
   and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
 * **[FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod)** by the WiiDatabase.de team, based on **FSToolBox by nickasa**
   and the **AHBPROT mod by Lupo96** — the approach for NAND access on the Wii and the Wii U's vWii mode
-  (staying on the loader's IOS, ISFS permission patch). Parts of its code are included in `source/runtimeiospatch.c/.h`.
+  (staying on the loader's IOS, ISFS permission patch).
 * **libruntimeiospatch** by Nano (Christopher Bratusek), with code by Joseph Jordan, damysteryman, DarkMatterCore, megazig
-  and FIX94, as shipped in FSToolBox-Mod. Its SSL patches were made by FIX94 for **[Nintendont](https://github.com/FIX94/Nintendont)**. GodModeWii adds two tiny single-patch entry points (`IosPatch_ISFS`, `IosPatch_DIReadLimit`).
+  and FIX94, as shipped in FSToolBox-Mod — the IOS byte patterns `source/iospatch.c` searches for and the bytes it writes
+  (AHBPROT, ISFS permissions, DI read limit, the hash / version checks, damysteryman's vWii system-title patches).
+  `source/iospatch.c` itself is GodModeWii's own code, under GodModeWii's license.
 * **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
   play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). It is based on **[SFZero](https://github.com/stevefolta/SFZero)** by Steve Folta and uses the biquad low-pass from [earlevel.com](http://www.earlevel.com/main/2012/11/26/biquad-c-source-code/). The built-in General
   MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
@@ -128,3 +130,19 @@
 * **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.
 * **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
 * The **Dolphin** team, for the emulator used during development.
+
+## License notes
+
+GodModeWii is GPL-3.0-or-later. What that means for the parts above:
+
+* GPL-3.0 / AGPL-3.0 (libwiiinput, libwiiupdate, RiftWii's code), Apache-2.0 (libwiiir, Mbed TLS), LGPL (unarr, the
+  Mobiclip decoder), MIT / BSD / zlib, and GPL-2.0-or-later code (MoonShell's sounds, FAAD2, libntfs / NTFS-3G, nintoolbox)
+  all combine under GPL-3.0-or-later.
+* Separate programs GodModeWii carries and starts keep their own license, with their source in this repository: TinyLoad
+  (`tinyload/`, GPL-2.0), the nanddumper@IOS stages (`nanddumper/`, GPL-2.0) and the app booter (`appboot/`, GPL-2.0).
+* The IOS patcher (`source/iospatch.c`) was rewritten as GodModeWii's own code; it no longer includes libruntimeiospatch,
+  whose files are GPL "version 2.0" only.
+* `source/wadinstall.c` and `source/launch.c` (YAWM ModMii Edition), `source/nanddump.c` (nanddumper@IOS) and
+  `source/theme.c` (csm-installer) are ports of projects that ship the GPL-2.0 text without naming a version in those
+  files; under GPL-2.0 §9 a program that names no version may be used under any version. Their authors have been credited
+  above, and are welcome to ask for a change.

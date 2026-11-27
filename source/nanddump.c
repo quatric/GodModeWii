@@ -39,7 +39,7 @@
 #include "otp.h"
 #include "seeprom.h"
 #include "setting.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 #include "nd_stage1_bin.h"
 #include "nd_realcode_bin.h"
 

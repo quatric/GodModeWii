@@ -10,7 +10,7 @@
 #include "setting.h"
 #include "seeprom.h"
 #include "nanddump.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 #include "hbcreborn.h"
 #include "ui.h"
 #include "vfs.h"

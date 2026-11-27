@@ -16,7 +16,7 @@
 #include "otp.h"
 #include "seeprom.h"
 #include "hashes.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 
 #define MAX_FILES 24
 #define SD_KEY_SCAN_START 0x93400000u

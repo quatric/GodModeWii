@@ -757,13 +757,13 @@ static void show_credits(void)
         "quatric & cmyksoda\n\n"
         "GodModeWii " GMW_VERSION " - a GodMode9-style file manager for Wii and Wii U (vWii).\n"
         "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
-        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-2.0. See README.",
+        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-3.0-or-later. See README.",
 
         "WAD installing and launching .dol / .elf programs: based on YAWM ModMii Edition "
         "(github.com/modmii/YAWM-ModMii-Edition) by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak, "
         "from Some YAWMM Mod, YAWMM and WAD Manager (Waninkoko). App booter by Segher Boessenkool and the yawmME team.\n\n"
         "NAND access + IOS patching: FSToolBox (nickasa), the Lupo96 mod, the WiiDatabase FSToolBox-Mod "
-        "and libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94).",
+        "and the IOS patch patterns found by Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig and FIX94 (libruntimeiospatch); GodModeWii's patcher is its own code.",
 
         "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n\n"
         "Audio and texture formats match quatric's nintoolbox and mobipeg.\n\n"

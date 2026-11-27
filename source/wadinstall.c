@@ -47,7 +47,7 @@
 #include "seeprom.h"
 #include "archive.h"
 #include "ftype.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 #include "wad2bin.h"
 #include "otp.h"
 #include "input.h"
@@ -637,7 +637,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     /* ---- install ---- */
     if (!patched && AHBPROT_DISABLED && !g_is_dolphin) {
         progress(name, "Patching IOS...", 0, 1);
-        IosPatch_WADInstall(g_is_vwii, false);
+        iospatch_wad_install(g_is_vwii);
         patched = true;
     }
 

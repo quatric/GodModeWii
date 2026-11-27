@@ -451,7 +451,7 @@ Known limits for each area (drives, discs, memory cards, archives, keys, disk fi
 You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc2 and libfat, plus some portlibs:
 
 ```sh
-dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
+dkp-pacman -S ppc-libpng-apng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
 export DEVKITPRO=/opt/devkitpro
 export DEVKITPPC=$DEVKITPRO/devkitPPC
 make
@@ -482,7 +482,7 @@ calculator and alarm follow its own.
   * FFmpeg's Mobiclip decoder (Florian Nouwt, Adib Surani, Paul B Mahol), PlayMobic, MobiclipDecoder and Gericom's x264 fork, WiiLink24's FFmpeg fork
   * NanoJPEG (Martin J. Fiedler) and Tremor
 * [FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod) (WiiDatabase.de team, nickasa, Lupo96): NAND access on the Wii and vWii
-* libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94): the IOS patches
+* libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94): the IOS patch patterns
 * [TinySoundFont](https://github.com/schellingb/TinySoundFont) (Bernhard Schelling): MIDI playback
   * [SFZero](https://github.com/stevefolta/SFZero) (Steve Folta) and the earlevel.com biquad filter
   * Gervill's emergency soundbank (OpenJDK): the built-in General MIDI set
@@ -536,5 +536,7 @@ calculator and alarm follow its own.
 
 ## License
 
-GodModeWii is released under the **GNU General Public License v2.0** (see `LICENSE`), the license of the FSToolBox-Mod /
-libruntimeiospatch code it includes.
+GodModeWii is released under the **GNU General Public License v3.0 or later** (see `LICENSE`), which also covers the
+GPL-3.0 / AGPL-3.0 / Apache-2.0 / LGPL-3.0 code it is built with (libwiiinput, libwiiupdate, libwiiir, unarr). Programs it
+carries and starts separately (the TinyLoad disc loader, the nanddumper@IOS stages and the app booter) keep their own GPL-2.0
+license; their source is in this repository. See `docs/CREDITS.md` for every component and its license.

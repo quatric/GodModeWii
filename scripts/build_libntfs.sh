@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Build extremscorner's libntfs (NTFS-3G 2026.9.28, GPL-2.0) into ./portlibs/ntfs for devkitPro's libogc.
-# It's written for libogc2, so its disc calls and SYS_IsDMAAddress are adapted here.
+# Build extremscorner's libntfs (NTFS-3G 2026.9.28, GPL-2.0) into ./portlibs/ntfs for libogc2.
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,11 +16,6 @@ git clone --quiet https://github.com/extremscorner/libntfs.git "$WORK/libntfs"
 git -C "$WORK/libntfs" checkout --quiet f73a4d1
 SRC="$WORK/libntfs/source"
 
-# libogc2 passes the interface to every disc call and has flush(); devkitPro's libogc does neither.
-# devkitPro's discs finish every write before returning, so there's nothing to flush.
-sed -i -E 's/->(readSectors|writeSectors)\(((fd|cache)->)?(interface|disc), ?/->\1(/' "$SRC"/*.c
-sed -i -E 's/->(startup|isInserted|shutdown)\(interface\)/->\1()/' "$SRC"/*.c
-sed -i -E 's/[a-z]+->(interface|disc)->flush\([a-z]+->(interface|disc)\)/true/' "$SRC"/*.c
 # Its lock is taken again inside locked sections (stat closes its entry under the lock), so it must be recursive.
 sed -i 's/LWP_MutexInit(&vd->lock, false)/LWP_MutexInit(\&vd->lock, true)/' "$SRC"/ntfsinternal.c
 grep -q 'LWP_MutexInit(&vd->lock, true)' "$SRC"/ntfsinternal.c || { echo "volume lock not made recursive" >&2; exit 1; }
@@ -29,16 +23,9 @@ grep -q 'LWP_MutexInit(&vd->lock, true)' "$SRC"/ntfsinternal.c || { echo "volume
 # and then trust the running counts it keeps, unless an I/O error left them impossible.
 sed -i 's/if (ntfs_volume_get_free_space(vd->vol)) {/if ((!NVolFreeSpaceKnown(vd->vol) || vd->vol->free_clusters < 0 || vd->vol->free_clusters > vd->vol->nr_clusters) \&\& ntfs_volume_get_free_space(vd->vol)) {/' "$SRC"/ntfsdir.c
 grep -q 'NVolFreeSpaceKnown(vd->vol) ||' "$SRC"/ntfsdir.c || { echo "statvfs free space patch failed" >&2; exit 1; }
-if grep -nE '->(readSectors|writeSectors|startup|isInserted|shutdown|flush)\(((fd|cache)->)?(interface|disc) ?[,)]|->flush\(' "$SRC"/*.c; then
-    echo "libogc2-style disc calls left over" >&2
-    exit 1
-fi
-
 mkdir -p "$WORK/shim" "$WORK/obj"
 cat > "$WORK/shim/ntfs_shim.h" <<'EOF'
 #include <stdint.h>
-#include <gcbool.h>
-#define SYS_IsDMAAddress(p, a) ((((uintptr_t)(p)) & ((a) - 1)) == 0)
 /* Only for WSL device files, which a console never makes. */
 #ifndef makedev
 #define makedev(ma, mi) ((((ma) & 0xfff) << 8) | ((mi) & 0xff))

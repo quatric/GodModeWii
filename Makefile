@@ -53,6 +53,7 @@ WITH_EXT4 ?= 0
 
 ifeq ($(WITH_EXFAT),1)
 EXFAT_LIB	:=	$(CURDIR)/portlibs/exfat/lib
+LIBDIRS	+=	$(CURDIR)/portlibs/exfat # fat.h / dvm.h of that libfat, ahead of libogc2's
 endif
 
 ifeq ($(WITH_EXT4),1)

@@ -12,7 +12,7 @@
 #include "seeprom.h"
 #include "keys.h"
 #include "mcard.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 
 #define WII_MAGIC 0x5D1C9EA3u
 #define GC_MAGIC  0xC2339F3Du
@@ -436,10 +436,10 @@ static void di_start(void)
 {
     if (di_started) return;
     if (!g_is_dolphin) {
-        IosPatch_DIReadLimit(false);
+        iospatch_di_readlimit();
         /* Opening a Wii partition makes ES set HW_AHBPROT from the game's TMD, which locks
          * the keys, SEEPROM and later disc reads; this ES patch keeps it off. */
-        IosPatch_AHBPROT(false);
+        iospatch_ahbprot();
     }
     DI_UseCache(false);
     DI_Init();

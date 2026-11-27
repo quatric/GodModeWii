@@ -26,7 +26,7 @@
 #include "vfs.h"
 #include "risk.h"
 #include "ftp.h"
-#include "runtimeiospatch.h"
+#include "iospatch.h"
 #include "ahbprot.h"
 #include "launch.h"
 #include "arcfs.h"
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
      * that one (the hash / identify / setuid patches are not needed here). */
     /* the scan is pointless (and very slow) in an emulator */
     if (AHBPROT_DISABLED && !g_is_dolphin)
-        g_nand_full = IosPatch_ISFS(false) > 0;
+        g_nand_full = iospatch_isfs() > 0;
 
     input_init();
     wiilight_init();
