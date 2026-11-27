@@ -48,7 +48,7 @@ cat > "$WORK/shim/ntfs_shim.h" <<'EOF'
 EOF
 
 CFLAGS="-O2 -Wall -Wno-unused -DGEKKO -mrvl -mcpu=750 -meabi -mhard-float -D__wii__ -DHAVE_CONFIG_H"
-CFLAGS="$CFLAGS -include $WORK/shim/ntfs_shim.h -I$WORK/libntfs/include -I$SRC -I$DEVKITPRO/libogc/include"
+CFLAGS="$CFLAGS -include $WORK/shim/ntfs_shim.h -I$WORK/libntfs/include -I$SRC -I$DEVKITPRO/libogc2/wii/include"
 for src in "$SRC"/*.c; do
     "$CC" $CFLAGS -c "$src" -o "$WORK/obj/$(basename "$src" .c).o"
 done

@@ -17,7 +17,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: devkitpro/devkitppc:latest
+    container: ghcr.io/extremscorner/libogc2:latest
     steps:
       - uses: actions/checkout@v4
         with:

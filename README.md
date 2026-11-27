@@ -448,7 +448,7 @@ Known limits for each area (drives, discs, memory cards, archives, keys, disk fi
 
 ## Building
 
-You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus some portlibs:
+You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc2 and libfat, plus some portlibs:
 
 ```sh
 dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2
@@ -500,7 +500,7 @@ calculator and alarm follow its own.
 * [libntfs](https://github.com/extremscorner/libntfs) (Extrems) and NTFS-3G: NTFS drives
 * [lwext4](https://github.com/gkostka/lwext4) (Grzegorz Kostka) and Extrems' libdvm ext4 driver: ext2/3/4 drives
 * libpng, libjpeg-turbo, libwebp, zlib, bzip2, Tremor and libogg (devkitPro portlibs)
-* [devkitPro](https://devkitpro.org/): devkitPPC, libogc and libfat
+* [devkitPro](https://devkitpro.org/): devkitPPC, libogc2 and libfat
 
 **Formats and references**
 

@@ -16,6 +16,49 @@
 #define SLOTS      2
 #define CARD_READ_SIZE 0x200u   /* CARD_Read offset / length granularity */
 
+/* libogc2 has no CARD_GetStatusEx/SetStatusEx (the raw directory entry); its card_stat holds
+ * the same fields, so the 0x40-byte .gci header is rebuilt from it and written back through it. */
+static void put16(u8 *p, u32 v) { p[0] = v >> 8; p[1] = v; }
+static void put32(u8 *p, u32 v) { put16(p, v >> 16); put16(p + 2, v); }
+static u32 get16(const u8 *p) { return (u32)p[0] << 8 | p[1]; }
+static u32 get32(const u8 *p) { return get16(p) << 16 | get16(p + 2); }
+
+static s32 gci_header(s32 chn, const card_dir *dir, u8 *h)
+{
+    card_stat st;
+    s32 r = CARD_GetStatus(chn, dir->fileno, &st);
+    if (r != CARD_ERROR_READY) return r;
+    memset(h, 0xFF, GCI_HEADER);
+    memcpy(h, st.gamecode, 4);
+    memcpy(h + 4, st.company, 2);
+    h[7] = st.banner_fmt;
+    memcpy(h + 8, st.filename, CARD_FILENAMELEN);
+    put32(h + 0x28, st.time);
+    put32(h + 0x2C, st.icon_addr);
+    put16(h + 0x30, st.icon_fmt);
+    put16(h + 0x32, st.icon_speed);
+    h[0x34] = dir->permissions;
+    h[0x35] = 0;
+    put16(h + 0x36, 0);                       /* first block: only meaningful on the card itself */
+    put16(h + 0x38, st.len / 0x2000);
+    put32(h + 0x3C, st.comment_addr);
+    return CARD_ERROR_READY;
+}
+
+static s32 gci_apply(s32 chn, s32 fileno, const u8 *h)
+{
+    card_stat st;
+    s32 r = CARD_GetStatus(chn, fileno, &st);
+    if (r != CARD_ERROR_READY) return r;
+    st.banner_fmt = h[7];
+    st.time = get32(h + 0x28);
+    st.icon_addr = get32(h + 0x2C);
+    st.icon_fmt = get16(h + 0x30);
+    st.icon_speed = get16(h + 0x32);
+    st.comment_addr = get32(h + 0x3C);
+    return CARD_SetStatus(chn, fileno, &st);
+}
+
 typedef struct {
     char name[VFS_NAME_MAX];
     card_dir dir;
@@ -100,9 +143,7 @@ static bool load_saves(int dev, u32 *used)
                 snprintf(v->name + len, sizeof(v->name) - len, "_%u.gci", (unsigned)dir.fileno);
                 break;
             }
-        card_direntry ent;
-        if (CARD_GetStatusEx(chn, dir.fileno, &ent) == CARD_ERROR_READY)
-            memcpy(v->header, &ent, GCI_HEADER);
+        gci_header(chn, &dir, v->header);
         *used += dir.filelen;
         n++;
         r = CARD_FindNext(&dir);
@@ -173,7 +214,7 @@ void mcard_refresh(int dev)
     }
     if (r == CARD_ERROR_WRONGDEVICE) {
         /* the slot holds a Gecko: say which, so it isn't taken for a broken card */
-        if (g_devs[chn ? DEV_GCB : DEV_GCA].mounted || (chn ? &__io_gcsdb : &__io_gcsda)->isInserted())
+        if (g_devs[chn ? DEV_GCB : DEV_GCA].mounted || (chn ? &__io_gcsdb : &__io_gcsda)->isInserted(chn ? &__io_gcsdb : &__io_gcsda))
             set_note(dev, "an SD Gecko: see SD Gecko %c", 'A' + chn);
         else if (usb_isgeckoalive(chn))
             set_note(dev, "a USB Gecko: Wiiload receives over it");
@@ -187,7 +228,7 @@ void mcard_refresh(int dev)
     }
 
     if (!s->work)
-        s->work = memalign(32, CARD_WORKAREA_SIZE);
+        s->work = memalign(32, CARD_WORKAREA);
     if (!s->work) {
         set_note(dev, "out of memory");
         return;
@@ -388,9 +429,7 @@ static bool commit(int dev, wctx_t *w)
         if (r != CARD_ERROR_READY) break;
     }
     if (r == CARD_ERROR_READY) {
-        card_direntry ent;
-        memcpy(&ent, h, sizeof(ent));
-        r = CARD_SetStatusEx(chn, cf.filenum, &ent);   /* icon, banner, comment, permissions */
+        r = gci_apply(chn, cf.filenum, h);   /* icon, banner, comment */
     }
     CARD_Close(&cf);
     if (r != CARD_ERROR_READY) {

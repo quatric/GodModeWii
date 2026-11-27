@@ -1,6 +1,6 @@
 # Building
 
-You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc and libfat, plus these portlibs:
+You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc2 and libfat, plus these portlibs:
 
 ```sh
 dkp-pacman -S ppc-libpng ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-bzip2 ppc-libvorbisidec ppc-libogg ppc-faad2

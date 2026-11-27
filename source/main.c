@@ -39,7 +39,7 @@ s32 __IOS_LoadStartupIOS(void)
     return 0;
 }
 
-static void on_reset(u32 irq, void *ctx) { g_quit_request = true; }
+static void on_reset(void) { g_quit_request = true; }
 static void on_power(void)
 {
     g_quit_request = true;

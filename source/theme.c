@@ -133,7 +133,7 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
         snprintf(why, wn, "Unknown System Menu version %u (region or version not recognized).", sm->rev);
         goto out;
     }
-    sm->platform = t->vwii_title ? 'V' : (sm->rev & 0xFFE0) == 0x1200 ? 'M' : 'W';
+    sm->platform = t->fill2 /* vWii flag */ ? 'V' : (sm->rev & 0xFFE0) == 0x1200 ? 'M' : 'W';
 
     const tmd_content *gone = NULL;
     int ngone = 0;

@@ -347,16 +347,17 @@ static bool us_rw(int i, sec_t sector, sec_t n, void *rbuf, const void *wbuf)
 }
 
 #define USB_IFACE(I)                                                              \
-    static bool us_startup_##I(void) { return uslot[I].ok; }                      \
-    static bool us_inserted_##I(void) { return uslot[I].ok; }                     \
-    static bool us_read_##I(sec_t s, sec_t n, void *b) { return us_rw(I, s, n, b, NULL); }  \
-    static bool us_write_##I(sec_t s, sec_t n, const void *b) { return us_rw(I, s, n, NULL, b); } \
-    static bool us_clear_##I(void) { return true; }                               \
-    static bool us_shutdown_##I(void) { return true; }
+    static bool us_startup_##I(DISC_INTERFACE *d) { (void)d; return uslot[I].ok; }  \
+    static bool us_inserted_##I(DISC_INTERFACE *d) { (void)d; return uslot[I].ok; } \
+    static bool us_read_##I(DISC_INTERFACE *d, sec_t s, sec_t n, void *b) { (void)d; return us_rw(I, s, n, b, NULL); }  \
+    static bool us_write_##I(DISC_INTERFACE *d, sec_t s, sec_t n, const void *b) { (void)d; return us_rw(I, s, n, NULL, b); } \
+    static bool us_erase_##I(DISC_INTERFACE *d, sec_t s, sec_t n) { (void)d; (void)s; (void)n; return false; } \
+    static bool us_flush_##I(DISC_INTERFACE *d) { (void)d; return true; }         \
+    static bool us_shutdown_##I(DISC_INTERFACE *d) { (void)d; return true; }
 USB_IFACE(0) USB_IFACE(1) USB_IFACE(2) USB_IFACE(3) USB_IFACE(4) USB_IFACE(5) USB_IFACE(6) USB_IFACE(7)
 
 #define USB_ENTRY(I) { DEVICE_TYPE_WII_USB, FEATURE_MEDIUM_CANREAD | FEATURE_MEDIUM_CANWRITE | FEATURE_WII_USB, \
-    us_startup_##I, us_inserted_##I, us_read_##I, us_write_##I, us_clear_##I, us_shutdown_##I }
+    us_startup_##I, us_inserted_##I, us_read_##I, us_write_##I, us_erase_##I, us_flush_##I, us_shutdown_##I }
 static const DISC_INTERFACE usb_iface[USB_SLOTS] = { USB_ENTRY(0), USB_ENTRY(1), USB_ENTRY(2),
                                                      USB_ENTRY(3), USB_ENTRY(4), USB_ENTRY(5),
                                                      USB_ENTRY(6), USB_ENTRY(7) };
@@ -438,7 +439,8 @@ static int usb_scan_once(void)
         int luns = (int)h->max_lun;            /* libogc already stores the LUN count */
         if (luns < 1) luns = 1;
         for (int l = 0; l < luns && slot < USB_SLOTS; l++) {
-            u32 ss = 0, ns = 0;
+            u32 ss = 0;
+            u64 ns = 0;
             s32 mr = USBStorage_MountLUN(h, l);
             if (mr < 0) {
                 snprintf(usb_diag, sizeof(usb_diag), "%04X:%04X not ready (%d)", list[d].vid,
@@ -564,7 +566,7 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
                                            0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 };
     u32 start[128];
     int n = 0;
-    if (!io->readSectors(0, 1, buf))
+    if (!io->readSectors((DISC_INTERFACE *)io, 0, 1, buf))
         return false;
     if (!memcmp(buf + 3, "EXFAT   ", 8))
         return true;
@@ -572,11 +574,11 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
         return false;
 
     if (buf[0x1C2] == 0xEE) {
-        if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
+        if (!io->readSectors((DISC_INTERFACE *)io, 1, 1, buf) || memcmp(buf, "EFI PART", 8))
             return false;
         u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
         for (u32 i = 0; i < count && i < 128; i++) {
-            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, buf))
+            if (i % 4 == 0 && !io->readSectors((DISC_INTERFACE *)io, table + i / 4, 1, buf))
                 break;
             const u8 *e = buf + i % 4 * 128;
             if (!memcmp(e, gpt_basic_data, 16))
@@ -588,7 +590,7 @@ static bool scan_exfat(const DISC_INTERFACE *io, u8 *buf)
     }
 
     for (int i = 0; i < n; i++) {
-        if (!start[i] || !io->readSectors(start[i], 1, buf))
+        if (!start[i] || !io->readSectors((DISC_INTERFACE *)io, start[i], 1, buf))
             continue;
         if (!memcmp(buf + 3, "EXFAT   ", 8))
             return true;
@@ -634,7 +636,7 @@ static void mount_ntfs(int dev, const char *name, const DISC_INTERFACE *io)
 #ifdef HAVE_EXT4
 static bool ext_super(const DISC_INTERFACE *io, sec_t start, u8 *buf)
 {
-    return io->readSectors(start + 2, 1, buf) && buf[0x38] == 0x53 && buf[0x39] == 0xEF;
+    return io->readSectors((DISC_INTERFACE *)io, start + 2, 1, buf) && buf[0x38] == 0x53 && buf[0x39] == 0xEF;
 }
 
 /* Like blkid: ext4 if it uses anything ext3 can't read, ext3 if it has a journal. */
@@ -654,7 +656,7 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
     u8 *buf = memalign(32, 512), *mbr = memalign(32, 512);
     bool found = false;
 
-    if (!buf || !mbr || !io->readSectors(0, 1, mbr))
+    if (!buf || !mbr || !io->readSectors((DISC_INTERFACE *)io, 0, 1, mbr))
         goto done;
     if ((found = ext_super(io, 0, buf))) {
         *start = 0;
@@ -663,10 +665,10 @@ static int find_ext(const DISC_INTERFACE *io, sec_t *start)
     if (mbr[510] != 0x55 || mbr[511] != 0xAA)
         goto done;
 
-    if (mbr[0x1C2] == 0xEE && io->readSectors(1, 1, buf) && !memcmp(buf, "EFI PART", 8)) {
+    if (mbr[0x1C2] == 0xEE && io->readSectors((DISC_INTERFACE *)io, 1, 1, buf) && !memcmp(buf, "EFI PART", 8)) {
         u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
         for (u32 i = 0; i < count && i < 128 && !found; i++) {
-            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, mbr))
+            if (i % 4 == 0 && !io->readSectors((DISC_INTERFACE *)io, table + i / 4, 1, mbr))
                 break;
             const u8 *e = mbr + i % 4 * 128;
             if (!memcmp(e, gpt_linux, 16) && ext_super(io, rd32le(e + 32), buf)) {
@@ -744,7 +746,7 @@ typedef struct {
 
 static int part_kind(const DISC_INTERFACE *io, sec_t start, u8 *buf)
 {
-    if (!start || !io->readSectors(start, 1, buf))
+    if (!start || !io->readSectors((DISC_INTERFACE *)io, start, 1, buf))
         return -1;
     if (!memcmp(buf + 3, "NTFS    ", 8))
         return PK_NTFS;
@@ -761,19 +763,19 @@ static int list_parts(const DISC_INTERFACE *io, part_info *out, int max)
                                            0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 };
     u8 *buf = memalign(32, 512), *tab = memalign(32, 512);
     int n = 0;
-    if (!buf || !tab || !io->readSectors(0, 1, tab) || tab[510] != 0x55 || tab[511] != 0xAA)
+    if (!buf || !tab || !io->readSectors((DISC_INTERFACE *)io, 0, 1, tab) || tab[510] != 0x55 || tab[511] != 0xAA)
         goto done;
     if (part_kind(io, 0, buf) >= 0 || !memcmp(tab + 3, "NTFS    ", 8) ||
         !memcmp(tab + 3, "EXFAT   ", 8))
         goto done;                                   /* no partition table: one volume */
 
     if (tab[0x1C2] == 0xEE) {
-        if (!io->readSectors(1, 1, buf) || memcmp(buf, "EFI PART", 8))
+        if (!io->readSectors((DISC_INTERFACE *)io, 1, 1, buf) || memcmp(buf, "EFI PART", 8))
             goto done;
         u32 table = rd32le(buf + 72), count = rd32le(buf + 80);
 
         for (u32 i = 0; i < count && i < 128 && n < max; i++) {
-            if (i % 4 == 0 && !io->readSectors(table + i / 4, 1, tab))
+            if (i % 4 == 0 && !io->readSectors((DISC_INTERFACE *)io, table + i / 4, 1, tab))
                 break;
             const u8 *e = tab + i % 4 * 128;
             if (memcmp(e, gpt_basic_data, 16))
@@ -940,12 +942,13 @@ static void mount_usb(int tries)
 
 /* An aging SD card fails some reads that work when asked again (a tester's old card stopped a big
  * copy at a different byte each time), and libogc's driver doesn't ask again. */
-static bool sd_read(sec_t sector, sec_t n, void *buf)
+static bool sd_read(DISC_INTERFACE *d, sec_t sector, sec_t n, void *buf)
 {
+    (void)d;    /* the copy made in mount_sd(); the card is __io_wiisd itself */
     for (int i = 0; i < 3; i++) {
         if (i)
             usleep(10000);
-        if (__io_wiisd.readSectors(sector, n, buf))
+        if (__io_wiisd.readSectors(&__io_wiisd, sector, n, buf))
             return true;
     }
     return false;
@@ -954,8 +957,9 @@ static bool sd_read(sec_t sector, sec_t n, void *buf)
 static void mount_sd(void)
 {
     static DISC_INTERFACE sd_iface;
-    sd_iface = __io_wiisd;
-    sd_iface.readSectors = sd_read;
+    memcpy(&sd_iface, &__io_wiisd, sizeof(sd_iface));
+    /* libogc2 declares the callbacks const; sd_iface is this file's own non-const copy */
+    *(FN_MEDIUM_READSECTORS *)&sd_iface.readSectors = sd_read;
     mount_fat(DEV_SD, "sd", &sd_iface);
     if (!g_devs[DEV_SD].mounted)
         mount_ntfs(DEV_SD, "sd", &sd_iface);
@@ -978,7 +982,7 @@ static void mount_gecko(void)
         vfs_dev *d = &g_devs[DEV_GCA + i];
         d->note[0] = '\0';
         d->always_show = false;
-        if (!d->mounted && io[i]->isInserted()) {
+        if (!d->mounted && io[i]->isInserted(io[i])) {
             d->always_show = true;
             snprintf(d->note, sizeof(d->note), "SD Gecko: card not readable (FAT32?)");
         }
@@ -1079,7 +1083,7 @@ void vfs_remount(void)
     arcfs_unpin_all();
     unmount_fat();
     usb_close_all();
-    __io_wiisd.shutdown();
+    __io_wiisd.shutdown(&__io_wiisd);
     mount_sd();
     mount_gecko();
     mount_usb(4);
@@ -1098,7 +1102,7 @@ void vfs_shutdown(void)
     arcfs_unpin_all();
     unmount_fat();
     usb_close_all();
-    __io_wiisd.shutdown();
+    __io_wiisd.shutdown(&__io_wiisd);
     virt_shutdown();
     if (usb_inited)
         USBStorage_Deinitialize();

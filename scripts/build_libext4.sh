@@ -28,7 +28,7 @@ CFG="-DCONFIG_USE_DEFAULT_CFG=1 -DCONFIG_BIG_ENDIAN=1 -DCONFIG_UNALIGNED_ACCESS=
 CFG="$CFG -DCONFIG_XATTR_ENABLE=1 -DCONFIG_JOURNALING_ENABLE=1 -DCONFIG_DEBUG_PRINTF=0 -DCONFIG_DEBUG_ASSERT=0"
 CFG="$CFG -DCONFIG_HAVE_OWN_ERRNO=0 -DCONFIG_HAVE_OWN_OFLAGS=0 -DCONFIG_HAVE_OWN_ASSERT=0"
 CFLAGS="-O2 -Wall -Wno-unused -DGEKKO -mrvl -mcpu=750 -meabi -mhard-float -D__wii__ -DLIBDVM_BUFFER_ALIGN=32 $CFG"
-CFLAGS="$CFLAGS -I$WORK/lwext4/include -I$WORK/dkp/include -I$WORK/drv/include -I$WORK/drv/source -I$DEVKITPRO/libogc/include"
+CFLAGS="$CFLAGS -I$WORK/lwext4/include -I$WORK/dkp/include -I$WORK/drv/include -I$WORK/drv/source -I$DEVKITPRO/libogc2/wii/include"
 for src in "$WORK"/lwext4/src/*.c "$WORK"/drv/source/ext4_driver.c; do
     "$CC" $CFLAGS -c "$src" -o "$WORK/obj/$(basename "$src" .c).o"
 done
