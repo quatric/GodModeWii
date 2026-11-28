@@ -1,5 +1,5 @@
-#ifndef MII_H
-#define MII_H
+#ifndef GMW_MII_H
+#define GMW_MII_H
 
 #include <stdbool.h>
 

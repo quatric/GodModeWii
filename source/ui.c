@@ -129,8 +129,16 @@ void ui_init(void)
     VIDEO_ClearFrameBuffer(rmode, front, COLOR_BLACK);
     g_x0 = (rmode->fbWidth * 5 / 100 + 7) & ~7;
     g_y0 = (rmode->xfbHeight * 5 / 100 + 1) & ~1;
+#ifdef _LIBOGC2_REVISION_
+    /* libogc2 draws from the buffer's corner (its x / y start only place a CON_InitEx copy) and steps
+     * its clears by the console's width: a full-width console from the margin's first line, and the
+     * left margin added to every column in goto_raw. */
+    console_init((u8 *)xfb + g_y0 * rmode->fbWidth * VI_DISPLAY_PIX_SZ, 0, 0, rmode->fbWidth,
+                 rmode->xfbHeight - 2 * g_y0, rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+#else
     console_init(xfb, g_x0, g_y0, rmode->fbWidth - 2 * g_x0, rmode->xfbHeight - 2 * g_y0,
                  rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+#endif
     /* Libraries (unarr, libpng, libjpeg) print warnings to stderr, which the console would draw
      * over the screen. */
     devoptab_list[STD_ERR] = &discard_tab;
@@ -146,6 +154,9 @@ void ui_init(void)
     int c, r;
     CON_GetMetrics(&c, &r);
     if (c > 0) g_cols = c;
+#ifdef _LIBOGC2_REVISION_
+    g_cols = (rmode->fbWidth - 2 * g_x0) / 8;
+#endif
     if (r > 0) g_rows = r;
 }
 
@@ -166,7 +177,7 @@ static void goto_raw(int row, int col)
 {
     ptr_hide_range(ui_cell_y(row), ui_cell_y(row + 1));
 #ifdef _LIBOGC2_REVISION_
-    printf("\x1b[%d;%dH", row, col);            /* libogc2's console takes them 0-based */
+    printf("\x1b[%d;%dH", row, col + g_x0 / 8);  /* libogc2's console takes them 0-based */
 #else
     printf("\x1b[%d;%dH", row + 1, col + 1);
 #endif

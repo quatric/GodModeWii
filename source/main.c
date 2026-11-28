@@ -361,6 +361,12 @@ int main(int argc, char **argv)
                 calc_autotest(line + 6);
                 continue;
             }
+            /* "@miis": the Mii plaza and parade, a QR code on the screen and as a PNG */
+            if (!strcmp(line, "@miis")) {
+                extern void mii_autotest(void);
+                mii_autotest();
+                continue;
+            }
             /* "@sweeper": Bad Block Sweeper's board, from the bad blocks of a nand.bin on the card */
             if (!strcmp(line, "@sweeper")) {
                 extern void sweeper_autotest(void);

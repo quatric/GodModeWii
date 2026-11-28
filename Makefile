@@ -20,7 +20,7 @@ ifeq ($(AUTOTEST),1)
 CFLAGS	+=	-DGMW_AUTOTEST
 endif
 CXXFLAGS	=	$(CFLAGS)
-LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free -Wl,--wrap=classic_ctrl_handshake,--wrap=parse_event,--wrap=USB_GetDeviceList
+LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map -Wl,-wrap,__lwp_heap_allocate -Wl,-wrap,__lwp_heap_free -Wl,--wrap=classic_ctrl_handshake,--wrap=parse_event,--wrap=USB_GetDeviceList,--wrap=wiiuse_init
 
 LIBS	:=	-lbz2 -lpng16 -ljpeg -lwebp -lsharpyuv -lz -ldi -lfat -lwiikeyboard -lwiiuse -lbte -lasnd -lvorbisidec -logg -logc -lm
 LIBS	:=	-lwiiupdate $(LIBS)

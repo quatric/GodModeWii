@@ -1269,6 +1269,13 @@ int mii_get(int slot, mii *m) {
 static struct wiimote_t **remotes;
 static bool unsupported;
 
+/* Linked with -Wl,--wrap=wiiuse_init: the table WPAD gets, kept as it is made (libogc2's WPAD_Rumble
+ * isn't the code the search below knows). */
+struct wiimote_t **__real_wiiuse_init(int n, wii_event_cb cb);
+struct wiimote_t **__wrap_wiiuse_init(int n, wii_event_cb cb) {
+	return remotes = __real_wiiuse_init(n, cb);
+}
+
 static bool plausible(const void *p) {
 	uintptr_t a = (uintptr_t) p;
 
