@@ -17,6 +17,17 @@
   **1** flips size / name order, **2** deletes.
 * Text viewer, hex viewer, and in-place editors (*Edit as text*, *Edit as hex*). Edits are only written when you save.
 * Read-only FAT files and folders can be deleted.
+* With exactly one file copied (**+**) and the cursor on another file, the Actions menu adds:
+  * **Compare with the copied file:** both in hex side by side, the bytes that differ in red; **A** / **1** jump to the next /
+    previous difference, and the top line counts them.
+  * **Replace with the copied file:** this file's contents become the copied file's; the name and place stay.
+  * **Inject the copied file at an offset** (GodMode9's "inject data"): written over this file from a hex offset you type, in
+    place. Big files go through a temporary file that is swapped in only once it's whole.
+* **Title info** (Actions menu, on a `.wad`, `.tmd`, `.tik`, `tmd.*`, `cetk` or a title's folder on the NAND): the title ID and
+  name, version, IOS, region, access rights, boot index, every content (ID, index, type, size, SHA-1) and the ticket (title key
+  index, console ID, time limits), with whether each signature is real, fakesigned or from a development console.
+* **The brick guard:** whatever the Konami code or Risky Mode allows, GodModeWii refuses to delete or overwrite the Wii Menu, its
+  IOS, their tickets, `/sys`, `/shared1`, `SYSCONF` and the NAND's top folders: those leave a Wii that can't start.
 
 ## Installing WADs
 
@@ -191,6 +202,12 @@ copy them off. Nothing current needs WBFS; USB Loader GX, WiiFlow and others rea
 
 ## Launching things
 
+**Development console programs.** Programs built for a development console (RVT, dev-kit "NDEV" builds) stop on a retail Wii
+with Error 002. As an ELF or DOL loads, the check behind it (`cmpwi r0,0 / bne / lis r3,0x8000`) is turned into a plain branch,
+so the error never reaches the Wii, and the ELF's physical addresses are fixed and its `.bss` cleared. A development WAD is
+converted as it installs: its title key re-encrypted with the retail common key, its ticket and TMD re-issued and fakesigned,
+and the Wii's own certificates put in. The dev common key also opens development WADs and RVT-R discs for browsing.
+
 * **Homebrew:** press **A** on a `.dol` or `.elf`. Arguments from a `meta.xml` next to it are passed on, and HW_AHBPROT access is
   kept. Channel contents (`0000000N.app`) are browsed, not launched.
 * **Wii game disc:** HOME menu → *Boot game disc* starts the disc in the drive with TinyLoad, region free. GodModeWii closes and the
@@ -205,7 +222,17 @@ copy them off. Nothing current needs WBFS; USB Loader GX, WiiFlow and others rea
 
 ## HOME menu
 
-* **Miis:** the Wii's Miis, drawn on the Wii by MiiKit from the Wii Menu's face models and the Mii Channel's bodies (nothing goes
+The menu is in groups: drives and network, discs, saves and backups, console and system, tools, settings, and exit and power.
+
+* **Miis:** first pick where from: the Mii Channel's plaza, the **Mii Parade** (up to 10,000 Miis the Wii has met by mingling,
+  on letters or from Wii Remotes; they keep no creator, birthday or favourite), or the ten Miis on **Wii Remote 1-4**. The list
+  marks each Mii M or F, and the panel shows its name, creator, gender, birthday, favourite colour, height, weight and ID.
+  **-** opens the Mii's actions: **Show as a QR code** (the Mii's 74 bytes, the `.miigx` file, so a phone can carry it), **Save the
+  QR code as a PNG** (`GodModeWii/miis/<Name>.png`), **Copy to a Wii Remote** (its first free slot; the Remote's Mii memory is
+  saved to `GodModeWii/wiimote-backups/` first, and both of its copies are written and read back), **Put on this Wii** (the plaza
+  or the Parade, as an import), **Remove from this Wii Remote**, and **gold pants**. The Wii Remote must be synced in the Wii Menu;
+  a Remote whose Mii memory doesn't check out is left alone.
+* The Wii's Miis, drawn on the Wii by MiiKit from the Wii Menu's face models and the Mii Channel's bodies (nothing goes
   online). They are exported as `/savemiis/<Name>.miigx`, the files SaveGame Manager GX writes and installs. **2** changes the
   expression. **-** gives the Mii gold pants (a "special" Mii: the Mii Channel won't edit it, and it doesn't mingle) or takes
   them away; that changes its creation ID, so games that saved the Mii no longer know it, and the database is backed up first.
@@ -236,6 +263,16 @@ copy them off. Nothing current needs WBFS; USB Loader GX, WiiFlow and others rea
 * **Audio player** fast-forward / rewind (WAV, MP3, FLAC, Ogg): Left / Right jump 5 seconds, and held they keep scrubbing.
 * The hints along the bottom of a screen ("A Pause", "B Stop"...) can be clicked with the pointer or mouse.
 * **FTP server**, **FTP install server** and **Wiiload**: see [Network](NETWORK.md).
+* **IR presets** can be deleted several at a time from a checklist. Codes go out with SingIR's timing: whole carrier cycles
+  timed from the time base, so the pulses don't drift.
+* **Set the clock from the internet:** asks pool.ntp.org, time.google.com or time.cloudflare.com (SNTP), guesses the time zone
+  from the Wii's own clock to the nearest 15 minutes and lets you change it in 30-minute steps, then sets the Wii's clock (the
+  `IPL.CB` bias in `SYSCONF`, backed up to `GodModeWii/SYSCONF.bak` first).
+* **Boot BootMii** (when its IOS is installed), **Priiloader's menu** or **the Wii Menu** (when Priiloader is installed, it is
+  told which on the way out).
+* **Console buttons:** with no controller, Power moves down, Reset is A (held a second: 2; three seconds: HOME), Power while
+  holding Reset is B, and ejecting a disc opens HOME. *Settings* turns it on always, with no controller (the default), or off.
+* **Screenshots:** **1** and **2** together save the screen as `GodModeWii/screenshots/shot_NNN.png`.
 * Lock the NAND again, remount drives, credits, exit, and **Restart Wii** (on a Wii U it returns to the Wii U Menu).
 
 Settings are kept on the SD card in `apps/GodModeWii/` (`sfx_off`, `light_off`, `alarm`, `theme`).

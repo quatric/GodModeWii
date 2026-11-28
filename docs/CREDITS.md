@@ -68,6 +68,10 @@
 * **[libdvm](https://github.com/extremscorner/libdvm)** and **[fatfs-mod](https://github.com/extremscorner/fatfs-mod)** (fincs /
   devkitPro, Extrems' libogc2 forks, with ChaN's **FatFs**; ZPL-2.1 / BSD) — FAT, exFAT and GPT drives, built by
   `scripts/build_exfat_libfat.sh`.
+* **[QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library)** by Project Nayuki (MIT) — the Mii QR
+  codes (`source/qrcodegen.c`, `source/qrcodegen.h`).
+* **SingIR** (`SingIR.cpp`) — the IR remote's timing in libwiiir: whole carrier cycles counted from the time base with 24.8
+  fixed-point periods, and a short lead-in before each frame (see libwiiir's `NOTICE`).
 * **[devkitPro](https://devkitpro.org/)** — devkitPPC; **[libogc2](https://github.com/extremscorner/libogc2)** (Extrems, from devkitPro's
   libogc: libdi, wiiuse, libwiikeyboard, ISFS, USB storage).
 
@@ -94,8 +98,13 @@
 * **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
   nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
 * **Miis** — drawn by **[MiiKit](https://github.com/cmyksoda/MiiKit)** (public domain, CC0, in `source/miikit`), which
-  started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader. The Mii record fields shown come from WiiBrew's
-  Mii data documentation.
+  started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader; it also reads and writes the Miis on a Wii Remote.
+  The Mii record fields shown come from WiiBrew's Mii data documentation, and the Wii Remote's Mii blocks ("RNCD" at `0x0FCA`,
+  two copies with a CRC-16) from its Wii Remote and Mii data pages.
+* **MiiFlood** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
+  records, checked against three real databases.
+* **mii-qr** — the idea of carrying a Mii as a QR code. The code here holds the Mii's own 74 bytes (a `.miigx`), since the 3DS /
+  Wii U Mii QR format is encrypted with a key that console keeps.
 * **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
@@ -132,7 +141,19 @@
   — the Wiiload protocol (network and USB Gecko) and which drives and partitions it loads apps from, for Wiiload's warning.
 * **ThemeMii** — the `.mym` theme format that the theme installer converts.
 * **neek2o**, **uneek**, **WiiFlow** and **Dolphin** — the emulated NAND layout that WADs are installed into.
-* **USB Loader GX** — starting a title by ID, the newest first, which the launcher does the same way.
+* **USB Loader GX** — starting a title by ID, the newest first, which the launcher does the same way; and its **anti-002**
+  patch, the instruction pattern the app booter (`appboot/source/loader.c`) turns into a branch so development console programs
+  don't stop with Error 002.
+* **ndev_to_rvl** — running development console (RVT, dev-kit NDEV) programs on a retail Wii, and **WiiElfFix** (an ELF's
+  physical addresses set to its virtual ones). **RVT2RVL** — converting a development WAD for a retail Wii: the title key
+  re-encrypted with the retail common key, the issuers changed, and the ticket and TMD fakesigned (`source/wadinstall.c`).
+  The development common key comes from WiiBrew's key list.
+* **Priiloader** (DacoTaco) — the magic words it reads at `0x8132FFFB` on the way out ("Daco" for its menu, "Pune" for the Wii
+  Menu), and how it's spotted in the System Menu's content folder. **BootMii** (Team Twiizers) — booted by reloading IOS 254.
+* **SNTP** (RFC 4330) and WiiBrew's **SYSCONF** page (the `IPL.CB` clock bias) — setting the clock from the internet.
+* **dvdisaster** — the disc dumper's spiral map of what was read, good and bad.
+* **ShowMiiWads** (Leathl) and **NUSD** — what the title info screen lists for WADs, TMDs and tickets.
+* **GodMode9**'s write permission colours (green, yellow, orange, red) — the level tag on the top bar.
 
 ## Inspiration
 

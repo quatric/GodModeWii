@@ -183,12 +183,6 @@ static void reload_keep(void)
 
 /* ---------------------------------------------------------------- drawing */
 
-/* The drive list warns while the NAND is unlocked; inside a drive, only the NAND itself does. */
-static bool here_risky(void)
-{
-    return risk_unlocked() && (!cwd[0] || vfs_dev_of(cwd) == DEV_NAND);
-}
-
 /* The console's clock, "HH:MM" (Moonshell puts one in its top corner too). */
 static int clock_minute(char *out, size_t n)
 {
@@ -216,7 +210,6 @@ static void level_tag(char *out, size_t n, int *color)
     if (risk_forced())            { snprintf(out, n, "[ FORCED ]");        *color = C_RED; }
     else if (!risk_unlocked())    { snprintf(out, n, "[ SAFE ]");          *color = C_GREEN; }
     else if (unique)              { snprintf(out, n, "[ CONSOLE DATA ]");  *color = C_MAGENTA; }
-    else if (here_risky())        { snprintf(out, n, "[ UNLOCKED ]");      *color = C_YELLOW; }
     else                          { snprintf(out, n, "[ UNLOCKED ]");      *color = C_YELLOW; }
 }
 

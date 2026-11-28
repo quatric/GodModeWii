@@ -66,6 +66,9 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Disk usage: a folder's entries by total size, with a share bar
 * Text viewer and hex viewer
 * In-place text and hex editors (edits are only written when you save)
+* Hex compare: a file against the one on the clipboard, side by side, the differing bytes in red (**A** / **1** jump to the next / previous one)
+* Replace a file's contents with the copied file, or inject the copied file into it at an offset (GodMode9's "inject data")
+* Title info for WADs, TMDs, tickets and installed titles: title ID, version, IOS, region, access rights, contents, ticket and signatures, like ShowMiiWads or NUSD show them
 * Copying from a disc carries on past read errors and lists the bad sectors
 * Deleting read-only FAT files and folders
 * Clickable hints along the bottom of each screen (point and press **A**)
@@ -98,7 +101,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Tracker modules: `.mod`, `.s3m`, `.xm`, `.it`
 * MIDI with SoundFonts, and BRSAR game sequences
 * Video: Mobiclip, THP, Flipnote and Photo Channel (Motion-JPEG) videos, with sound
-* Miis, drawn on the Wii, with their details
+* Miis, drawn on the Wii, with their name, creator, gender, birthday, favourite colour, height and weight
 * Text formats: BMG, MSBT, BREFF, BRLYT, BRLAN, KMP
 
 **Installing and launching**
@@ -112,10 +115,15 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Install Wii Menu themes (`.csm`, `.mym`) with backups
 * Build a `.csm` from a `.mym` without touching the NAND
 * Launch homebrew (`.dol`, `.elf`) with its `meta.xml` arguments
+* Development console (RVT) programs run on a retail Wii: Error 002 is patched out of dev-kit (NDEV) ELFs and DOLs as they load,
+  before they ever reach the Wii, the way USB Loader GX's anti-002 does it
+* Development console WADs are converted for a retail Wii as they install, and the dev common key opens their WADs and RVT-R discs
 * Boot a Wii game disc with TinyLoad
 * Dump a disc to ISO like CleanRip: GameCube, Wii (single and dual layer), DVD-Video (CSS decrypted with libdvdcss)
   and data DVDs / CDs, from the Wii's drive or a USB CD / DVD drive; damaged discs are retried sector by sector, then
-  filled with 0x55 and logged; split into 4 GB parts on FAT32, one file on exFAT / NTFS; CRC32, MD5 and SHA-1 to check on redump.info
+  filled with 0x55 and logged; split into 4 GB parts on FAT32, one file on exFAT / NTFS; CRC32, MD5 and SHA-1 to check on redump.info.
+  A spiral shows each part of the disc as it's read, dvdisaster style, green when good and red when not (**1** hides it); a
+  disc whose first 8 MB won't read at all is stopped there instead of writing gigabytes of 0x55
 * Save data is never deleted, and is backed up before a title is installed over
 
 **Backups**
@@ -140,12 +148,18 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 
 **HOME menu extras**
 
-* Miis export (`.miigx`)
-* Gold pants: make a Mii in the Mii Channel "special" or normal again (MIIS, press -)
+* Miis: the Mii Channel's plaza, the Mii Parade (the Miis the Wii has met) and the ten Miis on each Wii Remote, exported as `.miigx`
+* A Mii as a QR code of its 74 bytes, on the screen or saved as a PNG; copied to a Wii Remote (its memory backed up first), onto this
+  Wii, or off a Wii Remote (MIIS, press **-**)
+* Gold pants: make a Mii in the Mii Channel "special" or normal again (MIIS, press **-**)
 * Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
-* IR remote: TV, receiver and set-top box codes from the sensor bar (Flipper-IRDB's remotes), on any controller's buttons, in named presets
+* IR remote: TV, receiver and set-top box codes from the sensor bar (Flipper-IRDB's remotes), on any controller's buttons, in named
+  presets, sent with SingIR's timing; several presets can be deleted at once
+* Set the clock from the internet (SNTP), with the time zone guessed and adjustable
+* Boot BootMii or Priiloader's menu, or go straight to the Wii Menu, when they're installed
+* Screenshots: press **1** and **2** together, saved as PNGs in `GodModeWii/screenshots/`
 * Clock and calendar
 * Alarm clock with a beep and the disc slot light
 * Sleep timer with white noise, for 15 to 90 minutes or until you turn it off
@@ -154,10 +168,17 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Sound effects and the disc slot light (each can be turned off)
 * A clock in the top bar of the browser
 * Lock the NAND again, remount drives, restart, exit
+* The HOME menu is grouped: drives and network, discs, saves and backups, console and system, tools, settings, and exit and power
+* Checking for an update runs in the background after start-up, so the Wii boots straight into the browser
 
 **Safety and input**
 
 * The NAND is locked behind a Konami code, with an optional "always allow" mode
+* A brick guard that refuses changes that would certainly brick the Wii (the Wii Menu, its IOS, their tickets, `/sys`, `/shared1`,
+  `SYSCONF` and the NAND's top folders), even in Risky Mode
+* The write permission level shown by the colour of the tag on the top bar (see below)
+* Every controller slot works: four Wii Remotes, four GameCube pads, and the Wii U pads
+* The console's own buttons work the menus with no controller at all (see below)
 * Wii Remote, Classic Controller, GameCube controller, USB keyboard, PS3 pad, Wii U GamePad and Pro Controller
 * Works on a Wii U in vWii mode
 * A TiVo sound mode, as an easter egg
@@ -416,7 +437,36 @@ copy stays in the clipboard so you can paste it in several places. **1** on the 
 | USB keyboard | C (copy) | V (cut) | X | Y | Enter / Backspace / Esc, arrows to move |
 | Wii U GamePad, Pro Controller | R, ZR, + | L, ZL, - | Y | X | A / B / HOME |
 
-The GamePad, Pro Controller and PS3 pad work in release builds but are untested on real hardware.
+The GamePad, Pro Controller and PS3 pad work in release builds but are untested on real hardware. Wii Remotes have to be synced
+in the Wii Menu first: libogc2 can't pair new ones.
+
+**Screenshot:** **1** and **2** together, anywhere. A lone **1** or **2** still works as usual.
+
+**The console's buttons** (when no controller is connected; the HOME menu's *Settings > Console buttons work the menus* sets: with no controller, always, or off):
+
+| Button | Does |
+| --- | --- |
+| **Power** | Down (the next item) |
+| **Reset** (tap) | A |
+| **Reset** (hold ~1 s) | 2 (the actions menu) |
+| **Reset** (hold ~3 s) | HOME |
+| **Power** while holding Reset | B |
+| Eject a disc | HOME |
+
+### Write permission levels
+
+Like GodMode9, the tag at the right of the top bar says what GodModeWii is allowed to change. Only the tag takes the colour; the bar
+keeps your theme's.
+
+| Tag | Colour | Means |
+| --- | --- | --- |
+| `SAFE` | Green | Only the SD card, USB drives and other removable storage can be written |
+| `UNLOCKED` | Yellow | The Konami code was entered: the NAND's ordinary data (saves, channels, titles) can be changed |
+| `CONSOLE DATA` | Magenta | Unlocked, and you're in console-unique data (the keys, the SEEPROM, `/sys`, `/shared2/sys`, the Wii Menu's data) |
+| `FORCED` | Red | Risky Mode was forced on at start-up: nothing asks first |
+
+GodMode9's orange is magenta here, since the Wii's console has eight colours. Whatever the level, the brick guard still refuses the
+few changes that would leave the Wii unbootable.
 
 ### Konami code
 
@@ -475,6 +525,8 @@ calculator and alarm follow its own.
 
 * [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
 * [CleanRip](https://github.com/emukidid/cleanrip) (emu_kidid) and [spycrab's CleanRip](https://github.com/spycrab/cleanrip): how the disc dumper gets past read errors
+* [QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library) (Project Nayuki, MIT): the Mii QR codes
+* SingIR: the IR remote's carrier timing
 * [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx), [GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties): save icon and banner formats for the save manager
 * [libwbfs](https://github.com/kwiirk/wbfs) (Kwiirk, Waninkoko): the WBFS layout
 * [GameTDB](https://www.gametdb.com): box and disc art
@@ -517,7 +569,12 @@ calculator and alarm follow its own.
 * Mario Party `.bin`, Camelot STPL and texture banks, Monster Games (ExciteExtract): via nintoolbox
 * [QuickLZ](http://www.quicklz.com/) (Lasse Mikkel Reinhold)
 * AJPG / ODH: from the mobipeg FFmpeg fork
-* WiiBrew: the Mii data, Hollywood registers and the SEEPROM layout
+* WiiBrew: the Mii data, the Wii Remote's memory, Hollywood registers, SYSCONF and the SEEPROM layout
+* MiiFlood: the Mii Parade's list and record layout in `RFL_DB.dat`
+* [USB Loader GX](https://github.com/wiidev/usbloadergx) (its anti-002 patch) and ndev_to_rvl: running development console programs on a retail Wii
+* WiiElfFix and RVT2RVL: the dev-kit ELF and WAD fixes
+* Priiloader (DacoTaco) and BootMii (Team Twiizers): how to boot each from a program
+* RFC 4330 (SNTP): the network clock
 * The PDF 1.7, EPUB 3.2 and GIF89a specifications
 * Apple's APFS reference and TN1150 (HFS+), the kernel.org ext4 and XFS documents, the OpenZFS format description
 * [VGMTrans](https://github.com/vgmtrans/vgmtrans): the BRSAR / RSEQ / RBNK / RWAR layouts
@@ -536,7 +593,10 @@ calculator and alarm follow its own.
 
 **Inspiration**
 
-* [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew)
+* [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew), and GodMode9's write permission colours
+* [dvdisaster](https://dvdisaster.jcea.es/): the disc dumper's spiral
+* ShowMiiWads (Leathl) and NUSD: the title info screen
+* mii-qr: Miis as QR codes
 * MoonCalc and Morning Timer (for MoonShell): the calculator and the alarm
 * Terminal on macOS: the colour themes
 * [ftpii](https://code.google.com/p/ftpii/source/list) (Joseph Jordan) and [WiiXplorer](https://github.com/niuus/wiixplorer) (Dimok)
