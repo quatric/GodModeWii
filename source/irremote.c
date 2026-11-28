@@ -392,7 +392,52 @@ static int by_name(const void *a, const void *b)
     return strcasecmp(*(const char *const *)a, *(const char *const *)b);
 }
 
-/* Category, then manufacturer, then device. The device's index, or -1. */
+static bool has_text(const char *s, const char *t)
+{
+    for (size_t n = strlen(t); *s; s++)
+        if (!strncasecmp(s, t, n)) return true;
+    return false;
+}
+
+/* Every device whose maker, model or kind holds the words typed (all of them, any order). -2: none picked. */
+static int search_device(void)
+{
+    static char text[48];
+    if (!ui_text_input("FIND A REMOTE (maker and / or model)", text, sizeof(text) - 1) || !text[0]) return -2;
+    char words[48], *w[8];
+    int nw = 0;
+    snprintf(words, sizeof(words), "%s", text);
+    for (char *t = strtok(words, " "); t && nw < 8; t = strtok(NULL, " ")) w[nw++] = t;
+    int *idx = malloc(db.count * sizeof *idx);
+    char (*dl)[112] = malloc(db.count * sizeof *dl);
+    const char **di = malloc(db.count * sizeof *di);
+    int nd = 0;
+    for (size_t i = 0; idx && dl && di && i < db.count; i++) {
+        const ir_db_device *d = &db.devices[i];
+        int k = 0;
+        while (k < nw && (has_text(d->manufacturer, w[k]) || has_text(d->name, w[k]) || has_text(d->category, w[k]))) k++;
+        if (k < nw) continue;
+        char cat[40];
+        pretty(cat, sizeof cat, d->category);
+        snprintf(dl[nd], sizeof dl[nd], "%s %s  (%s)", d->manufacturer, d->name, cat);
+        di[nd] = dl[nd];
+        idx[nd++] = (int)i;
+    }
+    int pick = -2;
+    if (!nd) {
+        ui_message("FIND A REMOTE", C_YELLOW, "No remote in the list matches that.");
+    } else {
+        char title[80];
+        snprintf(title, sizeof title, "FOUND %d: %s", nd, text);
+        ui_clear();
+        int d = ui_menu(title, di, NULL, nd, 0);
+        if (d >= 0) pick = idx[d];
+    }
+    free(idx), free(dl), free(di);
+    return pick;
+}
+
+/* Category, then manufacturer, then device (or a search). The device's index, or -1. */
 static int pick_device(void)
 {
     for (;;) {
@@ -414,14 +459,20 @@ static int pick_device(void)
             free(cats), free(labels), free(items);
             return -1;
         }
+        items[0] = "[ Search by maker or model ]";
         for (int k = 0; k < nc; k++) {
             pretty(labels[k], sizeof labels[k], cats[k]);
-            items[k] = labels[k];
+            items[k + 1] = labels[k];
         }
         ui_clear();
-        int c = ui_menu("WHAT IS IT?", items, NULL, nc, 0);
-        const char *cat = c >= 0 && c < nc ? cats[c] : NULL;
+        int c = ui_menu("WHAT IS IT?", items, NULL, nc + 1, 0);
+        const char *cat = c >= 1 && c <= nc ? cats[c - 1] : NULL;
         free(cats), free(labels), free(items);
+        if (c == 0) {
+            int pick = search_device();
+            if (pick >= 0) return pick;
+            continue;
+        }
         if (!cat)
             return -1;
 
