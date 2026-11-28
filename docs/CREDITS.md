@@ -53,7 +53,7 @@
   built by `scripts/build_libntfs.sh`.
 * **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
   libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, mounted read-only, built by `scripts/build_libext4.sh`.
-* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
+* **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, deflate for the zip writer, and Vorbis sound in Mobiclip videos and `.ogg` files.
 * **[Aeplet's IOS](https://github.com/Aeplet/IOS)** by Aep (MIT) — `source/ahbprot.c` is its `ios.c`: mkwcat's `/dev/sha`
   exploit turning HW_AHBPROT off at start-up when the loader left it on.
 * **[libwiiinput](https://github.com/quatric/libwiiinput)** (quatric) — every controller, the pen tablets and uDraw, the Wii Speak

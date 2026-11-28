@@ -171,7 +171,7 @@ int ui_cell_y(int row) { return g_y0 + 16 * row; }
  * else draws (ui_goto, ui_clear), since it can't know what that covered. */
 #define FCACHE 512
 static struct { short row, col, width; u32 hash, gen; } fcache[FCACHE];
-static u32 row_gen[64] , clear_gen = 1;
+static u32 row_gen[64];
 
 static void goto_raw(int row, int col)
 {

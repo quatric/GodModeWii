@@ -533,7 +533,7 @@ static void draw_home(void)
         char note[56] = "";
         if (devs[idx] == DEV_NAND)
             snprintf(note, sizeof(note), "%s",
-                     risk_unlocked() ? "UNLOCKED - BRICK RISK" : "protected (Konami code to edit)");
+                     risk_unlocked() ? "UNLOCKED - BRICK RISK" : "locked (Konami code)");
         else if (!d->mounted && d->note[0])
             snprintf(note, sizeof(note), "%s", d->note);
         else if (!d->mounted)
@@ -944,8 +944,16 @@ static void show_credits(void)
 
         "Controllers: libwiiinput, with Nintendont's controller.ini layouts (FIX94 and contributors), wup-028-bslug "
         "(Alex Chadwick) and RiftWii's HID and queue code; libwiidrc and libwupc (FIX94), libsicksaxis (xerpi).\n\n"
-        "IR remote: WiiIR (Dakota Thorpe) through libwiiir, Flipper-IRDB's remotes. Disc slot light: GlowWii. Sketchpad "
-        "tools: PictoCard. Updates and downloads: libwiiupdate, with Mbed TLS and miniz.\n\n"
+        "IR remote: WiiIR, SingIR and OptimizeIR (Dakota Thorpe) through libwiiir, Flipper-IRDB's remotes. Disc slot "
+        "light: GlowWii. Sketchpad tools: PictoCard. Updates and downloads: libwiiupdate, with Mbed TLS and miniz. The "
+        "small boot.dol: dolxz (FIX94).",
+
+        "Development console programs: USB Loader GX's anti-002 patch, ndev_to_rvl, WiiElfFix and RVT2RVL. Priiloader "
+        "(DacoTaco) and BootMii (Team Twiizers) are booted the way each expects.\n\n"
+        "Save manager: SaveGame Manager GX, GCMM and GerbilSoft's rom-properties; box and disc art from GameTDB. WBFS: "
+        "libwbfs (Kwiirk, Waninkoko). The dump spiral: after dvdisaster. Title info: after ShowMiiWads (Leathl) and NUSD.\n\n"
+        "Mii QR codes: Project Nayuki's QR Code generator (MIT), after mii-qr. Mii Parade layout: MiiFlood. Wii Remote "
+        "memory, SYSCONF and the Mii data: WiiBrew. Write permission colours: GodMode9. Zip: zlib.\n\n"
         "Full list with licenses: docs/CREDITS.md.",
 
         "MoonShell (Moonlight) inspired us a lot: the interface sounds are MoonShell 2.10's (GPL v2 or "
@@ -1775,6 +1783,7 @@ static bool system_menu(void)
         const char *gitems[G_COUNT + 2];
         int gn = 0, glock = -1, gfav = -1;
         if (risk_unlocked() && !risk_forced()) { glock = gn; gitems[gn++] = "Lock risky options again"; }
+        fav_reload();
         if (fav_count()) { gfav = gn; gitems[gn++] = "Favorite apps"; }
         for (int g = 0; g < G_COUNT; g++) gitems[gn++] = groups[g];
         int gr = ui_menu_ex("HOME", gitems, NULL, gn, 0, "A Open   B / HOME Back");

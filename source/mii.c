@@ -402,7 +402,7 @@ static void qr_show(const mii_t *m)
     static u8 qr[qrcodegen_BUFFER_LEN_MAX];
     int n = mii_qr(m->data, qr);
     if (!n) return;
-    int side = n + 2 * QR_QUIET, scale = (ui_cell_y(ui_rows() - 3) - ui_cell_y(2)) / side;
+    int side = n + 2 * QR_QUIET, scale = (cell_y(ui_rows() - 3) - cell_y(2)) / side;
     if (scale < 1) scale = 1;
     u8 *rgba = malloc((size_t)side * side * 4);
     if (!rgba) return;
@@ -422,7 +422,7 @@ static void qr_show(const mii_t *m)
     ui_color(C_CYAN, true);
     ui_field(ui_rows() - 2, 1, cols - 2, "The Mii's 74 bytes (.miigx)   B Back");
     ui_reset();
-    ui_blit_rgba(ui_cell_x(cols / 2) - side * scale / 2, ui_cell_y(2), rgba, side, side, scale);
+    ui_blit_rgba(cell_x(cols / 2) - side * scale / 2, cell_y(2), rgba, side, side, scale);
     free(rgba);
     for (;;) {
         UI_TEST_SHOT();

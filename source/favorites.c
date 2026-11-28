@@ -83,6 +83,11 @@ bool fav_program(const char *path, char *prog, size_t n)
     return false;
 }
 
+void fav_reload(void)
+{
+    nfav = -1;
+}
+
 int fav_count(void)
 {
     if (nfav < 0) load();
