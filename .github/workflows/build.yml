@@ -25,8 +25,8 @@ jobs:
       - name: Install dolxz build dependencies
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev liblzma-dev pkg-config curl ca-certificates
 
-      - name: Install portlibs (PNG / JPEG / WebP for the image viewer)
-        run: dkp-pacman -S --noconfirm --needed ppc-libjpeg-turbo ppc-libwebp ppc-libvorbisidec ppc-libogg ppc-faad2
+      - name: Install portlibs (as docs/BUILDING.md lists them)
+        run: dkp-pacman -S --noconfirm --needed ppc-bzip2 ppc-faad2 ppc-libjpeg-turbo ppc-libogg ppc-libpng-apng ppc-libvorbisidec ppc-libwebp ppc-zlib
 
       - name: Build controller libraries
         run: |
@@ -45,8 +45,11 @@ jobs:
       - name: Build libdvdcss
         run: ./scripts/build_libdvdcss.sh
 
-      - name: Build
-        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1 WITH_DVDCSS=1
+      - name: Build (every optional feature in docs/BUILDING.md)
+        run: make WITH_DVDCSS=1 WITH_EXFAT=1 WITH_EXT4=1 WITH_NTFS=1 WITH_SICKSAXIS=1 WITH_WIIDRC=1 WITH_WUPC=1
+
+      - name: Build the Dolphin test build (AUTOTEST, NO_DOLXZ, every optional feature)
+        run: make AUTOTEST=1 BUILD=build_test TARGET=GodModeWiiTest NO_DOLXZ=1 WITH_DVDCSS=1 WITH_EXFAT=1 WITH_EXT4=1 WITH_NTFS=1 WITH_SICKSAXIS=1 WITH_WIIDRC=1 WITH_WUPC=1
 
       - name: Build the IR remote list (irdb.dat) from the Logitech Harmony IR archive
         run: |

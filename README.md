@@ -526,84 +526,84 @@ in [docs/CREDITS.md](docs/CREDITS.md).
 
 **Code included**
 
-* [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
 * [CleanRip](https://github.com/emukidid/cleanrip) (emu_kidid) and [spycrab's CleanRip](https://github.com/spycrab/cleanrip): how the disc dumper gets past read errors
-* [QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library) (Project Nayuki, MIT): the Mii QR codes
-* OptimizeIR and SingIR (Dakota Thorpe): the IR remote's sensor bar transmitter
-* [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx), [GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties): save icon and banner formats for the save manager
-* [libwbfs](https://github.com/kwiirk/wbfs) (Kwiirk, Waninkoko): the WBFS layout
-* [GameTDB](https://www.gametdb.com): box and disc art
-* [libdvdcss](https://www.videolan.org/developers/libdvdcss.html) (VideoLAN): DVD-Video decryption in the disc dumper
-* [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
-* TiVo: the easter-egg interface sounds
-* [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema
-* [Logitech Harmony IR archive](https://github.com/pickysysadmin/logitech-harmony-ir-archive) (CC0): the IR remote's device list, as `irdb.dat`
-* [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
-* [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
-* [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher
-* [wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player) (quatric): the Mobiclip, THP and Flipnote players
-  * FFmpeg's Mobiclip decoder (Florian Nouwt, Adib Surani, Paul B Mahol), PlayMobic, MobiclipDecoder and Gericom's x264 fork, WiiLink24's FFmpeg fork
-  * NanoJPEG (Martin J. Fiedler) and Tremor
+* [csm-installer](https://github.com/Naim2000/csm-installer) (Naim2000): the Wii Menu theme installer
+* [devkitPro](https://devkitpro.org/): devkitPPC, libogc2 and libfat
+* [dolxz](https://github.com/FIX94/dolxz) (FIX94): the small self-extracting `.dol`
+* [dr_libs](https://github.com/mackron/dr_libs) (David Reid): WAV, MP3 and FLAC decoding
+  * [minimp3](https://github.com/lieff/minimp3) (lieff)
 * [FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod) (WiiDatabase.de team, nickasa, Lupo96): NAND access on the Wii and vWii
+* [GameTDB](https://www.gametdb.com): box and disc art
+* [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
+* [libdvdcss](https://www.videolan.org/developers/libdvdcss.html) (VideoLAN): DVD-Video decryption in the disc dumper
+* [libntfs](https://github.com/extremscorner/libntfs) (Extrems) and NTFS-3G: NTFS drives
+* libpng, libjpeg-turbo, libwebp, zlib, bzip2, Tremor and libogg (devkitPro portlibs)
 * libruntimeiospatch (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94): the IOS patch patterns
+* [libwbfs](https://github.com/kwiirk/wbfs) (Kwiirk, Waninkoko): the WBFS layout
+* libwiidrc, libwupc (FIX94) and libsicksaxis (xerpi): GamePad, Pro Controller and PS3 pad support
+* [Logitech Harmony IR archive](https://github.com/pickysysadmin/logitech-harmony-ir-archive) (CC0): the IR remote's device list, as `irdb.dat`
+* [lwext4](https://github.com/gkostka/lwext4) (Grzegorz Kostka) and Extrems' libdvm ext4 driver: ext2/3/4 drives
+* [MiiKit](https://github.com/cmyksoda/MiiKit) (cmyksoda, from hbc-reborn's sdk/mii): the Mii faces
+* [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
+* mym-to-csm (cmyksoda): ported into `source/mym.c`
+* OptimizeIR and SingIR (Dakota Thorpe): the IR remote's sensor bar transmitter
+* [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
+* Priiloader (Dacoslove): USB keyboard handling and the vWii check, via GlowWii
+* [QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library) (Project Nayuki, MIT): the Mii QR codes
+* [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx), [GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties): save icon and banner formats for the save manager
+* [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
 * [TinySoundFont](https://github.com/schellingb/TinySoundFont) (Bernhard Schelling): MIDI playback
   * [SFZero](https://github.com/stevefolta/SFZero) (Steve Folta) and the earlevel.com biquad filter
   * Gervill's emergency soundbank (OpenJDK): the built-in General MIDI set
-* [dr_libs](https://github.com/mackron/dr_libs) (David Reid): WAV, MP3 and FLAC decoding
-  * [minimp3](https://github.com/lieff/minimp3) (lieff)
-* [Zstandard](https://github.com/facebook/zstd) (Meta): RVZ decoding, with xxHash and Finite State Entropy (Yann Collet)
+* TiVo: the easter-egg interface sounds
 * [unarr](https://github.com/selmf/unarr) (selmf and contributors): zip, 7z and RAR readers
   * LZMA SDK (Igor Pavlov) and The Unarchiver's XADMaster code
-* [csm-installer](https://github.com/Naim2000/csm-installer) (Naim2000): the Wii Menu theme installer
-* mym-to-csm (cmyksoda): ported into `source/mym.c`
-* [dolxz](https://github.com/FIX94/dolxz) (FIX94): the small self-extracting `.dol`
-* libwiidrc, libwupc (FIX94) and libsicksaxis (xerpi): GamePad, Pro Controller and PS3 pad support
-* Priiloader (Dacoslove): USB keyboard handling and the vWii check, via GlowWii
-* [MiiKit](https://github.com/cmyksoda/MiiKit) (cmyksoda, from hbc-reborn's sdk/mii): the Mii faces
-* [libntfs](https://github.com/extremscorner/libntfs) (Extrems) and NTFS-3G: NTFS drives
-* [lwext4](https://github.com/gkostka/lwext4) (Grzegorz Kostka) and Extrems' libdvm ext4 driver: ext2/3/4 drives
-* libpng, libjpeg-turbo, libwebp, zlib, bzip2, Tremor and libogg (devkitPro portlibs)
-* [devkitPro](https://devkitpro.org/): devkitPPC, libogc2 and libfat
+* [wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player) (quatric): the Mobiclip, THP and Flipnote players
+  * FFmpeg's Mobiclip decoder (Florian Nouwt, Adib Surani, Paul B Mahol), PlayMobic, MobiclipDecoder and Gericom's x264 fork, WiiLink24's FFmpeg fork
+  * NanoJPEG (Martin J. Fiedler) and Tremor
+* [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema
+* [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher
+* [Zstandard](https://github.com/facebook/zstd) (Meta): RVZ decoding, with xxHash and Finite State Entropy (Yann Collet)
 
 **Formats and references**
 
-* [nintoolbox](https://github.com/quatric/nintoolbox) and [mobipeg](https://github.com/quatric/mobipeg) (quatric): the first-party formats, compression and file-type detection
-* [HSDLib](https://github.com/Ploaj/HSDLib) and [Metanoia](https://github.com/Ploaj/Metanoia) (Ploaj): HSD and HSF
-* Mario Party `.bin`, Camelot STPL and texture banks, Monster Games (ExciteExtract): via nintoolbox
-* [QuickLZ](http://www.quicklz.com/) (Lasse Mikkel Reinhold)
 * AJPG / ODH: from the mobipeg FFmpeg fork
-* WiiBrew: the Mii data, the Wii Remote's memory, Hollywood registers, SYSCONF and the SEEPROM layout
-* MII-FLOOD-2: the Mii Parade's list and record layout in `RFL_DB.dat`
-* [USB Loader GX](https://github.com/wiidev/usbloadergx) (its anti-002 patch) and ndev_to_rvl: running development console programs on a retail Wii
-* WiiElfFix and RVT2RVL: the dev-kit ELF and WAD fixes
-* Priiloader (DacoTaco) and BootMii (Team Twiizers): how to boot each from a program
-* RFC 4330 (SNTP): the network clock
-* The PDF 1.7, EPUB 3.2 and GIF89a specifications
 * Apple's APFS reference and TN1150 (HFS+), the kernel.org ext4 and XFS documents, the OpenZFS format description
-* [VGMTrans](https://github.com/vgmtrans/vgmtrans): the BRSAR / RSEQ / RBNK / RWAR layouts
-* [RiftWii](https://github.com/KakarottoCake/RiftWii) (KakarottoCake) and Dolphin's `WiaAndRvz.md`: the RVZ / WIA reader
-* [lzo](https://www.oberhumer.com/opensource/lzo/) / lzop (Markus Oberhumer)
-* [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) (DarkMatterCore, bushing, joedj, Sven Peter, Hector Martin, John Kelley): the Console Keys drive
-* [wad2bin](https://github.com/DarkMatterCore/wad2bin) (DarkMatterCore): `content.bin`, `<index>.bin` and the bogus WAD
 * [dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter) (DarkMatterCore): the split DLC WAD layout
-* [Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod) (DarkMatterCore, nicksasa, WiiPower): the WAD backup format
-* [nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios) (thepikachugamer, mkwcat's `/dev/sha` exploit): the NAND backup
-* Sharpii NetCore / libWiiSharp (Leathl): WAD, U8, IMD5 and LZ77 layouts
-* [wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools) (koolkdev): Wii U WFS
-* [vffmod](https://github.com/wii-tools/vffmod) (wii-tools) and vffdump.py (marcan): VFF
-* SaveGame Manager GX and Dolphin's `WiiSave` and `IOSC` code: `data.bin` and the fixed keys
 * GCMM (suloku): the memory card viewer and `.gci` format
+* [HSDLib](https://github.com/Ploaj/HSDLib) and [Metanoia](https://github.com/Ploaj/Metanoia) (Ploaj): HSD and HSF
+* [lzo](https://www.oberhumer.com/opensource/lzo/) / lzop (Markus Oberhumer)
+* Mario Party `.bin`, Camelot STPL and texture banks, Monster Games (ExciteExtract): via nintoolbox
+* MII-FLOOD-2: the Mii Parade's list and record layout in `RFL_DB.dat`
+* [nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios) (thepikachugamer, mkwcat's `/dev/sha` exploit): the NAND backup
+* [nintoolbox](https://github.com/quatric/nintoolbox) and [mobipeg](https://github.com/quatric/mobipeg) (quatric): the first-party formats, compression and file-type detection
+* Priiloader (DacoTaco) and BootMii (Team Twiizers): how to boot each from a program
+* [QuickLZ](http://www.quicklz.com/) (Lasse Mikkel Reinhold)
+* RFC 4330 (SNTP): the network clock
+* [RiftWii](https://github.com/KakarottoCake/RiftWii) (KakarottoCake) and Dolphin's `WiaAndRvz.md`: the RVZ / WIA reader
+* SaveGame Manager GX and Dolphin's `WiiSave` and `IOSC` code: `data.bin` and the fixed keys
+* Sharpii NetCore / libWiiSharp (Leathl): WAD, U8, IMD5 and LZ77 layouts
+* The PDF 1.7, EPUB 3.2 and GIF89a specifications
+* [USB Loader GX](https://github.com/wiidev/usbloadergx) (its anti-002 patch) and ndev_to_rvl: running development console programs on a retail Wii
+* [vffmod](https://github.com/wii-tools/vffmod) (wii-tools) and vffdump.py (marcan): VFF
+* [VGMTrans](https://github.com/vgmtrans/vgmtrans): the BRSAR / RSEQ / RBNK / RWAR layouts
+* [wad2bin](https://github.com/DarkMatterCore/wad2bin) (DarkMatterCore): `content.bin`, `<index>.bin` and the bogus WAD
+* [wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools) (koolkdev): Wii U WFS
+* WiiBrew: the Mii data, the Wii Remote's memory, Hollywood registers, SYSCONF and the SEEPROM layout
+* WiiElfFix and RVT2RVL: the dev-kit ELF and WAD fixes
+* [xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod) (DarkMatterCore, bushing, joedj, Sven Peter, Hector Martin, John Kelley): the Console Keys drive
+* [Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod) (DarkMatterCore, nicksasa, WiiPower): the WAD backup format
 
 **Inspiration**
 
-* [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew), and GodMode9's write permission colours
 * [dvdisaster](https://dvdisaster.jcea.es/): the disc dumper's spiral
-* ShowMiiWads (Leathl) and NUSD: the title info screen
+* [ftpii](https://code.google.com/p/ftpii/source/list) (Joseph Jordan) and [WiiXplorer](https://github.com/niuus/wiixplorer) (Dimok)
+* [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew), and GodMode9's write permission colours
 * mii-qr: Miis as QR codes; jaames' mii-qr.py: the 3DS / Wii U QR code's encryption; 3dbrew: their Mii format; MiiJS (Stewared, ISC): the
   Wii to 3DS face features
 * MoonCalc and Morning Timer (for MoonShell): the calculator and the alarm
+* ShowMiiWads (Leathl) and NUSD: the title info screen
 * Terminal on macOS: the colour themes
-* [ftpii](https://code.google.com/p/ftpii/source/list) (Joseph Jordan) and [WiiXplorer](https://github.com/niuus/wiixplorer) (Dimok)
 * The Dolphin team, for the emulator used during development
 
 ## License

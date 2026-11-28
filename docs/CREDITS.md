@@ -4,58 +4,34 @@
 
 ## Code included
 
-* **[TinyLoad](https://wiibrew.org/wiki/TinyLoad)** 0.2 by Hector Martin (marcan), with code by Segher Boessenkool, Andre Heider
-  and Nuke (GPL-2.0), with the USB Gecko Development Kit's `usb.c` — the game disc loader, built into `res/tinyload.elf` from `tinyload/` (`tinyload/build.sh`) and started
-  through the launcher.
-* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the clock and calendar, the alarm and the
-  calculator follow its own, and the interface sound effects are its (`res/sfx.bin`, made by `scripts/make_sfx.py` from its
-  `misctools/sndeff` folder).
-* **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
-* **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
-  (`source/wiilight.c`, `source/wiilight_patterns.h`).
-* **[WiiIR](https://github.com/dakotath/WiiIR)** (Dakota Thorpe, Apache-2.0, used with permission) — the IR remote: sending codes
-  from the sensor bar and the `irdb.xml` schema, through [libwiiir](https://github.com/quatric/libwiiir) (`libwiiir/`).
-* **[Logitech Harmony IR archive](https://github.com/pickysysadmin/logitech-harmony-ir-archive)** (pickysysadmin, CC0) — the IR remote's devices, Logitech Harmony's whole infrared database, packed as
-  `irdb.dat` when a release is built. libwiiir's protocols follow Flipper Zero's infrared app.
-* **[PictoCard](https://github.com/larsenv/PictoCard-Client)** (larsenv) — the doodle pad's palette, brush sizes and tools
-  (`source/draw.c`).
-* **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak
-  (from Some YAWMM Mod, YAWMM and WAD Manager by Waninkoko; GPL-2.0) — the WAD installer (`source/wadinstall.c`: the ES install
-  sequence, the vWii ticket fix-up and every brick check) and the `.dol` / `.elf` launcher (`source/launch.c` and its app booter in
-  `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
-* **[wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player)** (quatric; MIT) — the Mobiclip, THP and Flipnote
-  players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
-  (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)
-  and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
-* **[FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod)** by the WiiDatabase.de team, based on **FSToolBox by nickasa**
-  and the **AHBPROT mod by Lupo96** — the approach for NAND access on the Wii and the Wii U's vWii mode
-  (staying on the loader's IOS, ISFS permission patch).
-* **libruntimeiospatch** by Nano (Christopher Bratusek), with code by Joseph Jordan, damysteryman, DarkMatterCore, megazig
-  and FIX94, as shipped in FSToolBox-Mod — the IOS byte patterns `source/iospatch.c` searches for and the bytes it writes
-  (AHBPROT, ISFS permissions, DI read limit, the hash / version checks, damysteryman's vWii system-title patches).
-  `source/iospatch.c` itself is GodModeWii's own code, under GodModeWii's license.
-* **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
-  play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). It is based on **[SFZero](https://github.com/stevefolta/SFZero)** by Steve Folta and uses the biquad low-pass from [earlevel.com](http://www.earlevel.com/main/2012/11/26/biquad-c-source-code/). The built-in General
-  MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
-* **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC. `dr_mp3` is based on **[minimp3](https://github.com/lieff/minimp3)** by lieff (CC0).
-* **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ. It includes **xxHash** and **Finite State Entropy** by Yann Collet (BSD).
-* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside; its RAR code follows **The Unarchiver**'s XADMaster by Dag Ågren and contributors, LGPL-2.1) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
+* **[Aeplet's IOS](https://github.com/Aeplet/IOS)** by Aep (MIT) — `source/ahbprot.c` is its `ios.c`: mkwcat's `/dev/sha`
+  exploit turning HW_AHBPROT off at start-up when the loader left it on.
 * **[csm-installer](https://github.com/Naim2000/csm-installer)** by Naim2000 (GPL-2.0) — the Wii Menu theme
   installer's checks and install sequence (`source/theme.c`: identifying the Wii Menu and its archive, Priiloader detection,
   the theme checks, the vWii 4:3 database patch after DarkMatterCore's ww-43db-patcher, writing through `/tmp`, downloading the original archive
   from NUS).
-* **mym-to-csm** by cmyksoda — `source/mym.c` is a C port of it (mym.ini handling, U8 rebuild, TPL encoder, LZ77 compressor).
+* **[devkitPro](https://devkitpro.org/)** — devkitPPC; **[libogc2](https://github.com/extremscorner/libogc2)** (Extrems, from devkitPro's
+  libogc: libdi, wiiuse, libwiikeyboard, ISFS, USB storage).
 * **[dolxz](https://github.com/FIX94/dolxz)** by FIX94 — builds the small self-extracting `GodModeWii-xz.dol` (downloaded and built by `make`).
+* **[dr_libs](https://github.com/mackron/dr_libs)** by David Reid (public domain / MIT-0, in `source/drlibs`) — `dr_wav`, `dr_mp3` and `dr_flac` decode WAV / AIFF, MP3 and FLAC. `dr_mp3` is based on **[minimp3](https://github.com/lieff/minimp3)** by lieff (CC0).
+* **[FAAD2](https://github.com/knik0/faad2)** (GPL-2.0, devkitPro's `ppc-faad2`) — AAC sound in M4A files.
+* **[FSToolBox-Mod](https://github.com/WiiDatabase/FSToolBox-Mod)** by the WiiDatabase.de team, based on **FSToolBox by nickasa**
+  and the **AHBPROT mod by Lupo96** — the approach for NAND access on the Wii and the Wii U's vWii mode
+  (staying on the loader's IOS, ISFS permission patch).
+* **[GlowWii](https://github.com/larsenv/GlowWii)** (larsenv) — the disc slot light driver and Nintendo's light patterns
+  (`source/wiilight.c`, `source/wiilight_patterns.h`).
 * **GlowWii** — the controller input layer (Wii Remote / Classic / GameCube pad / USB keyboard mapping) comes from its `main.c`.
-* **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch use GlowWii's approach.
-* **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
+* **[libdvm](https://github.com/extremscorner/libdvm)** and **[fatfs-mod](https://github.com/extremscorner/fatfs-mod)** (fincs /
+  devkitPro, Extrems' libogc2 forks, with ChaN's **FatFs**; ZPL-2.1 / BSD) — FAT, exFAT and GPT drives, built by
+  `scripts/build_exfat_libfat.sh`.
 * **[libntfs](https://github.com/extremscorner/libntfs)** by Extrems and contributors, on **NTFS-3G** (GPL-2.0): NTFS drives,
   built by `scripts/build_libntfs.sh`.
-* **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
-  libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, mounted read-only, built by `scripts/build_libext4.sh`.
 * **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, deflate for the zip writer, and Vorbis sound in Mobiclip videos and `.ogg` files.
-* **[Aeplet's IOS](https://github.com/Aeplet/IOS)** by Aep (MIT) — `source/ahbprot.c` is its `ios.c`: mkwcat's `/dev/sha`
-  exploit turning HW_AHBPROT off at start-up when the loader left it on.
+* **libruntimeiospatch** by Nano (Christopher Bratusek), with code by Joseph Jordan, damysteryman, DarkMatterCore, megazig
+  and FIX94, as shipped in FSToolBox-Mod — the IOS byte patterns `source/iospatch.c` searches for and the bytes it writes
+  (AHBPROT, ISFS permissions, DI read limit, the hash / version checks, damysteryman's vWii system-title patches).
+  `source/iospatch.c` itself is GodModeWii's own code, under GodModeWii's license.
+* **libwiidrc** and **libwupc** (FIX94) and **libsicksaxis** (xerpi) — Wii U GamePad, Wii U Pro Controller and PS3 pad support; the build script and libwupc compatibility patch use GlowWii's approach.
 * **[libwiiinput](https://github.com/quatric/libwiiinput)** (quatric) — every controller, the pen tablets and uDraw, the Wii Speak
   and USB microphones. Inside it: USB pads read with **[Nintendont](https://github.com/FIX94/Nintendont)**'s `controller.ini`
   layouts (FIX94 and the Nintendont contributors, used with permission), the GameCube controller adapter after
@@ -64,114 +40,138 @@
 * **[libwiiupdate](https://github.com/quatric/libwiiupdate)** (quatric) — the update check and installer, and the HTTPS downloads
   (HBC Reborn), with **[Mbed TLS](https://github.com/Mbed-TLS/mbedtls)** (Apache-2.0) and **[miniz](https://github.com/richgel999/miniz)**
   by Rich Geldreich (MIT) inside.
-* **[FAAD2](https://github.com/knik0/faad2)** (GPL-2.0, devkitPro's `ppc-faad2`) — AAC sound in M4A files.
-* **[libdvm](https://github.com/extremscorner/libdvm)** and **[fatfs-mod](https://github.com/extremscorner/fatfs-mod)** (fincs /
-  devkitPro, Extrems' libogc2 forks, with ChaN's **FatFs**; ZPL-2.1 / BSD) — FAT, exFAT and GPT drives, built by
-  `scripts/build_exfat_libfat.sh`.
-* **[QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library)** by Project Nayuki (MIT) — the Mii QR
-  codes (`source/qrcodegen.c`, `source/qrcodegen.h`).
+* **[Logitech Harmony IR archive](https://github.com/pickysysadmin/logitech-harmony-ir-archive)** (pickysysadmin, CC0) — the IR remote's devices, Logitech Harmony's whole infrared database, packed as
+  `irdb.dat` when a release is built. libwiiir's protocols follow Flipper Zero's infrared app.
+* **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
+  libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, mounted read-only, built by `scripts/build_libext4.sh`.
+* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the clock and calendar, the alarm and the
+  calculator follow its own, and the interface sound effects are its (`res/sfx.bin`, made by `scripts/make_sfx.py` from its
+  `misctools/sndeff` folder).
+* **mym-to-csm** by cmyksoda — `source/mym.c` is a C port of it (mym.ini handling, U8 rebuild, TPL encoder, LZ77 compressor).
 * **OptimizeIR**'s IR blaster and **SingIR** (Dakota Thorpe) — libwiiir's sensor bar transmitter: the frame turned into
   mark-and-space segments before interrupts go off, whole carrier cycles counted from the time base with 24.8 fixed-point
   periods, every edge on an absolute deadline, and a short lead-in before each frame (see libwiiir's `NOTICE`).
-* **[devkitPro](https://devkitpro.org/)** — devkitPPC; **[libogc2](https://github.com/extremscorner/libogc2)** (Extrems, from devkitPro's
-  libogc: libdi, wiiuse, libwiikeyboard, ISFS, USB storage).
+* **[PictoCard](https://github.com/larsenv/PictoCard-Client)** (larsenv) — the doodle pad's palette, brush sizes and tools
+  (`source/draw.c`).
+* **Priiloader** (Dacoslove's `Input.cpp` and the vWii detection) — USB keyboard handling and the vWii check, via GlowWii.
+* **[QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library)** by Project Nayuki (MIT) — the Mii QR
+  codes (`source/qrcodegen.c`, `source/qrcodegen.h`).
+* **[TinyLoad](https://wiibrew.org/wiki/TinyLoad)** 0.2 by Hector Martin (marcan), with code by Segher Boessenkool, Andre Heider
+  and Nuke (GPL-2.0), with the USB Gecko Development Kit's `usb.c` — the game disc loader, built into `res/tinyload.elf` from `tinyload/` (`tinyload/build.sh`) and started
+  through the launcher.
+* **[TinySoundFont](https://github.com/schellingb/TinySoundFont)** by Bernhard Schelling (MIT, in `source/tsf`) — `tsf.h` / `tml.h`
+  play MIDI files with SoundFonts (patched here to read the little-endian SoundFont on the big-endian Wii). It is based on **[SFZero](https://github.com/stevefolta/SFZero)** by Steve Folta and uses the biquad low-pass from [earlevel.com](http://www.earlevel.com/main/2012/11/26/biquad-c-source-code/). The built-in General
+  MIDI set is **Gervill**'s emergency soundbank (OpenJDK; GPL-2.0 with the Classpath exception), zlib-packed in `res/gmsf2.bin`.
+* **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
+* **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside; its RAR code follows **The Unarchiver**'s XADMaster by Dag Ågren and contributors, LGPL-2.1) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
+* **[wii-mobiclip-player](https://github.com/quatric/wii-mobiclip-player)** (quatric; MIT) — the Mobiclip, THP and Flipnote
+  players in `source/mobiclip/` (see its `LICENSE` and `CREDITS_MOBICLIP.md`). Its Mobiclip decoder is ported from FFmpeg's
+  (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, MobiclipDecoder and Gericom's x264 fork (Gericom)
+  and WiiLink24's FFmpeg fork. THP frames are decoded with NanoJPEG (Martin J. Fiedler) and Vorbis audio with Tremor (portlibs).
+* **[WiiIR](https://github.com/dakotath/WiiIR)** (Dakota Thorpe, Apache-2.0, used with permission) — the IR remote: sending codes
+  from the sensor bar and the `irdb.xml` schema, through [libwiiir](https://github.com/quatric/libwiiir) (`libwiiir/`).
+* **[YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition)** by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak
+  (from Some YAWMM Mod, YAWMM and WAD Manager by Waninkoko; GPL-2.0) — the WAD installer (`source/wadinstall.c`: the ES install
+  sequence, the vWii ticket fix-up and every brick check) and the `.dol` / `.elf` launcher (`source/launch.c` and its app booter in
+  `appboot/`, with Segher Boessenkool's `crt0.s` / `link.ld`).
+* **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ. It includes **xxHash** and **Finite State Entropy** by Yann Collet (BSD).
 
 ## Formats and references
 
-* **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
-  every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
-  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
-  Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
-  (ISO, WBFS, CISO), and file-type detection.
-* **[HSDLib](https://github.com/Ploaj/HSDLib)** by Ploaj (MIT) — the HSD `.dat` container and relocation layout, via nintoolbox's `lib-hsd.c`; and **[Metanoia](https://github.com/Ploaj/Metanoia)**'s HSF reader, via nintoolbox's `lib-hsf.c` (Mario Party HSFV037 models).
-* **Mario Party `.bin` archives** — the member table and the LZSS / slide / run-length / zlib decoders follow nintoolbox's `lib-mpbin.c` (GPL-2.0+).
+* **[3dbrew](https://www.3dbrew.org/wiki/Mii)** — the 3DS / Wii U Mii data (Ver3StoreData) that a Wii Mii is converted to for the
+  QR code.
+* **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
+  nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
 * **Camelot STPL and texture banks** — the codec and bank layout come from nintoolbox's `lib-camelot.c` and `lib-camtexbank.c`. nintoolbox only claims
   a Camelot file by its name, because scanning for the bank signature matched inside other archives; GodModeWii also opens an
   extensionless one, but only when the first bytes it unpacks to are the start of a valid bank, and scans for banks only in `.sbn`
   modules. The `LZ77` tag handling follows nintoolbox's `lib-wii-banner.c`.
-* **Monster Games** (Excite Truck, Excitebots) — the RST / TOC layouts (`lib-rst.c`), the `.sfx` header (`lib-sfx.c`) and the
-  `.tex` / `.art` / `.tm0` texture recovery and the `.mod` display-list models (`lib-excite.c`, itself ported from the **ExciteExtract**
-  research tool), all via nintoolbox. GodModeWii differs in two places: Excite Truck's 0x44-byte TOC offsets count from the archive's
-  data offset (read from the file's start, every member came out 0x80 bytes early), and an NDL2 model's positions and texcoords are
-  found through its header's array pointers (packed or padded per file).
-* **[QuickLZ](http://www.quicklz.com/)** by Lasse Mikkel Reinhold (GPL) — `source/qlz.c` decodes the 1.4.0 (level 3) and 1.20
-  streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
-* **AJPG / ODH** — `source/ajpg/odh_core.c` is the ODH codec core from the mobipeg FFmpeg fork (LGPL-2.1+, as packaged in
-  nintoolbox), which reads its header byte by byte so it decodes the same on the big-endian Wii.
-* **Miis** — drawn by **[MiiKit](https://github.com/cmyksoda/MiiKit)** (public domain, CC0, in `source/miikit`), which
-  started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader; it also reads and writes the Miis on a Wii Remote.
-  The Mii record fields shown come from WiiBrew's Mii data documentation, and the Wii Remote's Mii blocks ("RNCD" at `0x0FCA`,
-  two copies with a CRC-16) from its Wii Remote and Mii data pages.
-* **[MII-FLOOD-2](https://github.com/fartbumpoopturd-bit/MII-FLOOD-2)** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
-  records, checked against three real databases.
-* **mii-qr** — the idea of carrying a Mii as a QR code.
-* **[jaames' mii-qr.py](https://gist.github.com/jaames/96ce8daa11b61b758b6b0227b55f9f78)** — how the 3DS / Wii U Mii QR code
-  is wrapped: an 8-byte nonce from the Mii, AES-CCM with Mii Maker's key, the 16-byte tag. GodModeWii encrypts the same way.
-* **[3dbrew](https://www.3dbrew.org/wiki/Mii)** — the 3DS / Wii U Mii data (Ver3StoreData) that a Wii Mii is converted to for the
-  QR code.
-* **[MiiJS](https://www.npmjs.com/package/miijs)** (Stewared, ISC) — how a Wii Mii's single face feature splits into the later
-  makeup and wrinkles fields.
-* **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
-* **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
-* **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
-* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib license) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
-* **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
-* **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder match nintoolbox's.
-* **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
-  Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
-  OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
-* **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
-* **[dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter)** by DarkMatterCore — the split DLC WAD layout (the TMD kept as it is, content 0 and a run of the other contents in each WAD, `<title id>_split_<n>.wad`, the ticket fakesigned when it was bound to a console) and wad2bin's way of finding the contents a partial DLC WAD holds. `w2b_split` and the content locator in `source/wad2bin.c` are GodModeWii's own code.
-* **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader Wii Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
 * **[CleanRip](https://github.com/emukidid/cleanrip)** by emu_kidid (GPL-2.0-or-later) and **[spycrab's CleanRip](https://github.com/spycrab/cleanrip)**
   (its Datel branch) — how the disc dumper (`source/discdump.c`) gets past read errors: retrying a block after a drive reset,
   then sector by sector until two reads agree, and zero-filling and listing what still fails; the Wii dual-layer check and the
   FAT32 part files. YAGCD's drive error codes. **[redumper](https://github.com/superg/redumper)** (superg) was a reference for
   reading DVDs and CDs. The code is GodModeWii's own.
-* **[SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx)** (GPL-2.0-or-later), **[GCMM](https://github.com/suloku/gcmm)**
-  (GPL-2.0-or-later) and **[rom-properties](https://github.com/GerbilSoft/rom-properties)** by GerbilSoft (GPL-2.0-or-later) —
-  references for the save manager: the Wii `banner.bin` and GameCube `.gci` icon and banner formats. The code is GodModeWii's own.
-* **[libwbfs](https://github.com/kwiirk/wbfs)** by Kwiirk, Waninkoko and others (GPL-2.0) — the WBFS layout, read by GodModeWii's
-  own code.
+* **[dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter)** by DarkMatterCore — the split DLC WAD layout (the TMD kept as it is, content 0 and a run of the other contents in each WAD, `<title id>_split_<n>.wad`, the ticket fakesigned when it was bound to a console) and wad2bin's way of finding the contents a partial DLC WAD holds. `w2b_split` and the content locator in `source/wad2bin.c` are GodModeWii's own code.
+* **dvdisaster** — the disc dumper's spiral map of what was read, good and bad.
+* **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
+* **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
 * **[GameTDB](https://www.gametdb.com)** — box and disc art.
+* **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
+* **GodMode9**'s write permission colours (green, yellow, orange, red) — the level tag on the top bar.
+* **[HSDLib](https://github.com/Ploaj/HSDLib)** by Ploaj (MIT) — the HSD `.dat` container and relocation layout, via nintoolbox's `lib-hsd.c`; and **[Metanoia](https://github.com/Ploaj/Metanoia)**'s HSF reader, via nintoolbox's `lib-hsf.c` (Mario Party HSFV037 models).
+* **[jaames' mii-qr.py](https://gist.github.com/jaames/96ce8daa11b61b758b6b0227b55f9f78)** — how the 3DS / Wii U Mii QR code
+  is wrapped: an 8-byte nonce from the Mii, AES-CCM with Mii Maker's key, the 16-byte tag. GodModeWii encrypts the same way.
 * **[libdvdcss](https://www.videolan.org/developers/libdvdcss.html)** 1.4.3 by VideoLAN (GPL-2.0-or-later; built by
   `scripts/build_libdvdcss.sh`) — decrypting DVD-Video (CSS) in the disc dumper.
+* **[libwbfs](https://github.com/kwiirk/wbfs)** by Kwiirk, Waninkoko and others (GPL-2.0) — the WBFS layout, read by GodModeWii's
+  own code.
+* **[lzo](https://www.oberhumer.com/opensource/lzo/)** / **lzop** by Markus F.X.J. Oberhumer — the LZO1X format and the `.lzo` file layout, decoded by `source/arc_retro.c`, whose PAK layouts and decoder match nintoolbox's.
+* **Mario Party `.bin` archives** — the member table and the LZSS / slide / run-length / zlib decoders follow nintoolbox's `lib-mpbin.c` (GPL-2.0+).
+* **[MII-FLOOD-2](https://github.com/fartbumpoopturd-bit/MII-FLOOD-2)** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
+  records, checked against three real databases.
+* **mii-qr** — the idea of carrying a Mii as a QR code.
+* **[MiiJS](https://www.npmjs.com/package/miijs)** (Stewared, ISC) — how a Wii Mii's single face feature splits into the later
+  makeup and wrinkles fields.
+* **Miis** — drawn by **[MiiKit](https://github.com/cmyksoda/MiiKit)** (public domain, CC0, in `source/miikit`), which
+  started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader; it also reads and writes the Miis on a Wii Remote.
+  The Mii record fields shown come from WiiBrew's Mii data documentation, and the Wii Remote's Mii blocks ("RNCD" at `0x0FCA`,
+  two copies with a CRC-16) from its Wii Remote and Mii data pages.
+* **Monster Games** (Excite Truck, Excitebots) — the RST / TOC layouts (`lib-rst.c`), the `.sfx` header (`lib-sfx.c`) and the
+  `.tex` / `.art` / `.tm0` texture recovery and the `.mod` display-list models (`lib-excite.c`, itself ported from the **ExciteExtract**
+  research tool), all via nintoolbox. GodModeWii differs in two places: Excite Truck's 0x44-byte TOC offsets count from the archive's
+  data offset (read from the file's start, every member came out 0x80 bytes early), and an NDL2 model's positions and texcoords are
+  found through its header's array pointers (packed or padded per file).
 * **[nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios)** by thepikachugamer (GPL-2.0; with mkwcat's `/dev/sha` exploit) — the NAND backup: its IOS stages (`nanddumper/`, prebuilt in `res/nd_*.bin`), the `/dev/flash` FS patch, the page / bad block reading, the `keys.bin` and `setting.txt` handling and the file layout, ported in `source/nanddump.c`.
-* **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
-* **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
-* **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
-* **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
-* **GCMM** (suloku) — GameCube Memory Card Manager, the model for the memory card viewer and its `.gci` backup format; the card access itself uses libogc's CARD API.
-* **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.
-* **[The Homebrew Channel](https://github.com/fail0verflow/hbc)** (fail0verflow; with **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)**)
-  — the Wiiload protocol (network and USB Gecko) and which drives and partitions it loads apps from, for Wiiload's warning.
-* **ThemeMii** — the `.mym` theme format that the theme installer converts.
-* **neek2o**, **uneek**, **WiiFlow** and **Dolphin** — the emulated NAND layout that WADs are installed into.
-* **USB Loader GX** — starting a title by ID, the newest first, which the launcher does the same way; and its **anti-002**
-  patch, the instruction pattern the app booter (`appboot/source/loader.c`) turns into a branch so development console programs
-  don't stop with Error 002.
 * **ndev_to_rvl** — running development console (RVT, dev-kit NDEV) programs on a retail Wii, and **WiiElfFix** (an ELF's
   physical addresses set to its virtual ones). **RVT2RVL** — converting a development WAD for a retail Wii: the title key
   re-encrypted with the retail common key, the issuers changed, and the ticket and TMD fakesigned (`source/wadinstall.c`).
   The development common key comes from WiiBrew's key list.
+* **neek2o**, **uneek**, **WiiFlow** and **Dolphin** — the emulated NAND layout that WADs are installed into.
+* **[nintoolbox](https://github.com/quatric/nintoolbox)** and **[mobipeg](https://github.com/quatric/mobipeg)** (quatric) — the layouts of
+  every first-party format the viewers read: BRSTM / BCSTM / BFSTM, BRWAV / BCWAV / BFWAV, BNS, DSP, AST, BTSND, TPL, BTI, TEX0,
+  BRFNT, BREFT, BRRES / MDL0, J3D BMD / BDL, BMG, MSBT, BRLYT / BRLAN, KMP, BREFF, BRSAR / RWAR, BNR, WIBN, Retro TXTR,
+  Yaz0 / Yay0, ASH0, LZ10 / LZ11, Huffman, run length, LZH8, GFA, CCF, Brawl PAC, RARC, and GameCube / Wii disc images
+  (ISO, WBFS, CISO), and file-type detection.
+* **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **Priiloader** (DacoTaco) — the magic words it reads at `0x8132FFFB` on the way out ("Daco" for its menu, "Pune" for the Wii
   Menu), and how it's spotted in the Wii Menu's content folder. **BootMii** (Team Twiizers) — booted by reloading IOS 254.
-* **SNTP** (RFC 4330) and WiiBrew's **SYSCONF** page (the `IPL.CB` clock bias) — setting the clock from the internet.
-* **dvdisaster** — the disc dumper's spiral map of what was read, good and bad.
+* **[QuickLZ](http://www.quicklz.com/)** by Lasse Mikkel Reinhold (GPL) — `source/qlz.c` decodes the 1.4.0 (level 3) and 1.20
+  streams the way its reference decoders do, with byte-order-independent reads; the version test follows nintoolbox's `lib-quicklz.c`.
+* **[RiftWii](https://github.com/KakarottoCake/RiftWii)** by KakarottoCake — the design of the RVZ / WIA reader (the disc outside partitions read by disc offset, partition data read decrypted without hashes, the last group kept decoded). No code is taken from it; the reader in `source/rvz.c` is written from **Dolphin**'s `docs/WiaAndRvz.md` format description.
+* **SaveGame Manager GX** (Dolphin's `WiiSave` code is the reference used for the `data.bin` format) and the **Dolphin** `IOSC` sources — the fixed SD-card key / IV and the Wii common keys.
+* **[SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx)** (GPL-2.0-or-later), **[GCMM](https://github.com/suloku/gcmm)**
+  (GPL-2.0-or-later) and **[rom-properties](https://github.com/GerbilSoft/rom-properties)** by GerbilSoft (GPL-2.0-or-later) —
+  references for the save manager: the Wii `banner.bin` and GameCube `.gci` icon and banner formats. The code is GodModeWii's own.
+* **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **ShowMiiWads** (Leathl) and **NUSD** — what the title info screen lists for WADs, TMDs and tickets.
-* **GodMode9**'s write permission colours (green, yellow, orange, red) — the level tag on the top bar.
+* **SNTP** (RFC 4330) and WiiBrew's **SYSCONF** page (the `IPL.CB` clock bias) — setting the clock from the internet.
+* **[The Homebrew Channel](https://github.com/fail0verflow/hbc)** (fail0verflow; with **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)**)
+  — the Wiiload protocol (network and USB Gecko) and which drives and partitions it loads apps from, for Wiiload's warning.
+* **ThemeMii** — the `.mym` theme format that the theme installer converts.
+* **USB Loader GX** — starting a title by ID, the newest first, which the launcher does the same way; and its **anti-002**
+  patch, the instruction pattern the app booter (`appboot/source/loader.c`) turns into a branch so development console programs
+  don't stop with Error 002.
+* **[vffmod](https://github.com/wii-tools/vffmod)** (wii-tools) and **[vffdump.py](https://marcan.st/transf/vffdump.py)** by marcan — the VFF layout.
+* **[VGMTrans](https://github.com/vgmtrans/vgmtrans)** (zlib license) — the BRSAR / RSEQ / RBNK / RWAR layouts and NW4R envelope tables that `source/seqsynth.c` plays sequences with.
+* **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
+* **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.
+* **[WiiBrew](https://wiibrew.org/)** — Hollywood register / GPIO documentation and the SEEPROM layout used for the SEEPROM reader.
+* **[xyzzy-mod](https://github.com/DarkMatterCore/xyzzy-mod)** by DarkMatterCore (building on Xyzzy by bushing, libOTP / libSEEPROM by joedj and MINI by Sven Peter, Haxx Enterprises,
+  Hector Martin and John Kelley) — the key set, file names and `keys.txt` / `bootmii_keys.bin` formats of the Console Keys drive, and the proven
+  OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
+* **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader Wii Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
 
 ## Inspiration
 
-* **[MoonCalc](https://www.gamebrew.org/wiki/MoonCalc)** and **Morning Timer** (for MoonShell) — the calculator and the alarm clock.
-* **Terminal** on macOS — the default profiles the themes follow.
-* **[RGD SDBoot Installer](https://github.com/RedBeesRGD/rgdboot-installer)** by root1024, DeadlyFoez, RedBees and others — how boot1's revision and each boot2 copy are recognised, and where the SEEPROM keeps boot2's counters (*Console*, `source/nanddump.c`, `source/sysinfo.c`); facts only, none of its AGPL code.
-* **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)** by Monsterray — the Homebrew Channel that *Console* installs from its releases.
+* **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.
 * **[GodMode9](https://github.com/d0k3/GodMode9)** by d0k3 — the look, feel and workflow this tool is modeled on.
 * **[GodMode9i](https://github.com/DS-Homebrew/GodMode9i)** by the DS-Homebrew team — the DSi / DS take on the same idea.
-* **[ftpii](https://code.google.com/p/ftpii/source/list)** by Joseph Jordan and contributors — the Wii FTP server whose idea the built-in FTP server takes further.
-* **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
+* **[HBC Reborn](https://github.com/Monsterray/hbc-reborn)** by Monsterray — the Homebrew Channel that *Console* installs from its releases.
+* **[MoonCalc](https://www.gamebrew.org/wiki/MoonCalc)** and **Morning Timer** (for MoonShell) — the calculator and the alarm clock.
+* **[RGD SDBoot Installer](https://github.com/RedBeesRGD/rgdboot-installer)** by root1024, DeadlyFoez, RedBees and others — how boot1's revision and each boot2 copy are recognised, and where the SEEPROM keeps boot2's counters (*Console*, `source/nanddump.c`, `source/sysinfo.c`); facts only, none of its AGPL code.
+* **Terminal** on macOS — the default profiles the themes follow.
 * The **Dolphin** team, for the emulator used during development.
+* **[WiiXplorer](https://github.com/niuus/wiixplorer)** by Dimok and contributors, and the niuus fork — the Wii file-manager reference.
 
 ## License notes
 
@@ -182,9 +182,9 @@ GodModeWii is GPL-3.0-or-later. What that means for the parts above:
   all combine under GPL-3.0-or-later.
 * Separate programs GodModeWii carries and starts keep their own license, with their source in this repository: TinyLoad
   (`tinyload/`, GPL-2.0), the nanddumper@IOS stages (`nanddumper/`, GPL-2.0) and the app booter (`appboot/`, GPL-2.0).
-* The IOS patcher (`source/iospatch.c`) was rewritten as GodModeWii's own code; it no longer includes libruntimeiospatch,
-  whose files are GPL "version 2.0" only.
 * `source/wadinstall.c` and `source/launch.c` (YAWM ModMii Edition), `source/nanddump.c` (nanddumper@IOS) and
   `source/theme.c` (csm-installer) are ports of projects that ship the GPL-2.0 text without naming a version in those
   files; under GPL-2.0 §9 a program that names no version may be used under any version. Their authors have been credited
   above, and are welcome to ask for a change.
+* The IOS patcher (`source/iospatch.c`) was rewritten as GodModeWii's own code; it no longer includes libruntimeiospatch,
+  whose files are GPL "version 2.0" only.
