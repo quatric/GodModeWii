@@ -1266,7 +1266,7 @@ void ui_saver_draw(void)
     struct tm tmv;
     char clock[24] = "";
     if (t >= 1000000000 && localtime_r(&t, &tmv))
-        strftime(clock, sizeof(clock), "%I:%M:%S %p", &tmv);
+        strftime(clock, sizeof(clock), "%I:%M %p", &tmv);
     ui_bg(C_BLACK);
     ui_color(box_color, true);
     goto_raw(box_r, box_c);     fputs("+----------------+", stdout);

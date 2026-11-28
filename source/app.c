@@ -30,6 +30,7 @@
 #include "filetools.h"
 #include "favorites.h"
 #include "search.h"
+#include "mime.h"
 #include "zipwrite.h"
 #include "sntp.h"
 #include "editor.h"
@@ -200,10 +201,6 @@ static int clock_minute(char *out, size_t n)
     return tmv.tm_hour * 60 + tmv.tm_min;
 }
 
-/* Write permission levels, the GodMode9 way, shown by the colour of the tag on the right (the bar keeps the
- * theme's colour):  green  SAFE: the NAND is read-only;  yellow  UNLOCKED: NAND files can change (never the ones
- * that would brick, see risk.c);  magenta  CONSOLE DATA: unlocked, and here is data only this Wii has (keys,
- * SEEPROM, setting.txt, SYSCONF, /sys);  red  FORCED: Risky Mode always on, nothing asks first. */
 static void level_tag(char *out, size_t n, int *color)
 {
     int dev = cwd[0] ? vfs_dev_of(cwd) : -1;
@@ -709,7 +706,32 @@ static void textview(const char *path)
         return;
     }
 
+    if (mime_is(buf, got)) {                    /* a mail (the Wii Message Board's, an .eml): decoded */
+        size_t ml;
+        char *m = mime_render(buf, got, &ml);
+        if (m) {
+            free(buf);
+            text_show(vfs_basename(path), (u8 *)m, (u32)ml, ml, truncated);
+            return;
+        }
+    }
     text_show(vfs_basename(path), buf, got, f.size, truncated);
+}
+
+#ifdef GMW_AUTOTEST
+void app_textview_autotest(const char *path) { textview(path); }   /* "@text PATH" */
+#endif
+
+/* A mail by its extension, or by its first bytes (MIME headers). */
+static bool mail_file(const char *path, const char *name)
+{
+    if (arc_name_has_ext(name, ".eml") || arc_name_has_ext(name, ".msg")) return true;
+    vfs_file f;
+    if (!vfs_open_read(&f, path)) return false;
+    static u8 head[4096];
+    s32 n = vfs_read(&f, head, sizeof(head));
+    vfs_close(&f);
+    return n > 0 && mime_is(head, (size_t)n);
 }
 
 /* Shows (and frees) a text buffer: also used by the BMG viewer. */
@@ -2318,8 +2340,8 @@ int app_run(void)
                         ;
                     else if (joined && arcfs_can_open(path))
                         open_archive(en);
-                    else if (joined && arc_name_has_ext(en->name, ".txt"))
-                        textview(path);         /* PDF pages, logs, readmes */
+                    else if (joined && (arc_name_has_ext(en->name, ".txt") || mail_file(path, en->name)))
+                        textview(path);         /* PDF pages, logs, readmes, mail */
                     else
                         actions_menu();
                     if (launch_requested)

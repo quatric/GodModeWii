@@ -471,6 +471,11 @@ int main(int argc, char **argv)
                 hbcreborn_autotest(line + 11);
                 continue;
             }
+            if (!strncmp(line, "@text ", 6)) {
+                extern void app_textview_autotest(const char *path);
+                app_textview_autotest(line + 6);
+                continue;
+            }
             /* one wiiload upload (sent from the PC), logged */
             if (!strcmp(line, "@wiiload")) {
                 extern bool wiiload_run(char *launch, size_t launchsz);
