@@ -813,7 +813,7 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
     fmt_time(t2, sizeof(t2), s->total, s->rate);
     fmt_time(t3, sizeof(t3), s->loop_start, s->rate);
     ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
-             s->loop ? (loop ? "" : "(loop off)") : loop ? "(repeat)" : "");
+             s->loop ? (loop ? "" : "(loop off)") : loop ? "(looping)" : "");
     if (s->loop)
         ui_field(8, 2, cols - 4, "Loops back to %s", t3);
 
@@ -821,7 +821,7 @@ static void draw(const snd_t *s, const char *name, u32 played, bool paused, bool
     ui_bar(10, 2, cols - 6, pct, C_GREEN);
 
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Loop on/off%s",
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Loop%s",
              s->nch > 2 ? "  +/- Channels" : "");
     ui_reset();
 }
@@ -1242,7 +1242,7 @@ static void draw_gen(const gen_info *in, const char *name, u64 played, bool paus
     if (in->total) fmt_time(t2, sizeof(t2), (u32)in->total, in->rate);
     else snprintf(t2, sizeof(t2), "--:--");
     ui_field(7, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
-             repeat ? "(repeat)" : "");
+             repeat ? "(looping)" : "");
 
     if (in->total) {
         int pct = (int)(played * 100 / in->total);
@@ -1250,7 +1250,7 @@ static void draw_gen(const gen_info *in, const char *name, u64 played, bool paus
     }
 
     ui_color(C_CYAN, true);
-    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Repeat  Left/Right Rewind/Forward%s",
+    ui_field(rows - 2, 1, cols - 2, "A Pause  B Stop  1 Loop  Left/Right Rewind/Forward%s",
              in->channels > 2 ? "  +/- Channels" : "");
     ui_reset();
 }
@@ -1424,7 +1424,7 @@ static bool seq_rd(void *ctx, uint64_t off, void *buf, uint32_t len)
 }
 
 enum { SEQ_LOOP, SEQ_REPEAT, SEQ_ONCE };
-static const char *const SEQ_MODE[] = { "(loop)", "(repeat)", "(once, then fade)" };
+static const char *const SEQ_MODE[] = { "(loop)", "(looping)", "(once, then fade)" };
 
 static void draw_seq(seq_t *sq, const char *name, bool paused, int mode, bool full, int sel,
                      u32 muted)
@@ -1737,7 +1737,7 @@ static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, boo
     fmt_time(t1, sizeof(t1), (u32)(m->frames / MIDI_RATE), 1);
     fmt_time(t2, sizeof(t2), m->len_ms / 1000, 1);
     ui_field(6, 2, cols - 4, "%s  %s / %s   %s", paused ? "PAUSED " : "PLAYING", t1, t2,
-             repeat ? "(repeat)" : "");
+             repeat ? "(looping)" : "");
 
     int top = 8, n = 16;
     if (top + n > rows - 3) n = rows - 3 - top;
@@ -1764,7 +1764,7 @@ static void draw_midi(midi_t *m, const char *name, bool paused, bool repeat, boo
 
     ui_color(C_CYAN, true);
     ui_field(rows - 2, 1, cols - 2,
-             "Up/Down Ch  A On/Off  2 Solo  - All on  + Pause  1 Repeat  B Stop");
+             "Up/Down Ch  A On/Off  2 Solo  - All on  + Pause  1 Loop  B Stop");
     ui_reset();
 }
 
