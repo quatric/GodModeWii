@@ -48,11 +48,12 @@ jobs:
       - name: Build
         run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1 WITH_DVDCSS=1
 
-      - name: Build the IR remote list (irdb.dat) from Flipper-IRDB
+      - name: Build the IR remote list (irdb.dat) from the Logitech Harmony IR archive
         run: |
-          apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev zlib1g-dev >/dev/null
-          git clone -q --depth 1 https://github.com/Lucaslhm/Flipper-IRDB irdb-src
-          make -C libwiiir irdb IRDB=$PWD/irdb-src
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 git ca-certificates >/dev/null
+          git clone -q --depth 1 https://github.com/pickysysadmin/logitech-harmony-ir-archive irdb-src
+          make -C libwiiir irdb HARMONY=$PWD/irdb-src
+          rm -rf irdb-src
 
       - name: Package for the Homebrew Channel
         run: |

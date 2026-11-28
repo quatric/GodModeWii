@@ -161,7 +161,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
-* IR remote: TV, receiver and set-top box codes from the sensor bar (Flipper-IRDB's remotes), on any controller's buttons, in named
+* IR remote: TV, receiver and set-top box codes from the sensor bar (the Logitech Harmony archive's 259,000 remotes, with search), on any controller's buttons, in named
   presets, sent with OptimizeIR's timing; several presets can be deleted at once
 * Set the clock from the internet (SNTP), with the time zone guessed and adjustable
 * Boot BootMii or Priiloader's menu, or go straight to the Wii Menu, when they're installed
@@ -537,7 +537,7 @@ in [docs/CREDITS.md](docs/CREDITS.md).
 * [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
 * TiVo: the easter-egg interface sounds
 * [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema
-* [Flipper-IRDB](https://github.com/Lucaslhm/Flipper-IRDB) (CC0): the IR remote's device list, as `irdb.dat`
+* [Logitech Harmony IR archive](https://github.com/pickysysadmin/logitech-harmony-ir-archive) (CC0): the IR remote's device list, as `irdb.dat`
 * [GlowWii](https://github.com/larsenv/GlowWii) (larsenv): the disc slot light, and the controller input layer
 * [PictoCard](https://github.com/larsenv/PictoCard-Client) (larsenv): the sketchpad's palette, brushes and tools
 * [YAWM ModMii Edition](https://github.com/modmii/YAWM-ModMii-Edition) (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak): the WAD installer, brick checks and the `.dol` / `.elf` launcher

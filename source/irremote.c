@@ -6,7 +6,7 @@
  * The same file is in GodModeWii and GodModeU.
  *
  * Presets live in <app folder>/ir_presets.txt; the remotes come from
- * irdb.dat (Flipper-IRDB) and irdb_custom.xml (the user's own, written as a
+ * irdb.dat (the Logitech Harmony IR archive) and irdb_custom.xml (the user's own, written as a
  * commented template the first time).
  *
  * No sounds play here: any sound still playing is stopped before a code is
@@ -408,11 +408,12 @@ static int search_device(void)
     int nw = 0;
     snprintf(words, sizeof(words), "%s", text);
     for (char *t = strtok(words, " "); t && nw < 8; t = strtok(NULL, " ")) w[nw++] = t;
-    int *idx = malloc(db.count * sizeof *idx);
-    char (*dl)[112] = malloc(db.count * sizeof *dl);
-    const char **di = malloc(db.count * sizeof *di);
+    enum { FOUND_MAX = 1000 };
+    int *idx = malloc(FOUND_MAX * sizeof *idx);
+    char (*dl)[112] = malloc(FOUND_MAX * sizeof *dl);
+    const char **di = malloc(FOUND_MAX * sizeof *di);
     int nd = 0;
-    for (size_t i = 0; idx && dl && di && i < db.count; i++) {
+    for (size_t i = 0; idx && dl && di && i < db.count && nd < FOUND_MAX; i++) {
         const ir_db_device *d = &db.devices[i];
         int k = 0;
         while (k < nw && (has_text(d->manufacturer, w[k]) || has_text(d->name, w[k]) || has_text(d->category, w[k]))) k++;
@@ -428,7 +429,7 @@ static int search_device(void)
         ui_message("FIND A REMOTE", C_YELLOW, "No remote in the list matches that.");
     } else {
         char title[80];
-        snprintf(title, sizeof title, "FOUND %d: %s", nd, text);
+        snprintf(title, sizeof title, nd >= FOUND_MAX ? "FOUND %d+ (be more exact): %s" : "FOUND %d: %s", nd, text);
         ui_clear();
         int d = ui_menu(title, di, NULL, nd, 0);
         if (d >= 0) pick = idx[d];
@@ -483,6 +484,8 @@ static int pick_device(void)
             for (size_t i = 0; makers && i < db.count; i++) {
                 if (db.devices[i].category != cat)
                     continue;
+                if (nm && !strcasecmp(makers[nm - 1], db.devices[i].manufacturer))
+                    continue;                   /* the list is sorted by maker: most repeats are the last one */
                 int k = 0;
                 while (k < nm && strcasecmp(makers[k], db.devices[i].manufacturer))
                     k++;
@@ -502,11 +505,14 @@ static int pick_device(void)
                 break;
 
             /* its devices */
-            int *idx = malloc(db.count * sizeof *idx);
-            char (*dl)[96] = malloc(db.count * sizeof *dl);
-            const char **di = malloc(db.count * sizeof *di);
+            size_t many = 0;
+            for (size_t i = 0; i < db.count; i++)
+                many += db.devices[i].category == cat && !strcasecmp(db.devices[i].manufacturer, maker);
+            int *idx = malloc((many + 1) * sizeof *idx);
+            char (*dl)[96] = malloc((many + 1) * sizeof *dl);
+            const char **di = malloc((many + 1) * sizeof *di);
             int nd = 0;
-            for (size_t i = 0; idx && dl && di && i < db.count; i++) {
+            for (size_t i = 0; idx && dl && di && i < db.count && (size_t)nd < many; i++) {
                 const ir_db_device *d = &db.devices[i];
                 if (d->category != cat || strcasecmp(d->manufacturer, maker))
                     continue;
@@ -1200,7 +1206,7 @@ bool irremote_shortcut_held(void)
 }
 
 #ifdef GMW_AUTOTEST
-/* "@irremote" (test builds): every device of irdb.dat read and encoded, a timed send of a NEC and an RC6
+/* "@irremote" (test builds): devices of irdb.dat read and encoded (every 64th), a timed send of a NEC and an RC6
  * code, and the remote's screen for the first preset, saved like a viewer's. Results in sd:/gmwtest.log. */
 void irremote_autotest(void)
 {
@@ -1213,7 +1219,8 @@ void irremote_autotest(void)
     int added = IR_DbAdd(&db, APP_DIR "/irdb.dat");
     u64 t1 = now_ms();
     size_t buttons = 0, bad = 0, unencodable = 0;
-    for (size_t i = 0; i < db.count; i++) {
+    size_t step = db.count > 20000 ? 64 : 1, loaded = 0;
+    for (size_t i = 0; i < db.count; i += step, loaded++) {
         ir_remote r;
         if (IR_DbLoad(&db, i, &r) || r.count != db.devices[i].buttons) {
             bad++;
@@ -1230,9 +1237,9 @@ void irremote_autotest(void)
         IR_FreeRemote(&r);
     }
     u64 t2 = now_ms();
-    fprintf(lg, "irremote db %d devices %u buttons %u bad %u unencodable %u index_ms %u load_all_ms %u\n", added,
-            (unsigned)db.count, (unsigned)buttons, (unsigned)bad, (unsigned)unencodable, (unsigned)(t1 - t0),
-            (unsigned)(t2 - t1));
+    fprintf(lg, "irremote db %d devices %u loaded %u buttons %u bad %u unencodable %u index_ms %u load_ms %u\n",
+            added, (unsigned)db.count, (unsigned)loaded, (unsigned)buttons, (unsigned)bad, (unsigned)unencodable,
+            (unsigned)(t1 - t0), (unsigned)(t2 - t1));
 
     u64 s0 = now_ms();
     int nec = IR_SendCode(IR_PROTO_NEC, 0x04, 0x08);

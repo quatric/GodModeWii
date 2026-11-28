@@ -945,7 +945,7 @@ static void show_credits(void)
 
         "Controllers: libwiiinput, with Nintendont's controller.ini layouts (FIX94 and contributors), wup-028-bslug "
         "(Alex Chadwick) and RiftWii's HID and queue code; libwiidrc and libwupc (FIX94), libsicksaxis (xerpi).\n\n"
-        "IR remote: WiiIR, SingIR and OptimizeIR (Dakota Thorpe) through libwiiir, Flipper-IRDB's remotes. Disc slot "
+        "IR remote: WiiIR, SingIR and OptimizeIR (Dakota Thorpe) through libwiiir; remotes from the Logitech Harmony IR archive. Disc slot "
         "light: GlowWii. Sketchpad tools: PictoCard. Updates and downloads: libwiiupdate, with Mbed TLS and miniz. The "
         "small boot.dol: dolxz (FIX94).",
 

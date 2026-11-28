@@ -1,0 +1,12 @@
+libwiiir / libwiiuir
+Copyright 2026 quatric
+
+Based on WiiIR (https://github.com/dakotath/WiiIR) by Dakota Thorpe,
+used here with permission.
+Copyright 2025 Dakota Thorpe
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Protocol bit layouts and timings follow Flipper Zero's infrared app so that
+Flipper-IRDB (https://github.com/Lucaslhm/Flipper-IRDB) files can be used as
+they are. No Flipper Zero firmware code is included.
