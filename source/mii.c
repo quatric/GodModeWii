@@ -23,6 +23,7 @@
 #include "miiimport.h"
 #include "miikit/mii.h"
 #include "qrcodegen.h"
+#include "mii3ds.h"
 #include "pda.h"
 
 #define RFL_PATH  "nand:/shared2/menu/FaceLib/RFL_DB.dat"
@@ -386,12 +387,15 @@ static void export(int dev, int only)
 
 #define QR_QUIET 4                      /* the white border a reader needs, in modules */
 
-/* The Mii's 74 bytes (a .miigx) as a QR code; its size in modules, 0 if it didn't fit. */
+/* The Mii as the QR code a 3DS or Wii U's Mii Maker scans (converted to their format and encrypted); its size in
+ * modules, 0 if it didn't fit. */
 static int mii_qr(const u8 *rec, u8 qr[qrcodegen_BUFFER_LEN_MAX])
 {
     static u8 tmp[qrcodegen_BUFFER_LEN_MAX];
-    memcpy(tmp, rec, MII_SIZE);
-    if (!qrcodegen_encodeBinary(tmp, MII_SIZE, qr, qrcodegen_Ecc_MEDIUM, qrcodegen_VERSION_MIN,
+    mii m;
+    mii_unpack(rec, &m);
+    mii_qr_payload(&m, tmp);
+    if (!qrcodegen_encodeBinary(tmp, MII3DS_QR_SIZE, qr, qrcodegen_Ecc_MEDIUM, qrcodegen_VERSION_MIN,
                                 qrcodegen_VERSION_MAX, qrcodegen_Mask_AUTO, true))
         return 0;
     return qrcodegen_getSize(qr);
@@ -420,7 +424,7 @@ static void qr_show(const mii_t *m)
     ui_field(0, 0, cols - 1, " QR CODE  %s", m->name);
     ui_reset();
     ui_color(C_CYAN, true);
-    ui_field(ui_rows() - 2, 1, cols - 2, "The Mii's 74 bytes (.miigx)   B Back");
+    ui_field(ui_rows() - 2, 1, cols - 2, "Scan with Mii Maker on a 3DS or Wii U   B Back");
     ui_reset();
     ui_blit_rgba(cell_x(cols / 2) - side * scale / 2, cell_y(2), rgba, side, side, scale);
     free(rgba);
