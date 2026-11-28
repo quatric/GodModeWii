@@ -1746,6 +1746,8 @@ static bool system_menu(void)
         M_MEMOS,
         M_IR,
         M_SFX,
+        M_SAVER,
+        M_SAVER_NOW,
         M_LIGHT,
         M_ALARM,
         M_CALC,
@@ -1796,7 +1798,7 @@ static bool system_menu(void)
         int g = gr - (glock >= 0 ? 1 : 0) - (gfav >= 0 ? 1 : 0);
         if (gr == glock) g = -1;
 
-        char theme_item[48];
+        char theme_item[48], saver_item[56];
         const char *items[32];
         int code[32];
         int n = 0;
@@ -1838,6 +1840,10 @@ static bool system_menu(void)
             ITEM(sfx_enabled() ? "Sound effects: ON (select to turn off)" : "Sound effects: OFF (select to turn on)", M_SFX);
             ITEM(wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
                                     : "Disc slot light: OFF (select to turn on)", M_LIGHT);
+            if (ui_saver_minutes()) snprintf(saver_item, sizeof(saver_item), "Screensaver: after %d min (select to change)", ui_saver_minutes());
+            else snprintf(saver_item, sizeof(saver_item), "Screensaver: off (select to change)");
+            ITEM(saver_item, M_SAVER);
+            ITEM("Show the screensaver now", M_SAVER_NOW);
             ITEM(input_console_mode() == 1 ? "Console buttons work the menus: always"
                  : input_console_mode() == 2 ? "Console buttons work the menus: off"
                  : "Console buttons work the menus: with no controller", M_CONBTN);
@@ -1941,6 +1947,17 @@ static bool system_menu(void)
         case M_IR:
             irremote_run(false);
             reload_keep_safe();
+            return false;
+        case M_SAVER: {
+            static const int MIN[] = { 5, 10, 30, 0, 1, 2 };
+            int k = 0;
+            while (k < 6 && MIN[k] != ui_saver_minutes()) k++;
+            ui_saver_set_minutes(MIN[(k + 1) % 6]);
+            status(C_GREEN, ui_saver_minutes() ? "Screensaver set (saved on the card)." : "Screensaver off (saved on the card).");
+            return false;
+        }
+        case M_SAVER_NOW:
+            ui_saver_start();
             return false;
         case M_SFX:
             sfx_set_enabled(!sfx_enabled());      /* saved on the card (sd:/apps/GodModeWii/sfx_off) */

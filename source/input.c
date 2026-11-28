@@ -114,6 +114,7 @@ static u32 shot_combo(u32 down)
 static u32 detect(u8 DownOrHeld, bool wait)
 {
     ptr_overlay_update();                           /* an arrow taken away by a redraw is back before the next frame */
+    ui_saver_draw();
     if (wait)
         VIDEO_WaitVSync();
     ui_flip();
@@ -123,10 +124,12 @@ static u32 detect(u8 DownOrHeld, bool wait)
     ui_hint_update();
     ptr_overlay_update();
     alarm_poll();
+    u32 down = INPUT_ButtonsDown();
+    if (DownOrHeld == IN_DOWN && conbtn_mode != 2) down |= console_buttons();
+    if (ui_saver_input(down || INPUT_ButtonsHeld() || (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT)))
+        return 0;                                   /* shortcut: pointing alone doesn't count as activity */
     if (DownOrHeld != IN_DOWN)
         return INPUT_ButtonsHeld();
-    u32 down = INPUT_ButtonsDown();
-    if (conbtn_mode != 2) down |= console_buttons();
     down = shot_combo(down);
     /* a click on a footer hint ("B Stop") is that button */
     u32 hint = ui_hint_under();

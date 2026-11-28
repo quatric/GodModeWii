@@ -91,4 +91,13 @@ bool ui_test_dump(void);
 #define UI_TEST_SHOT() do { } while (0)
 #endif
 
+/* The screensaver: on after ui_saver_minutes() idle minutes (0: never by itself), or now with ui_saver_start. */
+void ui_saver_load(void);
+int ui_saver_minutes(void);
+void ui_saver_set_minutes(int m);
+void ui_saver_start(void);
+bool ui_saver_active(void);
+void ui_saver_draw(void);                /* input.c: before each flip */
+bool ui_saver_input(bool activity);      /* input.c: after each poll; true swallows it */
+
 #endif

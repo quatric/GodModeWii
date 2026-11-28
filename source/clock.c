@@ -157,7 +157,7 @@ void clock_run(void)
             ui_field(0, 1, ui_cols() - 2, "Clock");
             ui_reset();
             ui_color(C_CYAN, true);
-            ui_field(ui_rows() - 2, 1, ui_cols() - 2, "Left/Right Month  A Today  B Back");
+            ui_field(ui_rows() - 2, 1, ui_cols() - 2, "Left/Right or -/+ Month  A Today  B Back");
             ui_reset();
             if (!view_year) {
                 view_year = now.tm_year + 1900;
@@ -180,11 +180,11 @@ void clock_run(void)
 
         u32 p = input_pressed() | ptr_ui_buttons();
         if (p & (WPAD_BUTTON_B | WPAD_BUTTON_HOME)) break;
-        if (p & WPAD_BUTTON_LEFT) {
+        if (p & (WPAD_BUTTON_LEFT | WPAD_BUTTON_MINUS)) {
             if (--view_mon < 0) { view_mon = 11; view_year--; }
             draw_calendar(view_year, view_mon, ok ? &now : NULL);
         }
-        if (p & WPAD_BUTTON_RIGHT) {
+        if (p & (WPAD_BUTTON_RIGHT | WPAD_BUTTON_PLUS)) {
             if (++view_mon > 11) { view_mon = 0; view_year++; }
             draw_calendar(view_year, view_mon, ok ? &now : NULL);
         }

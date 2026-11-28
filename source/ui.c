@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <malloc.h>
 #include <unistd.h>
+#include <time.h>
+#include <sys/stat.h>
 
 #include <ogc/lwp_watchdog.h>
 #include <ogc/libversion.h>
@@ -1137,3 +1139,152 @@ bool ui_screenshot(char *out, size_t n)
     return ok;
 }
 
+
+/* ---------------------------------------------------------------- the screensaver
+ * After a few idle minutes (Settings), text rain with the name and the time bouncing over it. Drawn into the back
+ * buffer at each input poll, so the screen underneath keeps running (music keeps playing); the first press only
+ * wakes it, and the screen comes back exactly as it was (its pixels, the draw cache and the footer hints). */
+#define SAVER_SETTING "sd:/apps/GodModeWii/screensaver"
+#define SAVER_NAME "GodModeWii"
+#define SAVER_DROPS 40
+static int saver_min = 5;                     /* 0: never by itself */
+static bool saver_on;
+static u64 saver_idle_since, saver_frame;
+static u8 *saver_fb;
+static struct { short row, col, width; u32 hash, gen; } saver_fcache[FCACHE];
+static u32 saver_row_gen[64];
+static struct { bool on; int col; int fg; bool bold; char text[120]; } saver_hint[2];
+static struct { int col, y16, speed; char ch[8]; } drop[SAVER_DROPS];
+static int box_r, box_c, box_dr = 1, box_dc = 1, box_color = C_CYAN;
+static u32 saver_seed = 0x1234567;
+
+static u32 saver_rand(void) { saver_seed = saver_seed * 1103515245u + 12345u; return saver_seed >> 8; }
+static u64 saver_now(void) { return ticks_to_millisecs(gettime()); }
+static char saver_char(void) { static const char s[] = "0123456789ABCDEF<>#$%&*+=?@"; return s[saver_rand() % (sizeof(s) - 1)]; }
+
+static void drop_reset(int i, bool anywhere)
+{
+    drop[i].col = saver_rand() % g_cols;
+    drop[i].y16 = anywhere ? (int)(saver_rand() % (g_rows * 16)) : -(int)(saver_rand() % (g_rows * 16));
+    drop[i].speed = 3 + saver_rand() % 9;
+    for (int k = 0; k < 8; k++) drop[i].ch[k] = saver_char();
+}
+
+void ui_saver_load(void)
+{
+    FILE *f = fopen(SAVER_SETTING, "r");
+    int m;
+    if (f && fscanf(f, "%d", &m) == 1 && m >= 0 && m <= 60) saver_min = m;
+    if (f) fclose(f);
+    saver_idle_since = saver_now();
+}
+
+int ui_saver_minutes(void) { return saver_min; }
+
+void ui_saver_set_minutes(int m)
+{
+    saver_min = m;
+    mkdir("sd:/apps", 0777);
+    mkdir("sd:/apps/GodModeWii", 0777);
+    FILE *f = fopen(SAVER_SETTING, "w");
+    if (f) { fprintf(f, "%d\n", m); fclose(f); }
+}
+
+static bool saver_pending;
+void ui_saver_start(void) { saver_pending = true; }   /* at the next idle poll, once the screen has drawn itself */
+
+static void saver_begin(void)
+{
+    saver_pending = false;
+    if (saver_on || !xfb) return;
+    saver_fb = malloc(fb_bytes);
+    if (saver_fb) {
+        DCInvalidateRange(MEM_K1_TO_K0(xfb), fb_bytes);
+        memcpy(saver_fb, MEM_K1_TO_K0(xfb), fb_bytes);
+    }
+    memcpy(saver_fcache, fcache, sizeof(fcache));
+    memcpy(saver_row_gen, row_gen, sizeof(row_gen));
+    memcpy(saver_hint, hint, sizeof(hint));
+    saver_seed ^= (u32)gettime();
+    for (int i = 0; i < SAVER_DROPS; i++) drop_reset(i, true);
+    box_r = 1 + saver_rand() % (g_rows - 6);
+    box_c = 1 + saver_rand() % (g_cols - 20);
+    saver_frame = 0;
+    saver_on = true;
+}
+
+static void saver_stop(void)
+{
+    saver_on = false;
+    if (saver_fb) {
+        memcpy(MEM_K1_TO_K0(xfb), saver_fb, fb_bytes);
+        DCFlushRange(MEM_K1_TO_K0(xfb), fb_bytes);
+        free(saver_fb);
+        saver_fb = NULL;
+    }
+    memcpy(fcache, saver_fcache, sizeof(fcache));
+    memcpy(row_gen, saver_row_gen, sizeof(row_gen));
+    memcpy(hint, saver_hint, sizeof(hint));
+    if (!saver_fb) for (int i = 0; i < 64; i++) row_gen[i]++;   /* nothing kept: let the screen draw itself again */
+    cur_bg = -1;
+    printf("\x1b[0m");
+}
+
+bool ui_saver_active(void) { return saver_on; }
+
+/* Before each flip: the next frame. */
+void ui_saver_draw(void)
+{
+    if (!saver_on) return;
+    saver_frame++;
+    VIDEO_ClearFrameBuffer(rmode, xfb, COLOR_BLACK);
+    memset(fcache, 0, sizeof(fcache));
+    cur_bg = -1;
+    printf("\x1b[0m\x1b[2J");
+    char one[2] = { 0, 0 };
+    for (int i = 0; i < SAVER_DROPS; i++) {
+        drop[i].y16 += drop[i].speed;
+        int head = drop[i].y16 / 16;
+        if (head - 8 >= g_rows) drop_reset(i, false);
+        if (!(saver_rand() % 6)) drop[i].ch[saver_rand() % 8] = saver_char();
+        for (int k = 0; k < 8; k++) {
+            int r = head - k;
+            if (r < 0 || r >= g_rows) continue;
+            ui_color(k == 0 ? C_WHITE : C_GREEN, k < 4);
+            one[0] = drop[i].ch[k];
+            goto_raw(r, drop[i].col);
+            fputs(one, stdout);
+        }
+    }
+    if (saver_frame % 6 == 0) {                   /* the box drifts and turns another colour at each wall */
+        box_r += box_dr;
+        box_c += box_dc;
+        if (box_r <= 0 || box_r >= g_rows - 5) { box_dr = -box_dr; box_color = 1 + (box_color % 6); }
+        if (box_c <= 0 || box_c >= g_cols - 18) { box_dc = -box_dc; box_color = 1 + (box_color % 6); }
+    }
+    time_t t = time(NULL);
+    struct tm tmv;
+    char clock[24] = "";
+    if (t >= 1000000000 && localtime_r(&t, &tmv))
+        strftime(clock, sizeof(clock), "%I:%M:%S %p", &tmv);
+    ui_bg(C_BLACK);
+    ui_color(box_color, true);
+    goto_raw(box_r, box_c);     fputs("+----------------+", stdout);
+    goto_raw(box_r + 1, box_c); printf("|%*s%-*s|", (16 - (int)strlen(SAVER_NAME)) / 2, "", 16 - (16 - (int)strlen(SAVER_NAME)) / 2, SAVER_NAME);
+    goto_raw(box_r + 2, box_c); printf("|%*s%-*s|", (16 - (int)strlen(clock)) / 2, "", 16 - (16 - (int)strlen(clock)) / 2, clock);
+    goto_raw(box_r + 3, box_c); fputs("+----------------+", stdout);
+    ui_reset();
+}
+
+/* After each input poll. True: swallow this poll (the press only woke the screen up). */
+bool ui_saver_input(bool activity)
+{
+    u64 now = saver_now();
+    if (activity) {
+        saver_idle_since = now;
+        if (saver_on) { saver_stop(); return true; }
+        return false;
+    }
+    if (!saver_on && (saver_pending || (saver_min && now - saver_idle_since >= (u64)saver_min * 60000))) saver_begin();
+    return saver_on;
+}

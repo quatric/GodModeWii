@@ -189,6 +189,7 @@ int main(int argc, char **argv)
 
     /* what is kept on the card, now that it's mounted: sounds, light, theme, alarm */
     sfx_load_setting();
+    ui_saver_load();
     input_console_load();
     wiilight_load_setting();
     colors_load();
@@ -347,6 +348,21 @@ int main(int argc, char **argv)
             if (!strcmp(line, "@clock")) {
                 extern void clock_run(void);
                 clock_run();
+                continue;
+            }
+            /* "@saver": a screen, the screensaver over it, and the screen back after a press */
+            if (!strcmp(line, "@saver")) {
+                ui_clear();
+                ui_color(C_YELLOW, true);
+                ui_field(4, 4, 40, "The screen under the screensaver");
+                ui_reset();
+                ui_test_dump();
+                ui_saver_start();
+                for (int i = 0; i < 120; i++) DetectInput(IN_DOWN);
+                ui_test_dump();
+                ui_saver_input(true);
+                DetectInput(IN_DOWN);
+                ui_test_dump();
                 continue;
             }
             if (!strcmp(line, "@draw")) {
