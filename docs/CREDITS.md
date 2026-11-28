@@ -70,8 +70,9 @@
   `scripts/build_exfat_libfat.sh`.
 * **[QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library)** by Project Nayuki (MIT) — the Mii QR
   codes (`source/qrcodegen.c`, `source/qrcodegen.h`).
-* **SingIR** (`SingIR.cpp`) — the IR remote's timing in libwiiir: whole carrier cycles counted from the time base with 24.8
-  fixed-point periods, and a short lead-in before each frame (see libwiiir's `NOTICE`).
+* **OptimizeIR**'s IR blaster and **SingIR** (Dakota Thorpe) — libwiiir's sensor bar transmitter: the frame turned into
+  mark-and-space segments before interrupts go off, whole carrier cycles counted from the time base with 24.8 fixed-point
+  periods, every edge on an absolute deadline, and a short lead-in before each frame (see libwiiir's `NOTICE`).
 * **[devkitPro](https://devkitpro.org/)** — devkitPPC; **[libogc2](https://github.com/extremscorner/libogc2)** (Extrems, from devkitPro's
   libogc: libdi, wiiuse, libwiikeyboard, ISFS, USB storage).
 

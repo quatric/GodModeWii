@@ -162,7 +162,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Sketchpad: draw with the pointer, a mouse, a pen tablet or a uDraw GameTablet
 * Voice memos with a Wii Speak or a USB microphone
 * IR remote: TV, receiver and set-top box codes from the sensor bar (Flipper-IRDB's remotes), on any controller's buttons, in named
-  presets, sent with SingIR's timing; several presets can be deleted at once
+  presets, sent with OptimizeIR's timing; several presets can be deleted at once
 * Set the clock from the internet (SNTP), with the time zone guessed and adjustable
 * Boot BootMii or Priiloader's menu, or go straight to the Wii Menu, when they're installed
 * Screenshots: press **1** and **2** together, saved as PNGs in `GodModeWii/screenshots/`
@@ -532,7 +532,7 @@ calculator and alarm follow its own.
 * [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
 * [CleanRip](https://github.com/emukidid/cleanrip) (emu_kidid) and [spycrab's CleanRip](https://github.com/spycrab/cleanrip): how the disc dumper gets past read errors
 * [QR Code generator library](https://www.nayuki.io/page/qr-code-generator-library) (Project Nayuki, MIT): the Mii QR codes
-* SingIR: the IR remote's carrier timing
+* OptimizeIR and SingIR (Dakota Thorpe): the IR remote's sensor bar transmitter
 * [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx), [GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties): save icon and banner formats for the save manager
 * [libwbfs](https://github.com/kwiirk/wbfs) (Kwiirk, Waninkoko): the WBFS layout
 * [GameTDB](https://www.gametdb.com): box and disc art

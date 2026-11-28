@@ -272,8 +272,8 @@ The menu is in groups: drives and network, discs, saves and backups, console and
 * **Audio player** fast-forward / rewind (WAV, MP3, FLAC, Ogg): Left / Right jump 5 seconds, and held they keep scrubbing.
 * The hints along the bottom of a screen ("A Pause", "B Stop"...) can be clicked with the pointer or mouse.
 * **FTP server**, **FTP install server** and **Wiiload**: see [Network](NETWORK.md).
-* **IR presets** can be deleted several at a time from a checklist. Codes go out with SingIR's timing: whole carrier cycles
-  timed from the time base, so the pulses don't drift.
+* **IR presets** can be deleted several at a time from a checklist. Codes go out the way OptimizeIR's blaster sends them:
+  the frame worked out first, then whole carrier cycles timed from the time base, so the pulses don't drift.
 * **Set the clock from the internet:** asks pool.ntp.org, time.google.com or time.cloudflare.com (SNTP), guesses the time zone
   from the Wii's own clock to the nearest 15 minutes and lets you change it in 30-minute steps, then sets the Wii's clock (the
   `IPL.CB` bias in `SYSCONF`, backed up to `GodModeWii/SYSCONF.bak` first).
