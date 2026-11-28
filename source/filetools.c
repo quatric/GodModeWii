@@ -387,6 +387,8 @@ static void sig_text(strbuf_t *s, const u8 *b, u32 len, const char *what)
 static void tmd_text(strbuf_t *s, const u8 *t, u32 len)
 {
     if (len < 0x1E4) { add(s, "The TMD is too short.\n"); return; }
+    bool wiiu = t[0x180] == 1;              /* version 1: a Wii U TMD, its contents after a 64-entry info table */
+    u32 base = wiiu ? 0xB04 : 0x1E4, rsz = wiiu ? 0x30 : 0x24;
     u64 tid = g64(t + 0x18C), sysver = g64(t + 0x184);
     u16 ver = g16(t + 0x1DC), n = g16(t + 0x1DE);
     char id[40];
@@ -397,24 +399,24 @@ static void tmd_text(strbuf_t *s, const u8 *t, u32 len)
     add(s, "Title ID:     %s\n", id);
     add(s, "Type:         %s\n", type_name((u32)(tid >> 32)));
     add(s, "Version:      %u  (v%u.%u)\n", ver, ver >> 8, ver & 0xFF);
-    if (sysver >> 32 == 1) add(s, "Runs on:      IOS%u\n", (unsigned)(u32)sysver);
+    if (!wiiu && sysver >> 32 == 1) add(s, "Runs on:      IOS%u\n", (unsigned)(u32)sysver);
     else if (sysver) add(s, "Runs on:      %016llX\n", (unsigned long long)sysver);
     else add(s, "Runs on:      (none: this is an IOS or boot2)\n");
     add(s, "Region:       %s\n", region < 5 ? regions[region] : "unknown");
     add(s, "Group ID:     %04X   (the maker; 3031 = \"01\", Nintendo)\n", g16(t + 0x198));
     u32 ar = g32(t + 0x1D8);
     add(s, "Access:       %08X%s%s\n", (unsigned)ar, ar & 1 ? "  hardware (AHBPROT)" : "", ar & 2 ? "  DVD video" : "");
-    add(s, "For:          %s\n", t[0x183] ? "vWii (Wii U)" : "Wii");
+    add(s, "For:          %s\n", wiiu ? "Wii U" : t[0x183] ? "vWii (Wii U)" : "Wii");
     sig_text(s, t, len, "TMD");
     add(s, "Contents:     %u, boot index %u\n\n", n, g16(t + 0x1E0));
     add(s, "  ID        index  type    size        SHA-1 (start)\n");
-    for (u16 i = 0; i < n && 0x1E4 + (i + 1) * 0x24 <= len; i++) {
-        const u8 *r = t + 0x1E4 + i * 0x24;
+    for (u16 i = 0; i < n && base + (i + 1) * rsz <= len; i++) {
+        const u8 *r = t + base + i * rsz;
         u16 ty = g16(r + 6);
         char sz[16];
         ui_fmt_size(sz, sizeof(sz), g64(r + 8));
         add(s, "  %08X  %5u  %-6s  %-10s  %02x%02x%02x%02x%02x%02x...\n", (unsigned)g32(r), g16(r + 4),
-            ty == 0x8001 ? "shared" : ty == 0x4001 ? "DLC" : ty == 1 ? "normal" : "other", sz, r[16], r[17], r[18], r[19],
+            ty & 0x8000 ? "shared" : ty & 0x4000 ? "DLC" : wiiu && (ty & 2) ? "hashed" : ty & 1 ? "normal" : "other", sz, r[16], r[17], r[18], r[19],
             r[20], r[21]);
     }
 }
@@ -430,9 +432,10 @@ static void tik_text(strbuf_t *s, const u8 *k, u32 len)
     add(s, "Title ID:     %s\n", id);
     add(s, "Ticket ID:    %016llX\n", (unsigned long long)g64(k + 0x1D0));
     u32 console = g32(k + 0x1D8);
-    if (console) add(s, "For console:  %08X  (personalised: only that Wii)\n", (unsigned)console);
+    if (console) add(s, "For console:  %08X  (personalised: only that console)\n", (unsigned)console);
     else add(s, "For console:  any\n");
-    add(s, "Common key:   %s\n", arc_key_is_dev(k + 0x140) ? "development (RVT)" : ck < 3 ? keys[ck] : "unknown index");
+    add(s, "Common key:   %s\n", arc_key_is_dev(k + 0x140) ? "development (RVT)" : k[0x1BC] == 1 ? "Wii U"
+                                : ck < 3 ? keys[ck] : "unknown index");
     add(s, "Title key:    %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x  (encrypted)\n",
         k[0x1BF], k[0x1C0], k[0x1C1], k[0x1C2], k[0x1C3], k[0x1C4], k[0x1C5], k[0x1C6], k[0x1C7], k[0x1C8], k[0x1C9],
         k[0x1CA], k[0x1CB], k[0x1CC], k[0x1CD], k[0x1CE]);
