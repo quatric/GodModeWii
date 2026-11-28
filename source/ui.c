@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <ogc/lwp_watchdog.h>
+#include <ogc/libversion.h>
 #include <sys/iosupport.h>
 
 #include "ui.h"
@@ -153,7 +154,7 @@ int ui_rows(void) { return g_rows; }
 int ui_cell_x(int col) { return g_x0 + 8 * col; }
 int ui_cell_y(int row) { return g_y0 + 16 * row; }
 
-/* ANSI cursor addressing is 1-based; callers use 0-based cells. */
+/* ANSI cursor addressing is 1-based (0-based on libogc2); callers use 0-based cells. */
 /* Fields already on screen: ui_field skips one that would draw exactly what is there (same text, same
  * colours), which is most of a redraw after the cursor moves. The cache is thrown away whenever anything
  * else draws (ui_goto, ui_clear), since it can't know what that covered. */
@@ -164,7 +165,11 @@ static u32 row_gen[64] , clear_gen = 1;
 static void goto_raw(int row, int col)
 {
     ptr_hide_range(ui_cell_y(row), ui_cell_y(row + 1));
+#ifdef _LIBOGC2_REVISION_
+    printf("\x1b[%d;%dH", row, col);            /* libogc2's console takes them 0-based */
+#else
     printf("\x1b[%d;%dH", row + 1, col + 1);
+#endif
 }
 
 void ui_goto(int row, int col)
