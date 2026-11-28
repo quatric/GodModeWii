@@ -992,6 +992,24 @@ void virt_shutdown(void)
 
 /* ---------------------------------------------------------------- spinning down */
 
+/* The eject button: true once when a disc that was in the drive has come out (checked a few times a second,
+ * and only once the drive is in use; an empty drive doesn't report the button). */
+bool virt_disc_ejected(void)
+{
+    static u64 last;
+    static int was = -1;
+    if (di_fd < 0 || g_is_vwii) return false;
+    u64 now = ticks_to_millisecs(gettime());
+    if (now - last < 300) return false;
+    last = now;
+    u32 cover = 0;
+    if (DI_GetCoverRegister(&cover) != 0) return false;
+    int in = (cover & DVD_COVER_DISC_INSERTED) != 0;
+    bool out = was == 1 && !in;
+    was = in;
+    return out;
+}
+
 void virt_disc_peek(void)
 {
     vfs_dev *d = &g_devs[DEV_DISC];

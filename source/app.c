@@ -1529,7 +1529,8 @@ static bool system_menu(void)
         M_POWER,
         M_BOOTMII,
         M_PRIILOADER,
-        M_SNTP
+        M_SNTP,
+        M_CONBTN
     };
 
     for (;;) {
@@ -1596,6 +1597,9 @@ static bool system_menu(void)
             ITEM(sfx_enabled() ? "Sound effects: ON (select to turn off)" : "Sound effects: OFF (select to turn on)", M_SFX);
             ITEM(wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
                                     : "Disc slot light: OFF (select to turn on)", M_LIGHT);
+            ITEM(input_console_mode() == 1 ? "Console buttons work the menus: always"
+                 : input_console_mode() == 2 ? "Console buttons work the menus: off"
+                 : "Console buttons work the menus: with no controller", M_CONBTN);
             ITEM("About / credits", M_ABOUT);
             break;
         default:
@@ -1741,6 +1745,21 @@ static bool system_menu(void)
             exit_req = EXIT_BOOTMII;
             return true;
         case M_PRIILOADER: exit_req = EXIT_PRIILOADER; return true;
+        case M_CONBTN: {
+            const char *m[] = {
+                "With no controller connected (Auto)",
+                "Always (Power / Reset no longer leave)",
+                "Off (Power turns off, Reset leaves)",
+            };
+            ui_message("CONSOLE BUTTONS", C_CYAN,
+                       "Without a controller, the console's own buttons work the menus:\n\n"
+                       "POWER  next item (down)\nRESET  select (A)\nRESET held 1 s  the actions menu (2)\n"
+                       "RESET held 2.5 s  the HOME menu\nPOWER while holding RESET  back (B)\nEJECT  the HOME menu "
+                       "(when a disc comes out)\n\nHolding POWER 4 s still turns the Wii off.");
+            int c = ui_menu("CONSOLE BUTTONS", m, NULL, 3, input_console_mode());
+            if (c >= 0) input_console_set_mode(c);
+            break;
+        }
         case M_SNTP:
             sntp_run();
             return false;

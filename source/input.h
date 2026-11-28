@@ -30,4 +30,12 @@ void input_flush(void);
 /* Non-blocking check used by long operations to allow cancelling. */
 bool input_cancel_held(void);
 
+/* The console's Power / Reset / Eject buttons as a controller (see input.c): mode 0 auto (no controller
+ * connected), 1 always, 2 off; saved on the SD card. */
+void input_console_load(void);
+int  input_console_mode(void);
+void input_console_set_mode(int mode);
+bool input_console_nav(void);           /* Power / Reset are for the menus now, not for leaving */
+void input_console_power(void);         /* from the power button callback */
+
 #endif

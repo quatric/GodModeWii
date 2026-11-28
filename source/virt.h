@@ -17,6 +17,7 @@
 
 /* Re-detects the device; updates g_devs[dev].mounted and .note. */
 void virt_refresh(int dev);
+bool virt_disc_ejected(void);           /* the eject button pushed a disc out (once) */
 
 bool virt_list(int dev, const char *rel, vfs_entry **out, int *count);
 bool virt_stat(int dev, const char *rel, bool *is_dir, u64 *size);

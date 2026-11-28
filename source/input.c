@@ -1,4 +1,6 @@
 #include <ogcsys.h>
+#include <stdio.h>
+#include <ogc/lwp_watchdog.h>
 #include <unistd.h>
 #include <wiiuse/wpad.h>
 #include <input_wii.h>
@@ -10,6 +12,57 @@
 #include "sfx.h"
 #include "wiilight.h"
 #include "alarm.h"
+
+/* ---- the console's own buttons, for using GodModeWii without a controller ----
+ * Power: down.  Reset: A (a tap), 2 (held about a second), HOME (held 2.5 s).  Power while Reset is held: B.
+ * A disc ejected: HOME.  Auto: only while no controller, keyboard or mouse is there. */
+#define CONBTN_SETTING "sd:/apps/GodModeWii/console_buttons"
+static int conbtn_mode;                 /* 0 auto, 1 always, 2 off */
+static volatile int power_presses;
+
+void input_console_load(void)
+{
+    FILE *f = fopen(CONBTN_SETTING, "r");
+    conbtn_mode = 0;
+    if (f) { int m = fgetc(f) - '0'; if (m >= 0 && m <= 2) conbtn_mode = m; fclose(f); }
+}
+
+int input_console_mode(void) { return conbtn_mode; }
+
+void input_console_set_mode(int m)
+{
+    conbtn_mode = m;
+    FILE *f = fopen(CONBTN_SETTING, "w");
+    if (f) { fputc('0' + m, f); fclose(f); }
+}
+
+bool input_console_nav(void)
+{
+    if (conbtn_mode) return conbtn_mode == 1;
+    return INPUT_DeviceCount() == 0 && !INPUT_KeyboardConnected() && !INPUT_MouseConnected();
+}
+
+void input_console_power(void) { power_presses++; }
+
+static u32 console_buttons(void)
+{
+    static u64 since;
+    static bool was, used, home;
+    u32 out = 0;
+    bool r = SYS_ResetButtonDown() != 0;
+    u64 now = ticks_to_millisecs(gettime());
+    if (r && !was) { since = now; used = home = false; }
+    if (r && !home && !used && now - since >= 2500) { out |= WPAD_BUTTON_HOME; home = true; }
+    if (!r && was && !used && !home) out |= now - since < 700 ? WPAD_BUTTON_A : WPAD_BUTTON_2;
+    was = r;
+    if (power_presses > 0) {
+        power_presses--;
+        out |= r ? WPAD_BUTTON_B : WPAD_BUTTON_DOWN;
+        if (r) used = true;             /* this Reset press was for B */
+    }
+    if (virt_disc_ejected()) out |= WPAD_BUTTON_HOME;
+    return out;
+}
 
 /* Controllers, keyboard and the optional Wii U / DualShock 3 backends are
  * handled by libwiiinput; everything arrives as WPAD_BUTTON_* bits. */
@@ -51,6 +104,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
     if (DownOrHeld != IN_DOWN)
         return INPUT_ButtonsHeld();
     u32 down = INPUT_ButtonsDown();
+    if (conbtn_mode != 2) down |= console_buttons();
     /* a click on a footer hint ("B Stop") is that button */
     u32 hint = ui_hint_under();
     if (hint && ((down & WPAD_BUTTON_A) || (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT)))

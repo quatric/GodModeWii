@@ -41,9 +41,11 @@ s32 __IOS_LoadStartupIOS(void)
     return 0;
 }
 
-static void on_reset(void) { g_quit_request = true; }
+/* Reset and Power leave, unless they are working the menus (no controller there, or set to always) */
+static void on_reset(void) { if (!input_console_nav()) g_quit_request = true; }
 static void on_power(void)
 {
+    if (input_console_nav()) { input_console_power(); return; }
     g_quit_request = true;
     g_power_request = true;
 }
@@ -184,6 +186,7 @@ int main(int argc, char **argv)
 
     /* what is kept on the card, now that it's mounted: sounds, light, theme, alarm */
     sfx_load_setting();
+    input_console_load();
     wiilight_load_setting();
     colors_load();
     alarm_load();
