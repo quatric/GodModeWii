@@ -6,6 +6,8 @@ You need [devkitPro](https://devkitpro.org/) with devkitPPC, libogc2 and libfat,
 dkp-pacman -S ppc-bzip2 ppc-faad2 ppc-libjpeg-turbo ppc-libogg ppc-libpng-apng ppc-libvorbisidec ppc-libwebp ppc-zlib
 ```
 
+(`ppc-zlib` is left out where `ppc-zlib-ng-compat` is installed, as in the libogc2 container: either one does.)
+
 ```sh
 export DEVKITPRO=/opt/devkitpro
 export DEVKITPPC=$DEVKITPRO/devkitPPC
