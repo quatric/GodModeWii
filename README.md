@@ -50,6 +50,10 @@ Every drive is shown with its free space and a usage bar.
 | SD Gecko | `gca:/`, `gcb:/` | Original Wii only |
 | SEEPROM | `seeprom:/` | Read-only |
 | Console keys | `keys:/` | Read-only |
+| Emulated NANDs | e.g. `sd:/nands/<name>/` | Listed after the drives when found: SNEEK / UNEEK (a drive's root), neek2o (`nands/<name>/`), `nand/`, `emunand/` |
+
+An emulated NAND opens as folders, like the real one but with nothing to unlock. **Title info** works on its title folders, its
+`RFL_DB.dat` opens in the Mii viewer (plaza and Parade), and WADs install into it from a WAD's menu.
 
 FAT, FAT32, exFAT and NTFS are read / write. ext2/3/4, HFS+, APFS, XFS, OpenZFS and Wii U WFS are read-only. Details, including
 how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).

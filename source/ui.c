@@ -590,6 +590,9 @@ bool ui_message_pages_code(const char *title, int color, const char *const *page
         snprintf(head, sizeof(head), "%s  (%d/%d)", title, i + 1, n);
         snprintf(strip, sizeof(strip), "L / R or - / +  Prev / Next    A  OK");
         draw_text_box(head, color, pages[i], strip, 0, NULL, &left);
+#ifdef GMW_AUTOTEST
+        if (!code) { ui_test_dump(); return false; }     /* the first page, saved like a viewer's screen */
+#endif
         for (;;) {
             u32 p = DetectInput(IN_DOWN) | ptr_ui_buttons();
             /* On the last page, presses that follow the code are kept for it instead of flipping the

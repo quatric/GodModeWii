@@ -409,20 +409,78 @@ static int home_rows(void)
     return vis < 1 ? 1 : vis;
 }
 
-/* Drives shown on the home screen. */
+/* Emulated NANDs on the SD card and USB drives, listed after the drives: SNEEK / UNEEK keep theirs at the drive's
+ * root, neek2o in nands/<name>/, others in nand/ or emunand/. A folder is one when it has title/ and sys/. Looked for
+ * once, and again after a remount. */
+#define EMU_MAX 8
+#define HOME_MAX (DEV_COUNT + EMU_MAX)
+static char emu_root[EMU_MAX][VFS_PATH_MAX];
+static const char *emu_kind[EMU_MAX];
+static int emu_dev[EMU_MAX];
+static int emu_n = -1;                  /* -1: not looked for yet */
+
+static bool is_emunand(const char *dir)
+{
+    char p[VFS_PATH_MAX];
+    bool is_dir;
+    snprintf(p, sizeof(p), "%stitle", dir);
+    if (!vfs_stat(p, &is_dir, NULL) || !is_dir) return false;
+    snprintf(p, sizeof(p), "%ssys", dir);
+    return vfs_stat(p, &is_dir, NULL) && is_dir;
+}
+
+static void emu_add(int dev, const char *dir, const char *kind)
+{
+    if (emu_n < EMU_MAX && is_emunand(dir)) {
+        snprintf(emu_root[emu_n], VFS_PATH_MAX, "%s", dir);
+        emu_kind[emu_n] = kind;
+        emu_dev[emu_n++] = dev;
+    }
+}
+
+static void emu_scan(void)
+{
+    emu_n = 0;
+    for (int d = DEV_SD; d <= DEV_USB7; d++) {
+        if (d == DEV_GCA || d == DEV_GCB || !g_devs[d].mounted || vfs_is_virtual(d)) continue;
+        char p[VFS_PATH_MAX];
+        emu_add(d, g_devs[d].root, d == DEV_SD ? "SNEEK" : "UNEEK");
+        snprintf(p, sizeof(p), "%snand/", g_devs[d].root);
+        emu_add(d, p, "emulated NAND");
+        snprintf(p, sizeof(p), "%semunand/", g_devs[d].root);
+        emu_add(d, p, "emulated NAND");
+        vfs_entry *list;
+        int cnt;
+        snprintf(p, sizeof(p), "%snands", g_devs[d].root);
+        if (vfs_list_visible(p, &list, &cnt)) {
+            for (int i = 0; i < cnt; i++)
+                if (list[i].is_dir) {
+                    char q[VFS_PATH_MAX];
+                    snprintf(q, sizeof(q), "%s/%s/", p, list[i].name);
+                    emu_add(d, q, "neek2o");
+                }
+            free(list);
+        }
+    }
+}
+
+/* Drives shown on the home screen, then the emulated NANDs (DEV_COUNT + their index). */
 static int home_list(int *out)
 {
     int n = 0;
     for (int i = 0; i < DEV_COUNT; i++)
         if (g_devs[i].always_show || g_devs[i].mounted)
             out[n++] = i;
+    if (emu_n < 0) emu_scan();
+    for (int i = 0; i < emu_n; i++)
+        out[n++] = DEV_COUNT + i;
     return n;
 }
 
 static void draw_home(void)
 {
     int cols = ui_cols(), rows = ui_rows();
-    int devs[DEV_COUNT];
+    int devs[HOME_MAX];
     int n = home_list(devs);
     int vis = home_rows();
     if (home_cursor >= n) home_cursor = n - 1;
@@ -450,8 +508,21 @@ static void draw_home(void)
             ui_reset();
             continue;
         }
-        vfs_dev *d = &g_devs[devs[idx]];
         bool sel = idx == home_cursor;
+        if (devs[idx] >= DEV_COUNT) {          /* an emulated NAND */
+            int e = devs[idx] - DEV_COUNT;
+            if (sel) {
+                ui_bg(flag ? C_WHITE : C_CYAN);
+                ui_color(C_BLACK, false);
+            } else if (!flag)
+                ui_color(C_WHITE, true);
+            char name[40];
+            snprintf(name, sizeof(name), "emuNAND (%s)", g_devs[emu_dev[e]].tag);
+            ui_field(row, 0, cols - 1, " [EMU ]  %-20s %-10s %s", name, emu_root[e], emu_kind[e]);
+            ui_reset();
+            continue;
+        }
+        vfs_dev *d = &g_devs[devs[idx]];
         if (sel) {
             ui_bg(flag ? C_WHITE : C_CYAN);
             ui_color(C_BLACK, false);
@@ -829,6 +900,7 @@ static void format_menu(void)
     ui_busy_end();
     ui_splash("Looking for drives...");
     vfs_remount();
+    emu_n = -1;
     free_dir();
     cwd[0] = '\0';
     ui_message(ok ? "FORMATTED" : T, ok ? C_GREEN : C_RED, ok ? "The drive is FAT32 now, empty and ready for apps/ and wbfs/." : err);
@@ -1676,6 +1748,7 @@ static bool system_menu(void)
         case M_REMOUNT:
             ui_splash("Looking for drives...");
             vfs_remount();
+            emu_n = -1;
             input_flush();
             clip_clear();
             free_dir();
@@ -1910,7 +1983,7 @@ int app_run(void)
         }
         {
             /* the pointer / mouse: hovering a row selects it, A (or a click) on it acts on it */
-            int devs_tmp[DEV_COUNT];
+            int devs_tmp[HOME_MAX];
             bool in_dir = cwd[0] != '\0';
             int vis = in_dir ? list_rows() : home_rows();
             int count = in_dir ? nents + (clip_n ? 1 : 0) : home_list(devs_tmp);
@@ -1952,7 +2025,7 @@ int app_run(void)
         }
 
         if (!cwd[0]) {
-            int devs[DEV_COUNT];
+            int devs[HOME_MAX];
             int n = home_list(devs);
             /* several drives at a time, like a page of files */
             int jump = home_rows() > 2 ? home_rows() - 1 : 1;
@@ -1994,7 +2067,12 @@ int app_run(void)
                 cursor_only = false;
                 continue;
             }
-            if ((p & WPAD_BUTTON_A) && !tivo_kept) open_drive(devs[home_cursor]);
+            if ((p & WPAD_BUTTON_A) && !tivo_kept) {
+                if (devs[home_cursor] >= DEV_COUNT)
+                    load_dir(emu_root[devs[home_cursor] - DEV_COUNT], NULL);
+                else
+                    open_drive(devs[home_cursor]);
+            }
             continue;
         }
 

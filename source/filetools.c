@@ -298,16 +298,27 @@ static bool ends(const char *s, const char *x)
     return a >= b && !strcasecmp(s + a - b, x);
 }
 
-/* nand:/title/<hi>/<lo> */
-static bool nand_title_dir(const char *path, u32 *hi, u32 *lo)
+/* <nand>/title/<hi>/<lo>: the Wii's NAND, or an emulated one (a folder with sys/ beside title/). The NAND's root,
+ * "nand:/" or "sd:/nands/x/", in root (when not NULL). */
+static bool nand_title_dir_in(const char *path, u32 *hi, u32 *lo, char *root, size_t rn)
 {
-    const char *p = strstr(path, ":/title/");
-    if (!p || vfs_dev_of(path) != DEV_NAND) return false;
-    char h[9], l[9];
-    if (sscanf(p + 8, "%8[0-9a-fA-F]/%8[0-9a-fA-F]", h, l) != 2 || strlen(h) != 8 || strlen(l) != 8) return false;
+    const char *p = strstr(path, "/title/");
+    if (!p) return false;
+    char h[9], l[9], r[VFS_PATH_MAX], sys[VFS_PATH_MAX];
+    if (sscanf(p + 7, "%8[0-9a-fA-F]/%8[0-9a-fA-F]", h, l) != 2 || strlen(h) != 8 || strlen(l) != 8) return false;
+    snprintf(r, sizeof(r), "%.*s", (int)(p - path + 1), path);
+    bool is_dir;
+    snprintf(sys, sizeof(sys), "%ssys", r);
+    if (vfs_dev_of(path) != DEV_NAND && !(vfs_stat(sys, &is_dir, NULL) && is_dir)) return false;
     *hi = strtoul(h, NULL, 16);
     *lo = strtoul(l, NULL, 16);
+    if (root) snprintf(root, rn, "%s", r);
     return true;
+}
+
+static bool nand_title_dir(const char *path, u32 *hi, u32 *lo)
+{
+    return nand_title_dir_in(path, hi, lo, NULL, 0);
 }
 
 bool titleinfo_can(const char *path)
@@ -458,11 +469,12 @@ void titleinfo_show(const char *path)
     u32 hi, lo;
     u8 *tmd = NULL, *tik = NULL;
     u32 tl = 0, kl = 0;
-    if (nand_title_dir(path, &hi, &lo)) {
-        char p[96];
-        snprintf(p, sizeof(p), "nand:/title/%08x/%08x/content/title.tmd", (unsigned)hi, (unsigned)lo);
+    char root[VFS_PATH_MAX];
+    if (nand_title_dir_in(path, &hi, &lo, root, sizeof(root))) {
+        char p[VFS_PATH_MAX + 64];
+        snprintf(p, sizeof(p), "%stitle/%08x/%08x/content/title.tmd", root, (unsigned)hi, (unsigned)lo);
         tmd = read_all(p, &tl);
-        snprintf(p, sizeof(p), "nand:/ticket/%08x/%08x.tik", (unsigned)hi, (unsigned)lo);
+        snprintf(p, sizeof(p), "%sticket/%08x/%08x.tik", root, (unsigned)hi, (unsigned)lo);
         tik = read_all(p, &kl);
         if (!tmd) add(&s, "This title has no title.tmd (a save folder only, or not installed).\n");
     } else if (ends(b, ".wad")) {

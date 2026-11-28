@@ -16,6 +16,7 @@
 #include <network.h>
 
 #include "app.h"
+#include "filetools.h"
 #include "ui.h"
 #include "pda.h"
 #include "sfx.h"
@@ -359,6 +360,11 @@ int main(int argc, char **argv)
             if (!strncmp(line, "@calc ", 6)) {
                 extern void calc_autotest(const char *keys);
                 calc_autotest(line + 6);
+                continue;
+            }
+            /* "@titleinfo <path>": a title's info screen (a WAD, TMD, ticket or a NAND / emuNAND title folder) */
+            if (!strncmp(line, "@titleinfo ", 11)) {
+                titleinfo_show(line + 11);
                 continue;
             }
             /* "@miis": the Mii plaza and parade, a QR code on the screen and as a PNG */
