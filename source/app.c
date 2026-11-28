@@ -28,6 +28,8 @@
 #include "fat32fmt.h"
 #include "bootopts.h"
 #include "filetools.h"
+#include "favorites.h"
+#include "zipwrite.h"
 #include "sntp.h"
 #include "editor.h"
 #include "risk.h"
@@ -1192,10 +1194,47 @@ enum {
     A_REPLACE,
     A_INJECT,
     A_TITLEINFO,
+    A_ZIP,
+    A_FAV,
     A_COUNT
 };
 
 static void actions_menu(void);
+
+/* The items as a .zip: next to them when that folder can be written, else at the SD card's top. */
+static void do_zip(char **paths, int n)
+{
+    char dir[VFS_PATH_MAX], base[VFS_NAME_MAX], zp[VFS_PATH_MAX], err[VFS_PATH_MAX + 96], msg[VFS_PATH_MAX + 64];
+    int dev = vfs_dev_of(cwd);
+    bool here = dev >= 0 && dev != DEV_NAND && !vfs_is_virtual(dev) && !vfs_is_archive(cwd) && !vfs_is_readonly(cwd);
+    if (here) snprintf(dir, sizeof(dir), "%s", cwd);
+    else if (g_devs[DEV_SD].mounted) snprintf(dir, sizeof(dir), "%s", g_devs[DEV_SD].root);
+    else { ui_message("ZIP", C_YELLOW, "This folder can't be written, and there's no SD card to put the zip on."); return; }
+    if (n == 1) {
+        bool is_dir = false;
+        vfs_stat(paths[0], &is_dir, NULL);
+        snprintf(base, sizeof(base), "%s", vfs_basename(paths[0]));
+        char *dot = strrchr(base, '.');
+        if (!is_dir && dot && dot != base) *dot = '\0';
+    } else {
+        const char *b = vfs_basename(cwd);
+        snprintf(base, sizeof(base), "%s", b[0] && !strchr(b, ':') ? b : "Archive");
+    }
+    for (int i = 1; i < 1000; i++) {
+        char name[VFS_NAME_MAX + 16];
+        if (i == 1) snprintf(name, sizeof(name), "%s.zip", base);
+        else snprintf(name, sizeof(name), "%s (%d).zip", base, i);
+        if (!vfs_join(zp, sizeof(zp), dir, name)) return;
+        if (!vfs_exists(zp)) break;
+    }
+    if (zip_create(paths, n, zp, err, sizeof(err))) {
+        snprintf(msg, sizeof(msg), "Saved as %s", zp);
+        ui_message("ZIPPED", C_GREEN, msg);
+        if (here) reload_keep();
+    } else {
+        ui_message("ZIP", C_RED, err);
+    }
+}
 
 static bool open_archive(const vfs_entry *en)
 {
@@ -1477,6 +1516,22 @@ static void actions_menu(void)
         code[n++] = A_TITLEINFO;
     }
 
+    items[n] = nmarks > 1 ? "Zip the marked items" : "Zip this (a .zip next to it)";
+    en[n] = on_entry || nmarks;
+    code[n++] = A_ZIP;
+
+    /* a .dol / .elf, or an app folder: a shortcut in the HOME menu */
+    char fav_prog[VFS_PATH_MAX];
+    int fav_at = -1;
+    bool fav_ok = here_path[0] && fav_program(here_path, fav_prog, sizeof(fav_prog));
+    if (!fav_ok && !here_path[0]) fav_ok = fav_program(cwd, fav_prog, sizeof(fav_prog));
+    if (fav_ok) {
+        fav_at = fav_find(fav_prog);
+        items[n] = fav_at >= 0 ? "Remove from HOME menu favorites" : "Add to HOME menu favorites";
+        en[n] = true;
+        code[n++] = A_FAV;
+    }
+
     items[n] = "Edit as text";
     en[n] = on_entry && !nmarks && !ro && !card && !ents[e].is_dir;
     code[n++] = A_EDIT_TEXT;
@@ -1570,6 +1625,22 @@ static void actions_menu(void)
         else if (code[r] == A_REPLACE ? file_replace(p, clip[0]) : file_inject(p, clip[0])) reload_keep();
         break;
     }
+    case A_ZIP:
+        tp = targets(&t);
+        if (t) do_zip(tp, t);
+        free_paths(tp, t);
+        break;
+    case A_FAV:
+        if (fav_at >= 0) {
+            fav_remove(fav_at);
+            status(C_GREEN, "Removed from the HOME menu's favorites.");
+        } else if (fav_add(fav_prog)) {
+            status(C_GREEN, "Added to HOME > Favorite apps.");
+        } else {
+            ui_message("FAVORITES", C_YELLOW, fav_count() >= FAV_MAX ? "The favorites are full (16): remove one first."
+                                              : "Couldn't save the favorites to the SD card.");
+        }
+        break;
     case A_TITLEINFO:
         titleinfo_show(here_path[0] && titleinfo_can(here_path) ? here_path : cwd);
         break;
@@ -1624,6 +1695,37 @@ static void reload_keep_safe(void)
 }
 
 /* Returns true if the user wants to leave the program. */
+/* HOME > Favorite apps: A starts one; the last item takes one off the list. True: leave to start it. */
+static bool favorites_menu(void)
+{
+    for (;;) {
+        int n = fav_count();
+        if (!n) return false;
+        const char *items[FAV_MAX + 1];
+        for (int i = 0; i < n; i++) items[i] = fav_name(i);
+        items[n] = "Remove a favorite...";
+        int r = ui_menu_ex("FAVORITE APPS", items, NULL, n + 1, 0, "A Start   B Back");
+        if (r < 0) return false;
+        if (r == n) {
+            int k = ui_menu_ex("REMOVE WHICH?", items, NULL, n, 0, "A Remove   B Back");
+            if (k >= 0) fav_remove(k);
+            continue;
+        }
+        if (!vfs_exists(fav_path(r))) {
+            char q[VFS_PATH_MAX + 96];
+            snprintf(q, sizeof(q), "%s isn't there any more (was the SD card or USB drive changed?).\n\nRemove it from "
+                     "the favorites?", fav_path(r));
+            if (ui_confirm("FAVORITE APPS", C_YELLOW, q)) fav_remove(r);
+            continue;
+        }
+        if (launch_prepare(fav_path(r))) {
+            launch_requested = true;
+            exit_req = EXIT_LAUNCH;
+            return true;
+        }
+    }
+}
+
 static bool system_menu(void)
 {
     enum {
@@ -1670,14 +1772,19 @@ static bool system_menu(void)
             "Exit and power",
         };
         enum { G_DRIVES, G_DISCS, G_SAVES, G_CONSOLE, G_TOOLS, G_SETTINGS, G_EXIT, G_COUNT };
-        const char *gitems[G_COUNT + 1];
-        int gn = 0, glock = -1;
+        const char *gitems[G_COUNT + 2];
+        int gn = 0, glock = -1, gfav = -1;
         if (risk_unlocked() && !risk_forced()) { glock = gn; gitems[gn++] = "Lock risky options again"; }
+        if (fav_count()) { gfav = gn; gitems[gn++] = "Favorite apps"; }
         for (int g = 0; g < G_COUNT; g++) gitems[gn++] = groups[g];
         int gr = ui_menu_ex("HOME", gitems, NULL, gn, 0, "A Open   B / HOME Back");
         if (gr < 0)
             return false;
-        int g = gr - (glock >= 0 ? 1 : 0);
+        if (gr == gfav) {
+            if (favorites_menu()) return true;
+            continue;
+        }
+        int g = gr - (glock >= 0 ? 1 : 0) - (gfav >= 0 ? 1 : 0);
         if (gr == glock) g = -1;
 
         char theme_item[48];

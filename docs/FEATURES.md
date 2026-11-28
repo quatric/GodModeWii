@@ -23,6 +23,10 @@
   * **Replace with the copied file:** this file's contents become the copied file's; the name and place stay.
   * **Inject the copied file at an offset** (GodMode9's "inject data"): written over this file from a hex offset you type, in
     place. Big files go through a temporary file that is swapped in only once it's whole.
+* **Zip** (Actions menu): the marked items, or the one under the cursor, as `<name>.zip` beside them (on the SD card's top
+  when that folder can't be written, such as the NAND or a disc). Folders go in with everything in them. Files are deflated,
+  except ones that are compressed already (zip, 7z, PNG, JPEG, MP3, RVZ, WBFS...), which are stored. Each file and the zip
+  must stay under 4 GB (no ZIP64). Hold **B** to stop; a part-made zip is removed.
 * **Title info** (Actions menu, on a `.wad`, `.tmd`, `.tik`, `tmd.*`, `cetk` or a title's folder on the NAND): the title ID and
   name, version, IOS, region, access rights, boot index, every content (ID, index, type, size, SHA-1) and the ticket (title key
   index, console ID, time limits), with whether each signature is real, fakesigned or from a development console.
@@ -201,6 +205,11 @@ A USB drive (or partition) in the old WBFS format opens read-only: each game sho
 copy them off. Nothing current needs WBFS; USB Loader GX, WiiFlow and others read `.wbfs` / `.iso` files from FAT32 or NTFS.
 
 ## Launching things
+
+**Favorite apps.** On a `.dol`, an `.elf` or an app's folder (one with `boot.dol` or `boot.elf`), the Actions menu has *Add
+to HOME menu favorites*. They are listed by their `meta.xml` name under HOME > Favorite apps (up to 16), and **A** starts one
+with its arguments, as from the browser. The same Actions item removes one, as does *Remove a favorite...* in the list. They
+are kept in `apps/GodModeWii/favorites.txt` on the SD card.
 
 **Development console programs.** Programs built for a development console (RVT, dev-kit "NDEV" builds) stop on a retail Wii
 with Error 002. As an ELF or DOL loads, the check behind it (`cmpwi r0,0 / bne / lis r3,0x8000`) is turned into a plain branch,

@@ -17,6 +17,8 @@
 
 #include "app.h"
 #include "filetools.h"
+#include "favorites.h"
+#include "zipwrite.h"
 #include "ui.h"
 #include "pda.h"
 #include "sfx.h"
@@ -360,6 +362,28 @@ int main(int argc, char **argv)
             if (!strncmp(line, "@calc ", 6)) {
                 extern void calc_autotest(const char *keys);
                 calc_autotest(line + 6);
+                continue;
+            }
+            /* "@zip <out.zip> <path>": that file or folder zipped; "@fav <path>": made a favorite, the list logged */
+            if (!strncmp(line, "@zip ", 5)) {
+                char outp[VFS_PATH_MAX], src[VFS_PATH_MAX], err[VFS_PATH_MAX + 96] = "";
+                if (sscanf(line + 5, "%511s %511s", outp, src) == 2) {
+                    char *pp[1] = { src };
+                    bool ok = zip_create(pp, 1, outp, err, sizeof(err));
+                    FILE *lf = fopen("sd:/gmwtest.log", "a");
+                    if (lf) { fprintf(lf, "zip: %d %s\n", ok, err); fclose(lf); }
+                }
+                continue;
+            }
+            if (!strncmp(line, "@fav ", 5)) {
+                char prog[VFS_PATH_MAX];
+                bool ok = fav_program(line + 5, prog, sizeof(prog)) && fav_add(prog);
+                FILE *lf = fopen("sd:/gmwtest.log", "a");
+                if (lf) {
+                    fprintf(lf, "fav: %d count %d\n", ok, fav_count());
+                    for (int i = 0; i < fav_count(); i++) fprintf(lf, "fav: %s = %s\n", fav_name(i), fav_path(i));
+                    fclose(lf);
+                }
                 continue;
             }
             /* "@titleinfo <path>": a title's info screen (a WAD, TMD, ticket or a NAND / emuNAND title folder) */

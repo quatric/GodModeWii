@@ -72,6 +72,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * In-place text and hex editors (edits are only written when you save)
 * Hex compare: a file against the one on the clipboard, side by side, the differing bytes in red (**A** / **1** jump to the next / previous one)
 * Replace a file's contents with the copied file, or inject the copied file into it at an offset (GodMode9's "inject data")
+* Zip files and folders (everything in them) from the Actions menu: deflated, with files that are compressed already stored as they are
 * Title info for WADs, TMDs, tickets and installed titles: title ID, version, IOS, region, access rights, contents, ticket and signatures, like ShowMiiWads or NUSD show them
 * Copying from a disc carries on past read errors and lists the bad sectors
 * Deleting read-only FAT files and folders
@@ -119,6 +120,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Install Wii Menu themes (`.csm`, `.mym`) with backups
 * Build a `.csm` from a `.mym` without touching the NAND
 * Launch homebrew (`.dol`, `.elf`) with its `meta.xml` arguments
+* Favorite apps: on a `.dol`, `.elf` or an app's folder, *Add to HOME menu favorites* (Actions menu) puts it in HOME > Favorite apps, to start from anywhere
 * Development console (RVT) programs run on a retail Wii: Error 002 is patched out of dev-kit (NDEV) ELFs and DOLs as they load,
   before they ever reach the Wii, the way USB Loader GX's anti-002 does it
 * Development console WADs are converted for a retail Wii as they install, and the dev common key opens their WADs and RVT-R discs
