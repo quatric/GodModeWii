@@ -26,7 +26,7 @@ jobs:
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc6-dev liblzma-dev pkg-config curl ca-certificates
 
       - name: Install portlibs (PNG / JPEG / WebP for the image viewer)
-        run: dkp-pacman -S --noconfirm --needed ppc-libjpeg-turbo ppc-libwebp ppc-zlib ppc-libvorbisidec ppc-libogg ppc-faad2
+        run: dkp-pacman -S --noconfirm --needed ppc-libjpeg-turbo ppc-libwebp ppc-libvorbisidec ppc-libogg ppc-faad2
 
       - name: Build controller libraries
         run: |
