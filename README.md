@@ -42,15 +42,15 @@ Every drive is shown with its free space and a usage bar.
 
 | Drive | Path | Notes |
 | --- | --- | --- |
-| SD card | `sd:/` | Read / write |
-| USB drives | `usb1:/` to `usb8:/` | Every port, every drive behind a hub, every LUN of a card reader |
-| Wii NAND | `nand:/` | Read-only until unlocked with the Konami code |
+| Console keys | `keys:/` | Read-only |
 | Disc | `disc:/` | Read-only. A Wii or GameCube disc as folders |
+| Emulated NANDs | e.g. `sd:/nands/<name>/` | Listed after the drives when found: SNEEK / UNEEK (a drive's root), neek2o (`nands/<name>/`), `nand/`, `emunand/` |
 | GameCube memory cards | `mca:/`, `mcb:/` | Each save as a `.gci` file. Original Wii only |
+| SD card | `sd:/` | Read / write |
 | SD Gecko | `gca:/`, `gcb:/` | Original Wii only |
 | SEEPROM | `seeprom:/` | Read-only |
-| Console keys | `keys:/` | Read-only |
-| Emulated NANDs | e.g. `sd:/nands/<name>/` | Listed after the drives when found: SNEEK / UNEEK (a drive's root), neek2o (`nands/<name>/`), `nand/`, `emunand/` |
+| USB drives | `usb1:/` to `usb8:/` | Every port, every drive behind a hub, every LUN of a card reader |
+| Wii NAND | `nand:/` | Read-only until unlocked with the Konami code |
 
 An emulated NAND opens as folders, like the real one but with nothing to unlock. **Title info** works on its title folders, its
 `RFL_DB.dat` opens in the Mii viewer (plaza and Parade), and WADs install into it from a WAD's menu.
@@ -420,14 +420,14 @@ See [docs/NETWORK.md](docs/NETWORK.md) for the full rules.
 
 | Button | File browser |
 | --- | --- |
-| D-Pad Up / Down | Move (hold to scroll) |
-| D-Pad Left / Right | Page up / down |
-| **A** | Open a folder, archive or file. Paste on the green `Paste` row. |
-| **B** | Up one folder (back to the drive list at the top) |
-| **1** | Mark / unmark and move down. Clears the clipboard on the `Paste` row. |
-| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, viewers, editors...) |
 | **+** | Copy the marked items (or the one under the cursor) |
 | **-** | Cut the marked items |
+| **1** | Mark / unmark and move down. Clears the clipboard on the `Paste` row. |
+| **2** | Actions menu (paste, copy, cut, delete, rename, new folder, info, viewers, editors...) |
+| **A** | Open a folder, archive or file. Paste on the green `Paste` row. |
+| **B** | Up one folder (back to the drive list at the top) |
+| D-Pad Left / Right | Page up / down |
+| D-Pad Up / Down | Move (hold to scroll) |
 | **HOME** | HOME menu (HOME or B closes it) |
 
 **To copy or move:** copy (**+**) or cut (**-**), browse to the destination, and press **A** on the green `Paste` row at the top. A
@@ -452,12 +452,12 @@ in the Wii Menu first: libogc2 can't pair new ones.
 
 | Button | Does |
 | --- | --- |
+| Eject a disc | HOME |
 | **Power** | Down (the next item) |
-| **Reset** (tap) | A |
+| **Power** while holding Reset | B |
 | **Reset** (hold ~1 s) | 2 (the actions menu) |
 | **Reset** (hold ~3 s) | HOME |
-| **Power** while holding Reset | B |
-| Eject a disc | HOME |
+| **Reset** (tap) | A |
 
 ### Write permission levels
 
