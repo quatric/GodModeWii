@@ -3,6 +3,10 @@
 #include <strings.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <malloc.h>
+#include <ogc/es.h>
 #include <ogc/lwp.h>
 #include <ogc/lwp_watchdog.h>
 
@@ -130,11 +134,70 @@ bool risk_ensure_unlocked(void)
     return true;
 }
 
+/* ---------------------------------------------------------------- the brick guard
+ * NAND changes that leave the Wii unable to start are refused outright, Risky Mode or not: the System Menu (its
+ * contents, setting.txt and the rest of its folder), the IOS it runs on, their tickets, /sys (uid.sys, cert.sys...),
+ * /shared1 (the shared contents and content.map), SYSCONF, and the NAND's top folders themselves. Installing
+ * goes through the WAD installer, which has its own checks; setting.txt has its own editor in Console. */
+static u32 sm_ios(void)
+{
+    static u32 ios;
+    if (ios) return ios;
+    u32 sz = 0;
+    if (ES_GetStoredTMDSize(0x0000000100000002ull, &sz) < 0 || sz < 0x190 || sz > MAX_SIGNED_TMD_SIZE) return 0;
+    u8 *t = memalign(32, (sz + 31) & ~31);
+    if (t && ES_GetStoredTMD(0x0000000100000002ull, (signed_blob *)t, sz) >= 0) ios = t[0x18B];
+    free(t);
+    return ios;
+}
+
+/* path inside the NAND ("/title/..."), lower-case, without a trailing slash */
+const char *risk_brick_reason(const char *path)
+{
+    const char *r = strchr(path, ':');
+    if (!r || vfs_dev_of(path) != DEV_NAND) return NULL;
+    r++;
+    char p[128];
+    size_t n = 0;
+    for (; *r && n < sizeof(p) - 1; r++) p[n++] = (char)tolower((unsigned char)*r);
+    while (n > 1 && p[n - 1] == '/') n--;
+    p[n] = 0;
+    static const char *const tops[] = { "", "/", "/title", "/title/00000001", "/ticket", "/ticket/00000001", "/shared2",
+                                        "/shared2/sys", "/tmp", "/import", "/meta", "/wfs" };
+    for (unsigned i = 0; i < sizeof(tops) / sizeof(tops[0]); i++)
+        if (!strcmp(p, tops[i])) return "This is one of the NAND's own top folders.";
+    #define UNDER(d) (!strncmp(p, d, strlen(d)) && (p[strlen(d)] == 0 || p[strlen(d)] == '/'))
+    if (UNDER("/title/00000001/00000002") || !strcmp(p, "/ticket/00000001/00000002.tik"))
+        return "This is the System Menu (or its setting.txt). Without it the Wii can't start.";
+    if (UNDER("/sys")) return "This is /sys (uid.sys, cert.sys...), which the Wii needs to start.";
+    if (UNDER("/shared1")) return "This is /shared1, the contents the System Menu and IOS share.";
+    if (!strcmp(p, "/shared2/sys/syscf") || !strcmp(p, "/shared2/sys/sysconf"))
+        return "This is SYSCONF, the Wii's settings. Without it the System Menu won't start.";
+    u32 ios = sm_ios();
+    if (ios) {
+        char t[48];
+        snprintf(t, sizeof(t), "/title/00000001/%08x", (unsigned)ios);
+        char k[48];
+        snprintf(k, sizeof(k), "/ticket/00000001/%08x.tik", (unsigned)ios);
+        if (UNDER(t) || !strcmp(p, k)) return "This is the IOS the System Menu runs on. Without it the Wii can't start.";
+    }
+    #undef UNDER
+    return NULL;
+}
+
 bool risk_authorize(const char *path, const char *what)
 {
-    (void)what;
     if (vfs_dev_of(path) != DEV_NAND)
         return true;
+    const char *why = risk_brick_reason(path);
+    if (why) {
+        char m[400];
+        snprintf(m, sizeof(m), "GodModeWii won't %s this:\n\n%s\n\nThis change would brick the Wii, so it is refused even in "
+                 "Risky Mode. (Installing a System Menu or IOS WAD is for a WAD manager that checks it first.)",
+                 what ? what : "change", why);
+        ui_message("WOULD BRICK THE WII", C_RED, m);
+        return false;
+    }
     /* One Konami code per session is enough; it asks the first time. */
     return risk_ensure_unlocked();
 }

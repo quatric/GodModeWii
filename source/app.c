@@ -202,20 +202,40 @@ static int clock_minute(char *out, size_t n)
     return tmv.tm_hour * 60 + tmv.tm_min;
 }
 
+/* Write permission levels, the GodMode9 way, shown by the colour of the tag on the right (the bar keeps the
+ * theme's colour):  green  SAFE: the NAND is read-only;  yellow  UNLOCKED: NAND files can change (never the ones
+ * that would brick, see risk.c);  magenta  CONSOLE DATA: unlocked, and here is data only this Wii has (keys,
+ * SEEPROM, setting.txt, SYSCONF, /sys);  red  FORCED: Risky Mode always on, nothing asks first. */
+static void level_tag(char *out, size_t n, int *color)
+{
+    int dev = cwd[0] ? vfs_dev_of(cwd) : -1;
+    bool unique = dev == DEV_KEYS || dev == DEV_SEEPROM ||
+                  (dev == DEV_NAND && (strstr(cwd, ":/shared2/sys") || strstr(cwd, ":/sys") ||
+                                       strstr(cwd, ":/title/00000001/00000002/data")));
+    if (risk_forced())            { snprintf(out, n, "[ FORCED ]");        *color = C_RED; }
+    else if (!risk_unlocked())    { snprintf(out, n, "[ SAFE ]");          *color = C_GREEN; }
+    else if (unique)              { snprintf(out, n, "[ CONSOLE DATA ]");  *color = C_MAGENTA; }
+    else if (here_risky())        { snprintf(out, n, "[ UNLOCKED ]");      *color = C_YELLOW; }
+    else                          { snprintf(out, n, "[ UNLOCKED ]");      *color = C_YELLOW; }
+}
+
 static void draw_header(void)
 {
     int cols = ui_cols();
-    char left[64], right[64], clk[12];
+    char left[64], tag[24], clk[12];
+    int tc;
     clock_minute(clk, sizeof(clk));
-    bool risky = here_risky();
+    level_tag(tag, sizeof(tag), &tc);
     snprintf(left, sizeof(left), " GodModeWii v%s", GMW_VERSION);
-    snprintf(right, sizeof(right), "%s%s  %s ", g_is_vwii ? "vWii  " : "",
-             risky ? "[ RISKY MODE ON ]" : "[ SAFE MODE ]", clk);
-    ui_bg(risky ? C_RED : C_BLUE);
+    int rlen = (g_is_vwii ? 6 : 0) + (int)strlen(tag) + 2 + (int)strlen(clk) + 1;
+    int tag_col = cols - 1 - rlen + (g_is_vwii ? 6 : 0);
+    ui_bg(C_BLUE);
     ui_color(C_WHITE, true);
-    int gap = cols - 1 - (int)strlen(left) - (int)strlen(right);
+    int gap = cols - 1 - (int)strlen(left) - rlen;
     if (gap < 1) gap = 1;
-    ui_field(0, 0, cols - 1, "%s%*s%s", left, gap, "", right);
+    ui_field(0, 0, cols - 1, "%s%*s%s%*s  %s ", left, gap, "", g_is_vwii ? "vWii  " : "", (int)strlen(tag), "", clk);
+    ui_color(tc, true);
+    ui_field(0, tag_col, (int)strlen(tag), "%s", tag);
     ui_reset();
 }
 

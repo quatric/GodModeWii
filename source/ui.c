@@ -228,7 +228,11 @@ void ui_color(int fg, bool bold)
     /* reset first: the console's "0" also puts the text colour back to white, so "30;0" drew black
      * as white (and every highlight's text in the plain text colour) */
     if (!bold && colors_current() == 0) fg = C_WHITE;  /* Classic keeps how it always looked */
+#ifdef _LIBOGC2_REVISION_
+    printf("\x1b[%d%sm", 30 + fg, bold ? ";1" : "");   /* libogc2 takes only "3x" or "3x;1" (bright) */
+#else
     printf("\x1b[0;%s%dm", bold ? "1;" : "", 30 + fg);
+#endif
     if (cur_bg >= 0)
         printf("\x1b[%dm", 40 + cur_bg);
 }
