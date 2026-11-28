@@ -26,6 +26,8 @@
 #include "discdump.h"
 #include "savemgr.h"
 #include "fat32fmt.h"
+#include "bootopts.h"
+#include "sntp.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -1524,7 +1526,10 @@ static bool system_menu(void)
         M_LOADER,
         M_WIIMENU,
         M_RESTART,
-        M_POWER
+        M_POWER,
+        M_BOOTMII,
+        M_PRIILOADER,
+        M_SNTP
     };
 
     for (;;) {
@@ -1533,51 +1538,79 @@ static bool system_menu(void)
         else
             draw_home();
 
+        /* The HOME menu in groups; B in a group goes back to the groups, B there closes the menu. */
+        static const char *const groups[] = {
+            "Drives and network", "Discs", "Saves and backups", "Console and system", "Tools", "Settings",
+            "Exit and power",
+        };
+        enum { G_DRIVES, G_DISCS, G_SAVES, G_CONSOLE, G_TOOLS, G_SETTINGS, G_EXIT, G_COUNT };
+        const char *gitems[G_COUNT + 1];
+        int gn = 0, glock = -1;
+        if (risk_unlocked() && !risk_forced()) { glock = gn; gitems[gn++] = "Lock risky options again"; }
+        for (int g = 0; g < G_COUNT; g++) gitems[gn++] = groups[g];
+        int gr = ui_menu_ex("HOME", gitems, NULL, gn, 0, "A Open   B / HOME Back");
+        if (gr < 0)
+            return false;
+        int g = gr - (glock >= 0 ? 1 : 0);
+        if (gr == glock) g = -1;
+
         char theme_item[48];
         const char *items[32];
         int code[32];
         int n = 0;
-
-        if (risk_unlocked() && !risk_forced()) {
-            items[n] = "Lock risky options again";
-            code[n++] = M_LOCK;
+#define ITEM(text, c) do { items[n] = (text); code[n++] = (c); } while (0)
+        switch (g) {
+        case -1:
+            ITEM("Lock risky options again", M_LOCK);
+            break;
+        case G_DRIVES:
+            ITEM("Remount drives (SD / Gecko / USB)", M_REMOUNT);
+            ITEM("FTP server", M_FTP);
+            ITEM("Wiiload (receive apps, WADs and files)", M_WIILOAD);
+            ITEM("Set the clock from the internet (SNTP)", M_SNTP);
+            ITEM("Format a drive as FAT32 (only one HBC can't read)", M_FORMAT);
+            break;
+        case G_DISCS:
+            ITEM("Boot game disc (TinyLoad)", M_GAME);
+            ITEM("Dump a disc to ISO (Wii / GameCube / DVD / CD)", M_DUMP);
+            break;
+        case G_SAVES:
+            ITEM("Save manager (Wii saves, GameCube memory cards)", M_SAVES);
+            ITEM("Back up the NAND / keys (nanddumper@IOS)", M_NAND);
+            break;
+        case G_CONSOLE:
+            ITEM("Console (info, boot1 / boot2, setting.txt, tests, HBC Reborn)", M_CONSOLE);
+            ITEM("Miis", M_MIIS);
+            break;
+        case G_TOOLS:
+            ITEM("IR remote (TV / AV control)", M_IR);
+            ITEM("Sketchpad (draw)", M_DRAW);
+            ITEM("Voice memos (record / play)", M_MEMOS);
+            ITEM("Alarm clock", M_ALARM);
+            ITEM("Calculator", M_CALC);
+            ITEM("Clock and calendar", M_CLOCK);
+            break;
+        case G_SETTINGS:
+            snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
+            ITEM(theme_item, M_THEME);
+            ITEM(sfx_enabled() ? "Sound effects: ON (select to turn off)" : "Sound effects: OFF (select to turn on)", M_SFX);
+            ITEM(wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
+                                    : "Disc slot light: OFF (select to turn on)", M_LIGHT);
+            ITEM("About / credits", M_ABOUT);
+            break;
+        default:
+            ITEM("Exit to the Homebrew Channel", M_LOADER);
+            ITEM("Exit to the Wii Menu", M_WIIMENU);
+            if (priiloader_present()) ITEM("Boot Priiloader (its menu)", M_PRIILOADER);
+            if (bootmii_ios_present()) ITEM("Boot BootMii (IOS254)", M_BOOTMII);
+            ITEM(g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii", M_RESTART);
+            ITEM("Power off", M_POWER);
+            break;
         }
-
-        items[n] = "Remount drives (SD / Gecko / USB)";                 code[n++] = M_REMOUNT;
-        items[n] = "FTP server";                                        code[n++] = M_FTP;
-        items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
-        items[n] = "Boot game disc (TinyLoad)";                         code[n++] = M_GAME;
-        items[n] = "Dump a disc to ISO (Wii / GameCube / DVD / CD)";   code[n++] = M_DUMP;
-        items[n] = "Format a drive as FAT32 (only one HBC can't read)"; code[n++] = M_FORMAT;
-        items[n] = "Miis";                                              code[n++] = M_MIIS;
-        items[n] = "Sketchpad (draw)";                                  code[n++] = M_DRAW;
-        items[n] = "Voice memos (record / play)";                       code[n++] = M_MEMOS;
-        items[n] = "IR remote (TV / AV control)";                       code[n++] = M_IR;
-        items[n] = sfx_enabled() ? "Sound effects: ON (select to turn off)"
-                                 : "Sound effects: OFF (select to turn on)";
-                                                                        code[n++] = M_SFX;
-        items[n] = wiilight_enabled() ? "Disc slot light: ON (select to turn off)"
-                                      : "Disc slot light: OFF (select to turn on)";
-                                                                        code[n++] = M_LIGHT;
-        items[n] = "Alarm clock";                                       code[n++] = M_ALARM;
-        items[n] = "Calculator";                                        code[n++] = M_CALC;
-        items[n] = "Clock and calendar";                                code[n++] = M_CLOCK;
-        snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
-        items[n] = theme_item;                                          code[n++] = M_THEME;
-        items[n] = "Save manager (Wii saves, GameCube memory cards)";   code[n++] = M_SAVES;
-        items[n] = "Back up the NAND / keys (nanddumper@IOS)";          code[n++] = M_NAND;
-        items[n] = "Console (info, boot1 / boot2, setting.txt, HBC Reborn)"; code[n++] = M_CONSOLE;
-        items[n] = "About / credits";                                   code[n++] = M_ABOUT;
-        items[n] = "Exit to loader (Homebrew Channel)";                 code[n++] = M_LOADER;
-        items[n] = "Exit to Wii Menu";                                  code[n++] = M_WIIMENU;
-        items[n] = g_is_vwii ? "Restart Wii (to Wii U menu)" : "Restart Wii"; code[n++] = M_RESTART;
-        items[n] = "Power off";                                         code[n++] = M_POWER;
-
-        /* HOME closes the menu like the Wii's own HOME Menu; leaving is always an explicit
-         * choice. */
-        int r = ui_menu_ex("SYSTEM", items, NULL, n, 0, "A Select   B / HOME Back");
+#undef ITEM
+        int r = g < 0 ? 0 : ui_menu_ex(groups[g], items, NULL, n, 0, "A Select   B Back");
         if (r < 0)
-            return false;
+            continue;
         switch (code[r]) {
         case M_LOCK:
             risk_lock();
@@ -1703,6 +1736,14 @@ static bool system_menu(void)
             status(C_GREEN, wiilight_enabled() ? "Disc slot light on." : "Disc slot light off (saved on the card).");
             return false;
         case M_LOADER: exit_req = EXIT_LOADER; return true;
+        case M_BOOTMII:
+            if (!ui_confirm("BOOTMII", C_CYAN, "Leave GodModeWii and start BootMii (installed as IOS254)?")) break;
+            exit_req = EXIT_BOOTMII;
+            return true;
+        case M_PRIILOADER: exit_req = EXIT_PRIILOADER; return true;
+        case M_SNTP:
+            sntp_run();
+            return false;
         case M_WIIMENU: exit_req = EXIT_MENU; return true;
         case M_RESTART: sfx_play(SFX_POWEROFF); wiilight_pulse(); sfx_wait(); exit_req = EXIT_RESTART; return true;
         default: sfx_play(SFX_POWEROFF); wiilight_pulse(); sfx_wait(); exit_req = EXIT_POWEROFF; return true;
@@ -1777,6 +1818,14 @@ int app_run(void)
             else
                 draw_home();
             dirty = false;
+        }
+        {
+            extern bool update_poll(void), install_update(void);
+            if (update_poll()) {                          /* the background check found one, and A was pressed */
+                if (install_update()) { exit_req = EXIT_LOADER; break; }
+                dirty = true;
+                continue;
+            }
         }
         u32 p = input_pressed() | ptr_ui_buttons();
         {

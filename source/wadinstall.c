@@ -44,6 +44,7 @@
 #include "risk.h"
 #include "aes.h"
 #include "sha1.h"
+#include "hashes.h"
 #include "seeprom.h"
 #include "archive.h"
 #include "ftype.h"
@@ -222,6 +223,73 @@ static bool fakesign_ticket(u8 *tik)
             return true;
     }
     return false;
+}
+
+/* Fakesigning a TMD: the same, over the TMD body up to the end of its content records, with the two padding
+ * bytes before them as the counter. */
+static bool fakesign_tmd(u8 *tmd, u32 len)
+{
+    u32 body = W_TMD_CONTENTS + be16(tmd + W_TMD_NCONT) * 0x24;
+    if (body > len) return false;
+    memset(tmd + 4, 0, 0x100);
+    for (u32 fill = 0; fill < 0x10000; fill++) {
+        tmd[W_TMD_CONTENTS - 2] = (u8)(fill >> 8);
+        tmd[W_TMD_CONTENTS - 1] = (u8)fill;
+        u8 h[20];
+        sha1_digest(tmd + 0x140, body - 0x140, h);
+        if (!h[0])
+            return true;
+    }
+    return false;
+}
+
+/* A development console's WAD (RVT: ticket from Root-CA00000002, title key under the dev common key) made into
+ * one a retail Wii takes, the way RVT-to-RVL converters do it: the title key re-encrypted with the Wii common key,
+ * the issuers renamed to the retail ones, both fakesigned, and the dev certificates swapped for this Wii's own
+ * chain (/sys/cert.sys). The contents stay as they are: their key and hashes don't change. */
+static u8 *retail_certs(u32 *len)
+{
+    s32 fd = ISFS_Open("/sys/cert.sys", ISFS_OPEN_READ);
+    if (fd < 0) return NULL;
+    u8 *b = memalign(32, 0xA00);
+    s32 n = b ? ISFS_Read(fd, b, 0xA00) : -1;
+    ISFS_Close(fd);
+    if (n < 0x400) { free(b); return NULL; }
+    *len = (u32)n;
+    return b;
+}
+
+static bool dev_to_retail(u8 **certs, u32 *certs_len, u8 *tik, u8 *tmd, u32 tmd_len)
+{
+    if (!arc_key_is_dev(tik + 0x140)) return false;
+    u32 cl;
+    u8 *rc = retail_certs(&cl);
+    if (!rc) return false;
+    u8 dk[16], wk[16], iv[16], key[16];
+    arc_common_key(3, dk);
+    arc_common_key(0, wk);
+    memset(iv, 0, 16);
+    memcpy(iv, tik + W_TIK_TID, 8);
+    aes128_t c;
+    aes128_init_dec(&c, dk);
+    aes128_cbc_decrypt(&c, iv, tik + W_TIK_KEY, key, 16);
+    memset(iv, 0, 16);
+    memcpy(iv, tik + W_TIK_TID, 8);
+    for (int i = 0; i < 16; i++) key[i] ^= iv[i];        /* CBC encrypt of one block */
+    aes128_ecb_encrypt(wk, key, tik + W_TIK_KEY);
+    memset(&c, 0, sizeof(c));
+    memset(key, 0, 16);
+    tik[W_TIK_CKIDX] = 0;
+    memset(tik + 0x140, 0, 0x40);
+    strcpy((char *)tik + 0x140, "Root-CA00000001-XS00000003");
+    memset(tmd + 0x140, 0, 0x40);
+    strcpy((char *)tmd + 0x140, "Root-CA00000001-CP00000004");
+    fakesign_ticket(tik);
+    fakesign_tmd(tmd, tmd_len);
+    free(*certs);
+    *certs = rc;
+    *certs_len = cl;
+    return true;
 }
 
 /* YAWM's __Wad_FixTicket: a ticket for common key 2 (vWii) is re-encrypted
@@ -508,6 +576,15 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         goto out;
     }
 
+    if (arc_key_is_dev(tik + 0x140)) {
+        if (!dev_to_retail(&certs, &h.certs_len, tik, tmd, h.tmd_len)) {
+            snprintf(msg, msz, "This WAD is for development consoles (RVT), and this Wii's certificates "
+                     "(/sys/cert.sys) couldn't be read to convert it.");
+            ret = -999;
+            goto out;
+        }
+        snprintf(note, nsz, "A development (RVT) WAD: converted for a retail Wii.");
+    }
     bool vwii_title = fix_ticket(tik) || vwii_flag;
     /* For the SD card, as wad2bin's bogus WAD has it: a ticket issued to another console (shared DLC WADs
      * carry their dumper's) loses that console's ID and ECDH data, which ES here can't use. */
@@ -1322,6 +1399,10 @@ static int emu_install_one(const char *path, const char *root, char *msg, size_t
         goto out;
     }
 
+    if (arc_key_is_dev(tik + 0x140) && !dev_to_retail(&certs, &h.certs_len, tik, tmd, h.tmd_len)) {
+        snprintf(msg, msz, "This WAD is for development consoles (RVT), and this Wii's certificates couldn't be read to convert it.");
+        goto out;
+    }
     /* the title key, to decrypt the contents (an emulated NAND keeps them decrypted) */
     u8 ck[16], tk[16], iv[16];
     if (!arc_common_key(tik[W_TIK_CKIDX], ck)) {

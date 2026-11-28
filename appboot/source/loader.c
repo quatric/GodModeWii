@@ -31,6 +31,21 @@ bool ExecIsElf(const u8* buffer)
     return true;
 }
 
+/* Dev-kit (NDEV) programs check the IOS version at start-up and stop on "Error 002" when it isn't the one they
+ * were built for: "cmpwi r0,0 / bne skip / lis r3,0x8000" falls through to that screen. The bne becomes a
+ * plain b to the same place, so the check always passes (what ndev_to_rvl does to the file). */
+static void anti002(u32 *p, u32 bytes)
+{
+    for (u32 i = 0; i + 2 < bytes / 4; i++) {
+        if (p[i] == 0x2C000000 && p[i + 2] == 0x3C608000 &&
+            (p[i + 1] == 0x408201D4 || p[i + 1] == 0x40820214)) {
+            p[i + 1] = 0x48000000 | (p[i + 1] & 0xFFFF);
+            DCFlushRange(&p[i + 1], 4);
+            ICInvalidateRange(&p[i + 1], 4);
+        }
+    }
+}
+
 bool LoadElf(entrypoint* entry, const u8* buffer)
 {
     int i;
@@ -56,12 +71,16 @@ bool LoadElf(entrypoint* entry, const u8* buffer)
                 return false;
 
             if (phdrs[i].p_filesz)
-            {
                 memmove((void*)phdrs[i].p_paddr, (void*)(buffer + phdrs[i].p_offset), phdrs[i].p_filesz);
-                DCFlushRange((void*)phdrs[i].p_paddr, phdrs[i].p_memsz);
-
-                if (phdrs[i].p_flags & PF_X)
-                    ICInvalidateRange((void*)phdrs[i].p_paddr, phdrs[i].p_memsz);
+            /* .bss: dev-kit ELFs (and some homebrew) count on it being zero */
+            u32 bss = phdrs[i].p_paddr + phdrs[i].p_filesz, bss_end = phdrs[i].p_paddr + phdrs[i].p_memsz;
+            if (bss_end <= 0x92000000 || bss >= 0x93400000)    /* never over this booter or the file it reads */
+                memset((void*)bss, 0, bss_end - bss);
+            DCFlushRange((void*)phdrs[i].p_paddr, phdrs[i].p_memsz);
+            if (phdrs[i].p_flags & PF_X)
+            {
+                ICInvalidateRange((void*)phdrs[i].p_paddr, phdrs[i].p_memsz);
+                anti002((u32*)phdrs[i].p_paddr, phdrs[i].p_filesz);
             }
         }
     }
@@ -84,6 +103,7 @@ bool LoadDol(entrypoint* entry, const u8* buffer)
         memmove((void*)dol->addressText[i], buffer + dol->offsetText[i], dol->sizeText[i]);
         DCFlushRange((void*)dol->addressText[i], dol->sizeText[i]);
         ICInvalidateRange((void*)dol->addressText[i], dol->sizeText[i]);
+        anti002((u32*)dol->addressText[i], dol->sizeText[i]);
 
 	}
 

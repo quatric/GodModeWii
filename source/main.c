@@ -31,6 +31,7 @@
 #include "launch.h"
 #include "arcfs.h"
 #include "irremote.h"
+#include "bootopts.h"
 
 /* Stay on the IOS the loader started us with (IOS58 under the Homebrew
  * Channel). Reloading IOS would drop the HW_AHBPROT access the NAND
@@ -79,36 +80,17 @@ static void exit_to_loader(void)
     SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
 }
 
-/* Ask GitHub whether a newer release is out. B skips it, and any failure
- * (no network, no reply) just carries on. Returns true when the user chose to
- * install the update. */
-static bool check_for_update(void)
-{
-    if (WIIUPDATE_Start("quatric", "GodModeWii", GMW_VERSION) < 0)
-        return false;
-    ui_splash("Initializing network...   B  Skip");
-    u64 start = gettime(), polled = 0;
-    bool online = false;
-    while (WIIUPDATE_State() == WIIUPDATE_CHECKING) {
-        /* Each poll is an IOS call, so the network start-up isn't asked about more than every
-         * 100 ms. */
-        if (!online && ticks_to_millisecs(diff_ticks(polled, gettime())) >= 100) {
-            polled = gettime();
-            if (net_gethostip()) {
-                online = true;
-                ui_splash("Checking for updates...   B  Skip");
-            }
-        }
-        if ((DetectInput(IN_DOWN) & WPAD_BUTTON_B) ||
-            ticks_to_secs(diff_ticks(start, gettime())) >= 20) {
-            WIIUPDATE_Cancel();
-            return false;
-        }
-    }
+/* Asking GitHub whether a newer release is out runs on its own thread from start-up on, so the start isn't held
+ * up by the network; the app asks about it once it's in (update_poll), and any failure just stays quiet. */
+static bool update_asked;
 
+/* Called from the browser's idle loop: true when the user chose to install the update that came in. */
+bool update_poll(void)
+{
+    if (update_asked || WIIUPDATE_State() == WIIUPDATE_CHECKING) return false;
+    update_asked = true;
     if (!WIIUPDATE_TakeNotice())
         return false;
-
     char text[300];
     if (WIIUPDATE_CanInstall()) {
         snprintf(text, sizeof text,
@@ -122,9 +104,8 @@ static bool check_for_update(void)
     return false;
 }
 
-/* Download and install the update found by check_for_update, once the drives
- * are mounted. B cancels the download. Returns true when it is installed. */
-static bool install_update(void)
+/* Download and install the update update_poll found. B cancels the download. Returns true when it is installed. */
+bool install_update(void)
 {
     if (WIIUPDATE_Install() < 0)
         return false;
@@ -190,18 +171,15 @@ int main(int argc, char **argv)
     input_init();
     wiilight_init();
     WIIUPDATE_SetAppPath(argc > 0 ? argv[0] : NULL);
-#ifdef GMW_AUTOTEST
-    bool update = false;
-    (void)check_for_update;
-#else
-    bool update = check_for_update();
+#ifndef GMW_AUTOTEST
+    WIIUPDATE_Start("quatric", "GodModeWii", GMW_VERSION);     /* in the background; see update_poll */
 #endif
 
     ui_splash("Looking for drives...");
     u64 began = ticks_to_millisecs(gettime());
     risk_startup_poll_begin();
     vfs_init();
-    bool toggled = risk_startup_poll_end(4000, began);
+    bool toggled = risk_startup_poll_end(2000, began);
     risk_load_forced();
 
     /* what is kept on the card, now that it's mounted: sounds, light, theme, alarm */
@@ -477,11 +455,12 @@ int main(int argc, char **argv)
         for (;;) VIDEO_WaitVSync();
     }
 #endif
-    int mode = update && install_update() ? EXIT_LOADER : app_run();
+    int mode = app_run();
 
     ui_splash("Unmounting...");
     risk_lock();
-    WIIUPDATE_Wait(10000);
+    WIIUPDATE_Cancel();                 /* a check still running is dropped, not waited for */
+    WIIUPDATE_Wait(300);
     ftp_net_shutdown();
     vfs_shutdown();
     input_shutdown();
@@ -497,6 +476,15 @@ int main(int argc, char **argv)
         SYS_ResetSystem(SYS_RESTART, 0, 0);
         break;
     case EXIT_MENU:
+        priiloader_magic(false);        /* the Wii Menu itself, even when Priiloader autoboots something else */
+        SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
+        break;
+    case EXIT_PRIILOADER:
+        priiloader_magic(true);
+        SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
+        break;
+    case EXIT_BOOTMII:
+        bootmii_boot();                 /* only comes back if IOS254 wouldn't load */
         SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
         break;
     case EXIT_LAUNCH:

@@ -371,7 +371,7 @@ static bool open_wii(archive_t *a, disc_t *d)
                     }
             } else if (p->encrypted) {
                 uint8_t ck[16], iv[16] = { 0 }, tk[16];
-                if (!arc_common_key(ph[0x1F1], ck)) {
+                if (!arc_common_key(arc_key_index(ph + 0x140, ph[0x1F1]), ck)) {
                     d->nparts--;
                     continue;
                 }

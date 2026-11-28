@@ -208,5 +208,7 @@ void archive_set_nand_key_provider(archive_key_fn fn);        /* the console's o
 extern const uint8_t ARC_SD_KEY[16], ARC_SD_IV[16];
 bool arc_prng_key(uint32_t console_id, uint8_t key[16]);
 bool arc_common_key(int index, uint8_t key[16]);
+bool arc_key_is_dev(const uint8_t *issuer);                /* a ticket / TMD from a development console (RVT) */
+int arc_key_index(const uint8_t *issuer, int idx);         /* the common key for a ticket: its index, or 3 (dev) */
 
 #endif
