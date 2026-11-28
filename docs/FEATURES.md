@@ -260,6 +260,9 @@ The menu is in groups: drives and network, discs, saves and backups, console and
   the remote, and the sensor bar is switched back on after each code so the pointer keeps working.
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii). Each can be turned off in HOME and is
   remembered.
+* **Mail:** a MIME message (Wii Message Board mail, an `.eml` / `.msg`, or any file that starts with mail headers) opens in
+  the text viewer as its From / To / Date / Subject and its decoded text (base64 or quoted-printable; UTF-8, UTF-16 or
+  Latin-1; HTML without its tags), with its attachments listed.
 * **Screensaver:** after a few idle minutes (5 by default; Settings changes it, or turns it off), a rain of characters
   with the name and the time bouncing over it. Settings > Show the screensaver now starts it at once. Music keeps playing, the
   first press only wakes the screen, and the screen comes back exactly as it was.
