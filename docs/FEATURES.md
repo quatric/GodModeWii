@@ -236,7 +236,7 @@ The menu is in groups: drives and network, discs, saves and backups, console and
 * **Miis:** first pick where from: the Mii Channel's plaza, the **Mii Parade** (up to 10,000 Miis the Wii has met by mingling,
   on letters or from Wii Remotes; they keep no creator, birthday or favourite), or the ten Miis on **Wii Remote 1-4**. The list
   marks each Mii M or F, and the panel shows its name, creator, gender, birthday, favourite colour, height, weight and ID.
-  **-** opens the Mii's actions: **Show as a QR code** (the Mii's 74 bytes, the `.miigx` file, so a phone can carry it), **Save the
+  **-** opens the Mii's actions: **Show as a QR code** (converted to the 3DS / Wii U Mii format and encrypted the way Mii Maker reads it, so a 3DS or Wii U can scan it), **Save the
   QR code as a PNG** (`GodModeWii/miis/<Name>.png`), **Copy to a Wii Remote** (its first free slot; the Remote's Mii memory is
   saved to `GodModeWii/wiimote-backups/` first, and both of its copies are written and read back), **Put on this Wii** (the plaza
   or the Parade, as an import), **Remove from this Wii Remote**, and **gold pants**. The Wii Remote must be synced in the Wii Menu;
@@ -260,8 +260,13 @@ The menu is in groups: drives and network, discs, saves and backups, console and
   the remote, and the sensor bar is switched back on after each code so the pointer keeps working.
 * **Sound effects** (MoonShell 2.10's) and the **disc slot light** (as in GlowWii). Each can be turned off in HOME and is
   remembered.
+* **Screensaver:** after a few idle minutes (5 by default; Settings changes it, or turns it off), a rain of characters
+  with the name and the time bouncing over it. Settings > Show the screensaver now starts it at once. Music keeps playing, the
+  first press only wakes the screen, and the screen comes back exactly as it was.
+* **Find files** (Actions > Find files in this folder): every file and folder below whose name has the text in it, in any
+  case, or matches `*` / `?` wildcards; hold B to stop. Picking one opens its folder on it.
 * **Clock and calendar**, after MoonShell's: big digits with the seconds and AM / PM, the date, and the month with today marked
-  (Left / Right change the month, **A** returns to today). The top bar of the browser shows the time too.
+  (Left / Right or - / + change the month, **A** returns to today). The top bar of the browser shows the time too.
 * **Alarm clock**, after MoonShell's Morning Timer: set a time in 12-hour AM / PM (L / R pick hour, minute, AM / PM or on / off, U / D
   change). When it comes, a beep and the disc slot light go off (even with the sounds turned off) until you stop it or snooze for
   five minutes. **Sleep** plays white noise for 15 to 90 minutes, or until you turn it off.

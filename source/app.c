@@ -917,45 +917,78 @@ static void show_credits(void)
         "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
         "Built with devkitPPC and libogc2 (devkitPro, Extrems). GPL-3.0-or-later. See README.",
 
-        "WAD installing and launching .dol / .elf programs: based on YAWM ModMii Edition "
-        "(github.com/modmii/YAWM-ModMii-Edition) by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak, "
-        "from Some YAWMM Mod, YAWMM and WAD Manager (Waninkoko). App booter by Segher Boessenkool and the yawmME team.\n\n"
-        "NAND access + IOS patching: FSToolBox (nickasa), the Lupo96 mod, the WiiDatabase FSToolBox-Mod "
-        "and the IOS patch patterns found by Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig and FIX94 (libruntimeiospatch); GodModeWii's patcher is its own code.",
+        "Credits, A to Z (with licenses in docs/CREDITS.md):\n"
+        "- 3dbrew: the 3DS / Wii U Mii format the QR codes use\n"
+        "- Aeplet's IOS (Aep, MIT): AHBPROT at start-up\n"
+        "- BootMii (Team Twiizers): booted the way it expects\n"
+        "- bzip2 and Zstandard (Meta): RVZ / WIA\n"
+        "- CleanRip (emu_kidid) and spycrab's CleanRip: disc dumps\n"
+        "- csm-installer (Naim2000) and mym-to-csm (cmyksoda): Wii Menu themes\n"
+        "- devkitPPC and libogc2 (devkitPro, Extrems): the build\n"
+        "- Dolphin: the RVZ / WIA format description\n"
+        "- dolxz (FIX94): the small boot.dol\n"
+        "- dr_libs (David Reid): WAV, AIFF, MP3 and FLAC\n"
+        "- dvdisaster: the dump spiral\n"
+        "- FAAD2: AAC\n"
+        "- FFmpeg's Mobiclip decoder (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+): Mobiclip video",
 
-        "Controller input from GlowWii, USB keyboard code from Priiloader (Dacoslove).\n\n"
-        "Audio and texture formats match quatric's nintoolbox and mobipeg.\n\n"
-        "Mobiclip, THP and Flipnote playback: quatric's wii-mobiclip-player (MIT), whose Mobiclip decoder is "
-        "ported from FFmpeg (Florian Nouwt, Adib Surani, Paul B Mahol; LGPL 2.1+), with thanks to PlayMobic, "
-        "MobiclipDecoder (Gericom) and WiiLink24. JPEG frames: NanoJPEG (Martin J. Fiedler). Vorbis: Tremor.",
+        "- FSToolBox (nickasa), the Lupo96 mod and WiiDatabase's FSToolBox-Mod: NAND access\n"
+        "- ftpii and WiiXplorer (Dimok, niuus): inspiration\n"
+        "- GameTDB: box and disc art\n"
+        "- GCMM: GameCube memory card saves\n"
+        "- GerbilSoft's rom-properties: save banners and icons\n"
+        "- Gervill's soundbank: MIDI\n"
+        "- GlowWii: controller input, the disc slot light\n"
+        "- GodMode9 (d0k3) and GodMode9i (DS-Homebrew): inspiration, write permission colours\n"
+        "- HBC Reborn (Monsterray): installed from its releases\n"
+        "- jaames' mii-qr.py: how a Mii QR code is encrypted\n"
+        "- KakarottoCake's RiftWii: RVZ / WIA design, HID and queue code\n"
+        "- libdvdcss (VideoLAN): DVD-Video",
 
-        "RSEQ sequences: layouts from VGMTrans. WAV, AIFF, MP3 and FLAC: dr_libs (David Reid). zip, 7z and RAR 1.5 - 4: unarr (selmf, LZMA SDK by "
-        "Igor Pavlov); RAR5 from the public format description.\n\n"
-        "RVZ / WIA: written from Dolphin's format description, after the design of KakarottoCake's RiftWii; "
-        "Zstandard (Meta), bzip2. LZO1X and Retro Studios PAK layouts match nintoolbox; lzop by Markus Oberhumer.\n\n"
-        "Miis: drawn on the Wii by MiiKit (github.com/cmyksoda/MiiKit), from hbc-reborn's sdk/mii.",
+        "- libdvm with FatFs (Extrems, ChaN): exFAT and ext4 mounts\n"
+        "- libntfs (Extrems, NTFS-3G): NTFS\n"
+        "- libruntimeiospatch patterns (Nano, Joseph Jordan, damysteryman, DarkMatterCore, megazig, FIX94): IOS patches\n"
+        "- libsicksaxis (xerpi): DualShock 3\n"
+        "- libwbfs (Kwiirk, Waninkoko): WBFS\n"
+        "- libwiidrc and libwupc (FIX94): the GamePad on vWii, Pro Controllers\n"
+        "- libwiiinput, libwiiir and libwiiupdate (quatric): controllers, IR, updates\n"
+        "- Logitech Harmony IR archive (pickysysadmin, CC0): the IR remote's devices\n"
+        "- lwext4 (Grzegorz Kostka): ext4\n"
+        "- lzop (Markus Oberhumer): LZO\n"
+        "- Mbed TLS and miniz: updates and downloads\n"
+        "- MII-FLOOD-2: the Mii Parade's layout",
 
-        "Game discs: TinyLoad (marcan, Segher, Andre Heider, Nuke). NAND backup: nanddumper@IOS (thepikachugamer) "
-        "with mkwcat's /dev/sha exploit; AHBPROT at start-up: Aeplet's IOS (Aep, MIT). Wii Menu themes: csm-installer "
-        "(Naim2000) and cmyksoda's mym-to-csm. boot1 / boot2 identification: facts from RGD SDBoot Installer. HBC Reborn "
-        "(Monsterray) is installed from its releases. Disc dumps: CleanRip (emu_kidid) and spycrab's CleanRip, "
-        "libdvdcss (VideoLAN) for DVD-Video.\n\n"
-        "MIDI: TinySoundFont (Bernhard Schelling) with Gervill's soundbank. AAC: FAAD2. Drives: libntfs (Extrems, NTFS-3G), "
-        "lwext4 (Grzegorz Kostka) and Extrems' libdvm with FatFs (ChaN) for exFAT and ext4.",
+        "- mii-qr: the idea of Mii QR codes\n"
+        "- MiiJS (Stewared, ISC): Wii to 3DS Mii features\n"
+        "- MiiKit (cmyksoda), from hbc-reborn's sdk/mii: Miis\n"
+        "- MobiclipDecoder (Gericom), PlayMobic and WiiLink24: Mobiclip thanks\n"
+        "- nanddumper@IOS (thepikachugamer) with mkwcat's /dev/sha exploit: NAND backup\n"
+        "- NanoJPEG (Martin J. Fiedler): JPEG frames\n"
+        "- ndev_to_rvl, WiiElfFix and RVT2RVL: development console programs\n"
+        "- Nintendont's controller.ini layouts (FIX94 and contributors): USB pads\n"
+        "- nintoolbox and mobipeg (quatric): audio and texture formats\n"
+        "- PictoCard: sketchpad tools\n"
+        "- Priiloader (DacoTaco, Dacoslove): USB keyboards; booted the way it expects",
 
-        "Controllers: libwiiinput, with Nintendont's controller.ini layouts (FIX94 and contributors), wup-028-bslug "
-        "(Alex Chadwick) and RiftWii's HID and queue code; libwiidrc and libwupc (FIX94), libsicksaxis (xerpi).\n\n"
-        "IR remote: WiiIR, SingIR and OptimizeIR (Dakota Thorpe) through libwiiir; remotes from the Logitech Harmony IR archive. Disc slot "
-        "light: GlowWii. Sketchpad tools: PictoCard. Updates and downloads: libwiiupdate, with Mbed TLS and miniz. The "
-        "small boot.dol: dolxz (FIX94).",
+        "- Project Nayuki's QR Code generator (MIT): QR codes\n"
+        "- RGD SDBoot Installer: boot1 / boot2 identification\n"
+        "- SaveGame Manager GX: the save manager\n"
+        "- ShowMiiWads (Leathl) and NUSD: title info\n"
+        "- TinyLoad (marcan, Segher, Andre Heider, Nuke): game discs\n"
+        "- TinySoundFont (Bernhard Schelling): MIDI\n"
+        "- TiVo: TiVo mode's sounds\n"
+        "- Tremor: Vorbis\n"
+        "- unarr (selmf, LZMA SDK by Igor Pavlov): zip, 7z and RAR 1.5 - 4\n"
+        "- USB Loader GX: the anti-002 patch\n"
+        "- VGMTrans: RSEQ sequences\n"
+        "- wii-mobiclip-player (quatric, MIT): Mobiclip, THP and Flipnote\n"
+        "- WiiBrew: Wii Remote memory, SYSCONF and the Mii data",
 
-        "Development console programs: USB Loader GX's anti-002 patch, ndev_to_rvl, WiiElfFix and RVT2RVL. Priiloader "
-        "(DacoTaco) and BootMii (Team Twiizers) are booted the way each expects.\n\n"
-        "Save manager: SaveGame Manager GX, GCMM and GerbilSoft's rom-properties; box and disc art from GameTDB. WBFS: "
-        "libwbfs (Kwiirk, Waninkoko). The dump spiral: after dvdisaster. Title info: after ShowMiiWads (Leathl) and NUSD.\n\n"
-        "Mii QR codes: Project Nayuki's QR Code generator (MIT), after mii-qr. Mii Parade layout: MII-FLOOD-2. Wii Remote "
-        "memory, SYSCONF and the Mii data: WiiBrew. Write permission colours: GodMode9. Zip: zlib.\n\n"
-        "Full list with licenses: docs/CREDITS.md.",
+        "- WiiIR, SingIR and OptimizeIR (Dakota Thorpe): the IR remote, through libwiiir\n"
+        "- wup-028-bslug (Alex Chadwick): the GameCube adapter\n"
+        "- YAWM ModMii Edition (OverjoY, blackb0x, scooby74029, Peter0x44, XFlak), from YAWMM and WAD Manager (Waninkoko): WAD installing and .dol launching; app booter by Segher Boessenkool\n"
+        "- zlib: zip",
+
 
         "The interface sounds are MoonShell 2.10's (Moonlight, GPL v2 or later), and the clock, calendar, "
         "calculator and alarm follow its own.\n\n"

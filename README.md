@@ -155,7 +155,7 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 **HOME menu extras**
 
 * Miis: the Mii Channel's plaza, the Mii Parade (the Miis the Wii has met) and the ten Miis on each Wii Remote, exported as `.miigx`
-* A Mii as a QR code of its 74 bytes, on the screen or saved as a PNG; copied to a Wii Remote (its memory backed up first), onto this
+* A Mii as a QR code that Mii Maker on a 3DS or Wii U scans (converted to their format and encrypted as they expect), on the screen or saved as a PNG; copied to a Wii Remote (its memory backed up first), onto this
   Wii, or off a Wii Remote (MIIS, press **-**)
 * Gold pants: make a Mii in the Mii Channel "special" or normal again (MIIS, press **-**)
 * Miis import: a Mii file into the Mii Channel plaza or the Mii Parade, or a whole folder of them into the Parade (ACTIONS > Import Miis)
@@ -599,7 +599,8 @@ in [docs/CREDITS.md](docs/CREDITS.md).
 * [GodMode9](https://github.com/d0k3/GodMode9) (d0k3) and [GodMode9i](https://github.com/DS-Homebrew/GodMode9i) (DS-Homebrew), and GodMode9's write permission colours
 * [dvdisaster](https://dvdisaster.jcea.es/): the disc dumper's spiral
 * ShowMiiWads (Leathl) and NUSD: the title info screen
-* mii-qr: Miis as QR codes
+* mii-qr: Miis as QR codes; jaames' mii-qr.py: the 3DS / Wii U QR code's encryption; 3dbrew: their Mii format; MiiJS (Stewared, ISC): the
+  Wii to 3DS face features
 * MoonCalc and Morning Timer (for MoonShell): the calculator and the alarm
 * Terminal on macOS: the colour themes
 * [ftpii](https://code.google.com/p/ftpii/source/list) (Joseph Jordan) and [WiiXplorer](https://github.com/niuus/wiixplorer) (Dimok)

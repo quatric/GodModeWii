@@ -104,8 +104,13 @@
   two copies with a CRC-16) from its Wii Remote and Mii data pages.
 * **[MII-FLOOD-2](https://github.com/fartbumpoopturd-bit/MII-FLOOD-2)** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
   records, checked against three real databases.
-* **mii-qr** — the idea of carrying a Mii as a QR code. The code here holds the Mii's own 74 bytes (a `.miigx`), since the 3DS /
-  Wii U Mii QR format is encrypted with a key that console keeps.
+* **mii-qr** — the idea of carrying a Mii as a QR code.
+* **[jaames' mii-qr.py](https://gist.github.com/jaames/96ce8daa11b61b758b6b0227b55f9f78)** — how the 3DS / Wii U Mii QR code
+  is wrapped: an 8-byte nonce from the Mii, AES-CCM with Mii Maker's key, the 16-byte tag. GodModeWii encrypts the same way.
+* **[3dbrew](https://www.3dbrew.org/wiki/Mii)** — the 3DS / Wii U Mii data (Ver3StoreData) that a Wii Mii is converted to for the
+  QR code.
+* **[MiiJS](https://www.npmjs.com/package/miijs)** (Stewared, ISC) — how a Wii Mii's single face feature splits into the later
+  makeup and wrinkles fields.
 * **PDF** — written from the PDF 1.7 specification (ISO 32000-1).
 * **EPUB** — written from the EPUB 3.2 / Open Container Format specifications. **GIF** — written from the GIF89a specification.
 * **ext2/3/4, XFS, HFS+, APFS, OpenZFS** — written from Apple's APFS reference, Apple Technical Note TN1150 (HFS+), the kernel.org ext4 and XFS on-disk format documents and the OpenZFS on-disk format description; `mke2fs` and macOS's `newfs_hfs` / `hdiutil` produced the test images.
