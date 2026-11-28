@@ -119,7 +119,7 @@ static void draw_recording(u32 secs, int level, const char *name)
 static void record(void)
 {
     char dir[VFS_PATH_MAX], path[VFS_PATH_MAX + 64], name[48], why[200];
-    if (!pda_dir("voice", dir, sizeof(dir))) {
+    if (!pda_dir("voice", dir, sizeof(dir), true)) {
         ui_message("VOICE MEMO", C_RED, "No drive to save to: insert an SD card.");
         return;
     }
@@ -190,7 +190,10 @@ static void record(void)
     wiilight_off();
     wav_header(f, rate, samples * 2);
     bool ok = fclose(f) == 0 && !failed;
-    if (!save || !ok || samples == 0) unlink(path);
+    if (!save || !ok || samples == 0) {
+        unlink(path);
+        rmdir(dir);                     /* the folder too, if this was going to be its first memo */
+    }
     if (failed || !ok)
         ui_message("VOICE MEMO", C_RED, "The card is full or could not be written.");
     else if (save && samples) {
@@ -213,7 +216,7 @@ void memo_run(void)
     for (;;) {
         char dir[VFS_PATH_MAX];
         int n = 0;
-        if (pda_dir("voice", dir, sizeof(dir))) {
+        if (pda_dir("voice", dir, sizeof(dir), false)) {
             DIR *d = opendir(dir);
             struct dirent *e;
             while (d && (e = readdir(d)) && n < MAX_MEMOS) {

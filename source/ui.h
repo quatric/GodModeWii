@@ -78,6 +78,8 @@ void ui_blit_rgba(int x, int y, const u8 *rgba, int w, int h, int scale);
 /* ui_framebuffer is the back buffer; ui_flip shows it (once per frame, call right after a vsync) and
  * ui_front is the one on screen. */
 void ui_flip(void);
+/* The screen as GodModeWii/screenshots/shot_NNN.png (1 and 2 pressed together); the file's path in out. */
+bool ui_screenshot(char *out, size_t n);
 void *ui_front(void);
 
 #ifdef GMW_AUTOTEST

@@ -6,7 +6,7 @@
 
 /* The folder the sketchpad and the voice memos save in: "GodModeWii/<sub>" on the SD card (or the
  * first writable USB drive). Made if missing; false when no drive can be written. */
-bool pda_dir(const char *sub, char *out, size_t n);
+bool pda_dir(const char *sub, char *out, size_t n, bool create);   /* create: make it (only when saving) */
 
 /* The drawing board: pointer, mouse, pen tablet or uDraw. Saves baseline .jpg files. */
 void draw_run(void);

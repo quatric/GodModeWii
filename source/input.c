@@ -89,6 +89,28 @@ void input_shutdown(void)
     INPUT_Shutdown();
 }
 
+/* 1 and 2 pressed together take a screenshot. A lone 1 or 2 is held back a few frames to see whether the other
+ * one follows, then let through. */
+static u32 shot_combo(u32 down)
+{
+    static u32 pending;
+    static int age;
+    const u32 both = WPAD_BUTTON_1 | WPAD_BUTTON_2;
+    u32 now = (down & both) | pending;
+    down &= ~both;
+    if ((now & both) == both) {
+        pending = 0;
+        char path[300];
+        bool ok = ui_screenshot(path, sizeof(path));
+        sfx_play(ok ? SFX_CLICK : SFX_LONGTAP);
+        wiilight_pulse();
+        return down;
+    }
+    if (now && !pending) { pending = now; age = 0; return down; }
+    if (pending && ++age >= 4) { down |= pending; pending = 0; }
+    return down;
+}
+
 static u32 detect(u8 DownOrHeld, bool wait)
 {
     ptr_overlay_update();                           /* an arrow taken away by a redraw is back before the next frame */
@@ -105,6 +127,7 @@ static u32 detect(u8 DownOrHeld, bool wait)
         return INPUT_ButtonsHeld();
     u32 down = INPUT_ButtonsDown();
     if (conbtn_mode != 2) down |= console_buttons();
+    down = shot_combo(down);
     /* a click on a footer hint ("B Stop") is that button */
     u32 hint = ui_hint_under();
     if (hint && ((down & WPAD_BUTTON_A) || (INPUT_MouseButtonsPressed() & INPUT_MOUSE_LEFT)))

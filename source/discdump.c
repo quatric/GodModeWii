@@ -17,6 +17,8 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <zlib.h>
+#include <math.h>
+#include <input_wii.h>
 #include <gccore.h>
 #include <ogc/lwp_watchdog.h>
 #include <di/di.h>
@@ -376,10 +378,67 @@ typedef struct {
     char md5[33], sha1[41];
     u32 secs_done;
     u64 ms;
-    bool stopped, cancelled, wfail;
+    bool stopped, cancelled, wfail, unreadable;
     int keys_missing;               /* DVD-Video title keys not found: those VOBs stay scrambled */
     bool decrypted;
 } result_t;
+
+/* ---------------------------------------------------------------- the spiral
+ * The disc drawn as a spiral, inside out as it is read, the way dvdisaster shows it: one dot per stretch of
+ * sectors, grey until read, then green (read), yellow (read once, never confirmed) or red (unreadable).
+ * 1 hides it (and shows it again). */
+#define SPIRAL_N 1800
+static u8 seg[SPIRAL_N];            /* 0 unread, 1 good, 2 unconfirmed, 3 bad */
+static short seg_x[SPIRAL_N], seg_y[SPIRAL_N];
+static bool spiral_on = true, spiral_ready;
+
+static void spiral_layout(int cx, int cy, int r0, int r1)
+{
+    /* an Archimedean spiral r = a + b*t, dots evenly spaced along it */
+    const float spacing = 6.0f, a = r0, b = spacing / (2 * 3.14159265f);
+    float tmax = (r1 - r0) / b, len = b / 2 * tmax * tmax + a * tmax;
+    for (int i = 0; i < SPIRAL_N; i++) {
+        float s = len * i / (SPIRAL_N - 1);
+        float t = (-a + sqrtf(a * a + 2 * b * s)) / b, r = a + b * t;
+        seg_x[i] = (short)(cx + r * cosf(t - 1.5708f));
+        seg_y[i] = (short)(cy + r * sinf(t - 1.5708f));
+    }
+    spiral_ready = true;
+}
+
+static void spiral_mark(u32 lba, u32 n, int state)
+{
+    if (!S.sectors) return;
+    u32 a = (u32)((u64)lba * SPIRAL_N / S.sectors), z = (u32)((u64)(lba + n) * SPIRAL_N / S.sectors);
+    if (z <= a) z = a + 1;
+    for (u32 i = a; i < z && i < SPIRAL_N; i++) if (seg[i] < state) seg[i] = (u8)state;
+}
+
+static u32 yuy2(u8 r, u8 g, u8 b)
+{
+    int y = (299 * r + 587 * g + 114 * b) / 1000, u = (-169 * r - 331 * g + 500 * b) / 1000 + 128,
+        v = (500 * r - 419 * g - 81 * b) / 1000 + 128;
+    y = y * 219 / 255 + 16;
+    return (u32)y << 24 | (u32)u << 16 | (u32)y << 8 | (u32)v;
+}
+
+static void spiral_draw(void)
+{
+    int fw, fh;
+    u8 *fb = ui_framebuffer(&fw, &fh);
+    if (!fb || !spiral_ready) return;
+    static const u8 rgb[4][3] = { { 70, 70, 70 }, { 40, 200, 60 }, { 230, 200, 40 }, { 230, 40, 40 } };
+    u32 c[4];
+    for (int k = 0; k < 4; k++) c[k] = yuy2(rgb[k][0], rgb[k][1], rgb[k][2]);
+    for (int i = 0; i < SPIRAL_N; i++) {
+        int x = seg_x[i] & ~1, y = seg_y[i];
+        for (int dy = -1; dy <= 1; dy++) {
+            if (y + dy < 0 || y + dy >= fh || x < 0 || x + 3 >= fw) continue;
+            u32 *row = (u32 *)(fb + (y + dy) * fw * 2) + x / 2;
+            row[0] = row[1] = c[seg[i]];       /* whole words: the framebuffer is uncached */
+        }
+    }
+}
 
 static void progress(u32 done, u64 began)
 {
@@ -390,12 +449,27 @@ static void progress(u32 done, u64 began)
     snprintf(l1, sizeof(l1), "%u / %u MB   %u.%u MB/s   %u:%02u left   (hold B to stop)",
              (unsigned)((u64)done * SEC >> 20), (unsigned)((u64)S.sectors * SEC >> 20),
              (unsigned)(rate >> 20), (unsigned)((rate % (1 << 20)) * 10 >> 20), eta / 60, eta % 60);
-    snprintf(l2, sizeof(l2), "unreadable sectors: %u", (unsigned)bad_secs);
-    ui_splash(T);
+    snprintf(l2, sizeof(l2), "unreadable sectors: %u   (1: %s the spiral)", (unsigned)bad_secs, spiral_on ? "hide" : "show");
     int r = ui_rows() / 2 + 1, cols = ui_cols();
+    if (spiral_on) {
+        ui_clear();
+        ui_color(C_CYAN, true);
+        ui_field(1, 0, cols - 1, "%*s%s", (cols - (int)strlen(T)) / 2, "", T);
+        ui_reset();
+        r = 2;
+        if (!spiral_ready) {
+            int fw, fh;
+            ui_framebuffer(&fw, &fh);
+            int top = ui_cell_y(r + 4), bottom = fh - 24, rad = (bottom - top) / 2;
+            spiral_layout(fw / 2, top + rad, 12, rad);
+        }
+    } else {
+        ui_splash(T);
+    }
     ui_field(r, 0, cols - 1, "%*s%s", (cols - (int)strlen(l1)) / 2, "", l1);
     ui_field(r + 1, 0, cols - 1, "%*s%s", (cols - (int)strlen(l2)) / 2, "", l2);
     ui_bar(r + 2, (cols - 50) / 2, 50, S.sectors ? (int)((u64)done * 100 / S.sectors) : 0, bad_secs ? C_YELLOW : C_GREEN);
+    if (spiral_on) spiral_draw();
 }
 
 static void dump(out_t *o, result_t *res, bool ask_cancel)
@@ -450,8 +524,12 @@ static void dump(out_t *o, result_t *res, bool ask_cancel)
         }
         if (!(in_vob && css && have_key))
 #endif
+        {
+            u32 b0 = bad_secs, u0 = unconfirmed;
             for (u32 k = 0; k < n; k += CHUNK)
                 read_sectors(lba + k, n - k < CHUNK ? n - k : CHUNK, buf + k * SEC);
+            spiral_mark(lba, n, bad_secs > b0 ? 3 : unconfirmed > u0 ? 2 : 1);
+        }
         (void)in_vob;
         if (hit_bad && stop_on_bad) res->stopped = true;
         md5_update(&m, buf, n * SEC);
@@ -459,6 +537,10 @@ static void dump(out_t *o, result_t *res, bool ask_cancel)
         crc = crc32(crc, buf, n * SEC);
         if (!out_write(o, buf, (u64)n * SEC)) res->wfail = true;
         lba += n;
+        /* nothing at all read from the first 8 MB: this drive can't read this disc. Don't write gigabytes of 0x55. */
+        if (lba >= 4096 && lba - n < 4096 && bad_secs >= lba && !stop_on_bad) {
+            res->stopped = res->unreadable = true;
+        }
         u64 t = ticks_to_millisecs(gettime());
         if (t - last >= 500 || lba == S.sectors) { last = t; progress(lba, began); }
 #ifdef GMW_AUTOTEST
@@ -467,6 +549,10 @@ static void dump(out_t *o, result_t *res, bool ask_cancel)
             if (pf) { fprintf(pf, "lba %u of %u bad %u t %u\n", (unsigned)lba, (unsigned)S.sectors, (unsigned)bad_secs, (unsigned)(t - began)); fclose(pf); }
         }
 #endif
+        if (ask_cancel && (INPUT_ButtonsDown() & WPAD_BUTTON_1)) {
+            spiral_on = !spiral_on;
+            last = 0;
+        }
         if (ask_cancel && input_cancel_held() &&
             ui_confirm(T, C_YELLOW, "Stop the dump? What was read so far is kept, with a .txt saying it is incomplete.")) {
             res->stopped = res->cancelled = true;
@@ -591,6 +677,8 @@ static void reset_state(void)
     quiet = hit_bad = false;
     vob_n = 0;
     memset(&S, 0, sizeof(S));
+    memset(seg, 0, sizeof(seg));
+    spiral_ready = false;
 }
 
 /* Everything after the choices: the output files, the dump, the .txt. msg gets the summary. */
@@ -620,6 +708,18 @@ static bool run_dump(int dev, out_t *o, result_t *r, const char *src_name, bool 
     bool closed = o->f && fclose(o->f) == 0;
     o->f = NULL;
     if (!closed) r->wfail = true;
+    if (r->unreadable) {                             /* nothing worth keeping: the part files go */
+        for (int i = 0; i <= o->part; i++) {
+            char t[VFS_PATH_MAX + 112];
+            if (o->part_size) snprintf(t, sizeof(t), "%s.part%d.iso", o->base, i);
+            else snprintf(t, sizeof(t), "%s", o->path);
+            remove(t);
+        }
+        snprintf(msg, mn, "Nothing could be read from the first 8 MB of this disc, so the dump stopped there and "
+                 "nothing was saved.\n\nThis drive can't read it: Wii drives made from mid-2008 on don't read DVDs, "
+                 "and a disc that is badly scratched near the centre fails the same way. A USB DVD drive may read it.");
+        return false;
+    }
     write_info(o, r, src_name);
     snprintf(msg, mn, "%s%s\n\n%s\n\nCRC32 %08x\nMD5   %s\nSHA-1 %s\n\nUnreadable sectors: %u%s\n%s",
              r->wfail ? "WRITE ERROR (is the drive full?)\n\n" : r->secs_done < S.sectors ? "STOPPED: the ISO is incomplete.\n\n" : "",
@@ -778,6 +878,10 @@ void discdump_autotest(const char *args)
     fprintf(lg, "discdump: kind %s name %s sectors %u good %d parts %d done %u bad %u ranges %u crc %08x md5 %s sha1 %s\n",
             S.kind, S.name, (unsigned)S.sectors, good, o.part + 1, (unsigned)r.secs_done, (unsigned)bad_secs,
             (unsigned)bad_n, (unsigned)r.crc, r.md5, r.sha1);
+    fprintf(lg, "discdump: unreadable %d msg %.80s\n", r.unreadable, msg);
+    progress(r.secs_done, 0);                         /* the spiral as it ended, saved like a viewer's screen */
+    extern bool ui_test_dump(void);
+    ui_test_dump();
     fail_lo = fail_hi = 0;
     fclose(lg);
 }

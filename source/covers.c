@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include "wiiupdate.h"
@@ -57,7 +58,7 @@ bool covers_show(const char *id6, bool disc)
     if (stat(path, &st) == 0 && st.st_size > 0) return image_view(path);
 
     ui_splash("Connecting...");
-    if (!ftp_net_start()) return false;
+    if (!ftp_net_start()) { rmdir(dir); return false; }
     const char *regs[3] = { region(id[3]), "EN", "US" };
     for (int i = 0; i < 3; i++) {
         if (i && !strcmp(regs[i], regs[0])) continue;
@@ -68,6 +69,9 @@ bool covers_show(const char *id6, bool disc)
         if (WIIUPDATE_Get(url, "image/png", path, NULL, NULL, 4 << 20, NULL, NULL) == 0) return image_view(path);
     }
     remove(path);
+    rmdir(dir);                                         /* no empty cache folders left behind */
+    snprintf(dir, sizeof(dir), "%sGodModeWii/covers", g_devs[dev].root);
+    rmdir(dir);
     char msg[200];
     snprintf(msg, sizeof(msg), "GameTDB has no %s art for %s (or the network is down).", disc ? "disc" : "box", id);
     ui_message(T, C_YELLOW, msg);

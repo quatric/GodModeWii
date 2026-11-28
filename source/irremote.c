@@ -1025,6 +1025,50 @@ static void preset_menu(int i)
     }
 }
 
+/* Several presets at once: A marks one, then "Delete the marked" asks once. */
+static void delete_many(void)
+{
+    bool mark[MAX_PRESETS] = { false };
+    int sel = 0;
+    for (;;) {
+        const char *items[MAX_PRESETS + 3];
+        static char labels[MAX_PRESETS][48];
+        char top[48];
+        int marked = 0;
+        for (int i = 0; i < npresets; i++) marked += mark[i];
+        snprintf(top, sizeof top, marked ? "Delete the %d marked" : "Delete the marked (none yet)", marked);
+        items[0] = top;
+        items[1] = marked == npresets ? "Unmark all" : "Mark all";
+        for (int i = 0; i < npresets; i++) {
+            snprintf(labels[i], sizeof labels[i], "[%c] %.31s", mark[i] ? 'x' : ' ', presets[i].name);
+            items[i + 2] = labels[i];
+        }
+        ui_clear();
+        int r = ui_menu_ex("DELETE PRESETS", items, NULL, npresets + 2, sel, "A Mark / unmark   B Back");
+        if (r < 0) return;
+        sel = r;
+        if (r == 1) {
+            bool all = marked != npresets;
+            for (int i = 0; i < npresets; i++) mark[i] = all;
+        } else if (r >= 2) {
+            mark[r - 2] = !mark[r - 2];
+        } else if (marked) {
+            char q[96];
+            snprintf(q, sizeof q, "Delete %d preset%s? Their button mappings are lost.", marked, marked == 1 ? "" : "s");
+            if (!ui_confirm("DELETE PRESETS", C_RED, q)) continue;
+            int k = 0, cur = current;
+            for (int i = 0; i < npresets; i++) {
+                if (mark[i]) { if (i < current) cur--; else if (i == current) cur = k; continue; }
+                presets[k++] = presets[i];
+            }
+            npresets = k;
+            current = cur >= npresets ? npresets - 1 : cur < 0 ? 0 : cur;
+            save_or_warn();
+            return;
+        }
+    }
+}
+
 static const char HELP[] =
     "Sends TV, receiver and set-top box codes from " SENDER ", with the buttons of any controller.\n\n"
     "New preset: pick the device, then give each of its buttons a button on any controller (Wii Remote, "
@@ -1079,6 +1123,7 @@ void irremote_run(bool quick)
             items[n] = labels[i];
         }
         items[n++] = "New preset (pick a device)";
+        if (npresets > 1) items[n++] = "Delete several presets...";
         items[n++] = "Help";
         ui_clear();
         int r = ui_menu_ex("IR REMOTE", items, NULL, n, sel, "A Select   B Back");
@@ -1089,6 +1134,8 @@ void irremote_run(bool quick)
             preset_menu(r);
         else if (r == npresets)
             new_preset();
+        else if (r == npresets + 1 && npresets > 1)
+            delete_many();
         else
             ui_message("IR REMOTE", C_CYAN, HELP);
     }

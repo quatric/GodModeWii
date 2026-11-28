@@ -1071,3 +1071,55 @@ void ui_hint_update(void)
 }
 
 u32 ui_hint_under(void) { return hov_btn; }
+
+/* ---------------------------------------------------------------- screenshots */
+#include <png.h>
+#include "pda.h"
+#include "vfs.h"
+
+/* What is on the screen, as GodModeWii/screenshots/shot_NNN.png; the path in `out`. */
+bool ui_screenshot(char *out, size_t n)
+{
+    int w = rmode ? rmode->fbWidth : 0, h = rmode ? rmode->xfbHeight : 0;
+    const u8 *fb = front ? (const u8 *)front : (const u8 *)xfb;
+    char dir[VFS_PATH_MAX];
+    if (!w || !h || !pda_dir("screenshots", dir, sizeof(dir), true)) return false;
+    for (int i = 1; i < 1000; i++) {
+        snprintf(out, n, "%s/shot_%03d.png", dir, i);
+        if (access(out, F_OK) != 0) break;
+    }
+    u8 *rgb = malloc((size_t)w * 3);
+    FILE *f = rgb ? fopen(out, "wb") : NULL;
+    png_structp png = f ? png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL) : NULL;
+    png_infop info = png ? png_create_info_struct(png) : NULL;
+    bool ok = false;
+    if (info && !setjmp(png_jmpbuf(png))) {
+        png_init_io(png, f);
+        png_set_IHDR(png, info, w, h, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
+                     PNG_FILTER_TYPE_DEFAULT);
+        png_write_info(png, info);
+        for (int y = 0; y < h; y++) {
+            const u8 *row = (const u8 *)MEM_K0_TO_K1(fb) + (size_t)y * w * 2;
+            for (int x = 0; x < w; x += 2) {                 /* YUY2: Y0 U Y1 V */
+                int y0 = row[x * 2] - 16, u = row[x * 2 + 1] - 128, y1 = row[x * 2 + 2] - 16, v = row[x * 2 + 3] - 128;
+                for (int k = 0; k < 2; k++) {
+                    int yy = (k ? y1 : y0) * 298, r = (yy + 409 * v + 128) >> 8, g = (yy - 100 * u - 208 * v + 128) >> 8,
+                        b = (yy + 516 * u + 128) >> 8;
+                    u8 *p = rgb + (x + k) * 3;
+                    p[0] = r < 0 ? 0 : r > 255 ? 255 : r;
+                    p[1] = g < 0 ? 0 : g > 255 ? 255 : g;
+                    p[2] = b < 0 ? 0 : b > 255 ? 255 : b;
+                }
+            }
+            png_write_row(png, rgb);
+        }
+        png_write_end(png, NULL);
+        ok = true;
+    }
+    if (png) png_destroy_write_struct(&png, info ? &info : NULL);
+    if (f) fclose(f);
+    if (!ok && f) remove(out);
+    free(rgb);
+    return ok;
+}
+

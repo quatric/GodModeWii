@@ -229,7 +229,7 @@ static void flood_fill(int sx, int sy)
 static bool save(char *name, size_t n)
 {
     char dir[VFS_PATH_MAX], path[VFS_PATH_MAX + 80];
-    if (!pda_dir("drawings", dir, sizeof(dir))) return false;
+    if (!pda_dir("drawings", dir, sizeof(dir), true)) return false;
     for (int i = 1; i < 1000; i++) {
         snprintf(name, n, "drawing_%03d.jpg", i);
         snprintf(path, sizeof(path), "%s/%s", dir, name);
