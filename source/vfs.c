@@ -518,6 +518,11 @@ bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len)
     return true;
 }
 
+u32 vfs_usb_sector_size(int slot)
+{
+    return slot >= 0 && slot < USB_SLOTS && uslot[slot].ok ? uslot[slot].sector_size : 0;
+}
+
 u64 vfs_usb_raw_size(int slot)
 {
     if (slot < 0 || slot >= USB_SLOTS || !uslot[slot].ok)
@@ -904,7 +909,9 @@ static void mount_usb(int tries)
         } else if (!g_devs[DEV_USB0 + i].mounted && arcfs_mount_wfs(DEV_USB0 + i, i)) {
             /* a Wii U formatted drive: shown read-only through the WFS reader */
             g_devs[DEV_USB0 + i].mounted = true;
-            if (!strcmp(arcfs_pin_kind(DEV_USB0 + i), "WFS"))
+            if (!strcmp(arcfs_pin_kind(DEV_USB0 + i), "WBFS"))
+                snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "old WBFS format  read-only");
+            else if (!strcmp(arcfs_pin_kind(DEV_USB0 + i), "WFS"))
                 snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "Wii U WFS volume  read-only");
             else
                 snprintf(g_devs[DEV_USB0 + i].note, sizeof(g_devs[0].note), "%.20s  read-only",
@@ -1078,6 +1085,44 @@ void vfs_init(void)
     virt_refresh(DEV_KEYS);
     for (int i = 0; i < DEV_COUNT; i++)
         vfs_update_space(i);
+}
+
+void vfs_unmount_all(void)
+{
+    arcfs_unpin_all();
+    unmount_fat();
+}
+
+const char *vfs_foreign_fs(int dev)
+{
+    if (dev != DEV_SD && (dev < DEV_USB0 || dev >= DEV_USB0 + USB_SLOTS)) return NULL;
+    vfs_dev *d = &g_devs[dev];
+    if (dev != DEV_SD && (d->extra_part || !uslot[dev - DEV_USB0].ok || uslot[dev - DEV_USB0].sector_size == 2048))
+        return NULL;                    /* a further partition, nothing there, or a CD / DVD drive */
+    if (d->exfat) return "exFAT";
+    if (d->ntfs) return "NTFS";
+    if (d->ext) return d->ext == 4 ? "ext4" : d->ext == 3 ? "ext3" : "ext2";
+    if (d->mounted && arcfs_dev_pinned(dev)) return arcfs_pin_kind(dev);
+    if (d->mounted) return NULL;        /* FAT: the Homebrew Channel reads it */
+    if (dev == DEV_SD) return __io_wiisd.isInserted(&__io_wiisd) ? "unreadable" : NULL;
+    return "unreadable";
+}
+
+bool vfs_drive_io(int dev, const DISC_INTERFACE **io, u64 *sectors, u32 *ss)
+{
+    if (dev == DEV_SD) {
+        if (!__io_wiisd.startup(&__io_wiisd) || !__io_wiisd.isInserted(&__io_wiisd)) return false;
+        *io = &__io_wiisd;
+        *sectors = __io_wiisd.numberOfSectors;
+        *ss = __io_wiisd.bytesPerSector ? __io_wiisd.bytesPerSector : 512;
+        return *sectors > 0;
+    }
+    int s = dev - DEV_USB0;
+    if (s < 0 || s >= USB_SLOTS || !uslot[s].ok) return false;
+    *io = &usb_iface[s];
+    *sectors = uslot[s].sectors;
+    *ss = uslot[s].sector_size;
+    return true;
 }
 
 void vfs_remount(void)

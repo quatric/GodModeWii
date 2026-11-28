@@ -73,6 +73,8 @@ u32 ui_hint_under(void);
 
 /* The console's framebuffer (YUY2, 2 bytes per pixel), for the image viewer. */
 void *ui_framebuffer(int *w, int *h);
+/* An RGBA picture blended onto the screen at pixel (x, y), each pixel scale x scale. */
+void ui_blit_rgba(int x, int y, const u8 *rgba, int w, int h, int scale);
 /* ui_framebuffer is the back buffer; ui_flip shows it (once per frame, call right after a vsync) and
  * ui_front is the one on screen. */
 void ui_flip(void);

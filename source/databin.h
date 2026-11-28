@@ -23,8 +23,12 @@ bool databin_is_file(const char *path);
 
 /* Copies the save in a data.bin back to the NAND, as Data Management does: asks first (and for the Konami
  * code), backs up the save that is there, replaces it, and gives every file the title's owner and the
- * permissions kept in the data.bin. The title has to be installed (or the game started once). */
+ * permissions kept in the data.bin. A channel has to be installed (it needn't have been started); a disc game
+ * never started here gets its NAND folders made the way ES makes them. */
 void databin_import(const char *path);
+
+/* The banner (banner.bin) kept in a data.bin's header; *banner is malloc'd. */
+bool databin_banner(const char *path, u64 *tid, u8 **banner, u32 *size);
 
 /* "private/wii/title/RMGE" for a title (its last four bytes as letters, as the System Menu names it). */
 void databin_dir(u64 tid, char *out, size_t n);

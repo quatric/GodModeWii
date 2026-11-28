@@ -42,8 +42,11 @@ jobs:
       - name: Build libext4
         run: ./scripts/build_libext4.sh
 
+      - name: Build libdvdcss
+        run: ./scripts/build_libdvdcss.sh
+
       - name: Build
-        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
+        run: make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1 WITH_DVDCSS=1
 
       - name: Build the IR remote list (irdb.dat) from Flipper-IRDB
         run: |

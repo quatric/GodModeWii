@@ -90,6 +90,12 @@ extern const char *g_write_err; /* why the last write / close failed, if a backe
 void vfs_init(void);
 void vfs_shutdown(void);
 void vfs_remount(void);                 /* re-detect SD / USB, refresh space */
+void vfs_unmount_all(void);             /* every SD / USB / card volume let go of (vfs_remount brings them back) */
+/* The file system on the SD card or a USB drive when it is one the Homebrew Channel can't load from ("exFAT",
+ * "NTFS", "ext4", "WBFS", "HFS+", "unreadable"...); NULL for FAT, for a further partition and for anything else. */
+const char *vfs_foreign_fs(int dev);
+/* The SD card's or a USB drive's raw sectors (the whole drive). */
+bool vfs_drive_io(int dev, const DISC_INTERFACE **io, u64 *sectors, u32 *ss);
 void vfs_update_space(int dev);
 
 int  vfs_dev_of(const char *path);      /* -1 if unknown */
@@ -126,6 +132,7 @@ bool vfs_rename(const char *from, const char *to);
 /* Raw sectors of a USB volume (for file systems libfat can't mount, like Wii U WFS). */
 bool vfs_usb_raw_read(int slot, u64 off, void *buf, u32 len);
 u64  vfs_usb_raw_size(int slot);
+u32  vfs_usb_sector_size(int slot);   /* 2048: a CD / DVD drive */
 
 bool vfs_open_read(vfs_file *f, const char *path);
 bool vfs_open_write(vfs_file *f, const char *path);   /* create / truncate */

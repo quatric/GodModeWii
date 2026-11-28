@@ -62,6 +62,15 @@ LIBDIRS	+=	$(CURDIR)/portlibs/ext4
 LIBS	:=	-lext4 $(LIBS)
 endif
 
+# DVD-Video dumps decrypted (CSS) with libdvdcss (build it first with scripts/build_libdvdcss.sh):
+#   make WITH_DVDCSS=1
+WITH_DVDCSS ?= 0
+ifeq ($(WITH_DVDCSS),1)
+CFLAGS	+=	-DHAVE_DVDCSS
+LIBDIRS	+=	$(CURDIR)/portlibs/dvdcss
+LIBS	:=	-ldvdcss $(LIBS)
+endif
+
 ifeq ($(WITH_NTFS),1)
 CFLAGS	+=	-DHAVE_NTFS
 LIBDIRS	+=	$(CURDIR)/portlibs/ntfs

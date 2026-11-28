@@ -113,6 +113,9 @@ how to read a Wii U drive, are in [docs/DRIVES.md](docs/DRIVES.md).
 * Build a `.csm` from a `.mym` without touching the NAND
 * Launch homebrew (`.dol`, `.elf`) with its `meta.xml` arguments
 * Boot a Wii game disc with TinyLoad
+* Dump a disc to ISO like CleanRip: GameCube, Wii (single and dual layer), DVD-Video (CSS decrypted with libdvdcss)
+  and data DVDs / CDs, from the Wii's drive or a USB CD / DVD drive; damaged discs are retried sector by sector, then
+  filled with 0x55 and logged; split into 4 GB parts on FAT32, one file on exFAT / NTFS; CRC32, MD5 and SHA-1 to check on redump.info
 * Save data is never deleted, and is backed up before a title is installed over
 
 **Backups**
@@ -471,6 +474,11 @@ calculator and alarm follow its own.
 **Code included**
 
 * [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
+* [CleanRip](https://github.com/emukidid/cleanrip) (emu_kidid) and [spycrab's CleanRip](https://github.com/spycrab/cleanrip): how the disc dumper gets past read errors
+* [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx), [GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties): save icon and banner formats for the save manager
+* [libwbfs](https://github.com/kwiirk/wbfs) (Kwiirk, Waninkoko): the WBFS layout
+* [GameTDB](https://www.gametdb.com): box and disc art
+* [libdvdcss](https://www.videolan.org/developers/libdvdcss.html) (VideoLAN): DVD-Video decryption in the disc dumper
 * [MoonShell](https://www.gamebrew.org/wiki/Moonshell) (Moonlight): the interface sound effects
 * TiVo: the easter-egg interface sounds
 * [WiiIR](https://github.com/dakotath/WiiIR) (Dakota Thorpe, used with permission), through [libwiiir](https://github.com/quatric/libwiiir): the IR remote's sender and its irdb.xml schema

@@ -509,6 +509,8 @@ bool arcfs_mount_wfs(int dev, int usb_slot)
     archive_t *a = NULL;
     if (arc_wfs_probe(&src, ""))
         a = arc_wfs_open(&src, "");
+    else if (arc_wbfs_probe(&src, ""))
+        a = arc_wbfs_open(&src, "");
     else if (arc_disk_probe(&src, ""))
         a = arc_disk_open(&src, "");
     else if (arc_ext_probe(&src, ""))

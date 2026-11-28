@@ -1417,6 +1417,7 @@ static const fmt_t formats[] = {
     { "RST",         arc_rst_probe,        arc_rst_open },
     { "LZO",         arc_lzop_probe,       arc_lzop_open },
     { "EPUB",        arc_epub_probe,       arc_epub_open },
+    { "WBFS",        arc_wbfs_probe,       arc_wbfs_open },
     { "disc image",  arc_disc_probe,       arc_disc_open },
     { "zip/7z/rar",  arc_zip7zrar_probe,   arc_zip7zrar_open },
     { "more",        arc_more_probe,       arc_more_open },

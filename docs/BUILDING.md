@@ -25,12 +25,13 @@ Off by default; the CI and release builds turn them all on. Build each library o
 | `WITH_EXFAT=1` | exFAT and GPT (Extrems' libdvm, the libfat for libogc2, with its FatFs, into `portlibs/exfat`) | `scripts/build_exfat_libfat.sh` (git, network) |
 | `WITH_EXT4=1` | ext2 / 3 / 4 (lwext4 and libdvm's ext4 driver; needs `WITH_EXFAT=1`) | `scripts/build_libext4.sh` (git, network) |
 | `WITH_NTFS=1` | NTFS | `scripts/build_libntfs.sh` (git, network) |
+| `WITH_DVDCSS=1` | DVD-Video decrypted in the disc dumper (libdvdcss) | `scripts/build_libdvdcss.sh` (git, network) |
 | `WITH_SICKSAXIS=1` | PS3 SIXAXIS / DualShock 3 | `scripts/build_controller_portlibs.sh` (git, python3, network) |
 | `WITH_WIIDRC=1` | Wii U GamePad | `scripts/build_controller_portlibs.sh` (git, python3, network) |
 | `WITH_WUPC=1` | Wii U Pro Controller | `scripts/build_controller_portlibs.sh` (git, python3, network) |
 
 ```sh
-make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1
+make WITH_WIIDRC=1 WITH_WUPC=1 WITH_SICKSAXIS=1 WITH_EXFAT=1 WITH_NTFS=1 WITH_EXT4=1 WITH_DVDCSS=1
 ```
 
 ## Testing in Dolphin

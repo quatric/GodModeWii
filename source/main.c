@@ -402,6 +402,27 @@ int main(int argc, char **argv)
                 continue;
             }
             /* "@setting": setting.txt read, a field written and put back; "@hbcreborn <ID>": that install */
+            /* "@discdump [part MB] [bad lba] [bad count] [stop]": the disc dumper */
+            if (!strncmp(line, "@discdump", 9)) {
+                extern void discdump_autotest(const char *args);
+                discdump_autotest(line + 9);
+                continue;
+            }
+            if (!strncmp(line, "@discstress ", 12)) {
+                extern void discdump_stress_autotest(const char *args);
+                discdump_stress_autotest(line + 12);
+                continue;
+            }
+            if (!strcmp(line, "@nandtest")) {
+                extern void sysinfo_nandtest_autotest(void);
+                sysinfo_nandtest_autotest();
+                continue;
+            }
+            if (!strcmp(line, "@saves")) {
+                extern void savemgr_autotest(void);
+                savemgr_autotest();
+                continue;
+            }
             if (!strcmp(line, "@disc")) {
                 extern void virt_disc_autotest(void);
                 virt_disc_autotest();

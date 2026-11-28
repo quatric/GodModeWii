@@ -23,6 +23,9 @@
 #include "databin.h"
 #include "nanddump.h"
 #include "sysinfo.h"
+#include "discdump.h"
+#include "savemgr.h"
+#include "fat32fmt.h"
 #include "editor.h"
 #include "risk.h"
 #include "mii.h"
@@ -751,13 +754,77 @@ static void show_info(char **paths, int n)
     ui_message("INFO", C_CYAN, msg);
 }
 
+static bool fmt_write(void *io, u64 lba, u32 n, const void *buf)
+{
+    const DISC_INTERFACE *d = io;
+    return d->writeSectors((DISC_INTERFACE *)d, lba, n, buf);
+}
+
+static void fmt_progress(u64 done, u64 total, void *ctx)
+{
+    (void)ctx;
+    ui_busy_progress(done, total);
+}
+
+/* Formatting is only offered for the SD card or a USB drive in a format the Homebrew Channel (and RiftWii and the
+ * other loaders) can't use; a FAT drive is never in the list. */
+static void format_menu(void)
+{
+    const char *T = "FORMAT AS FAT32";
+    const char *names[1 + USB_SLOTS];
+    char labels[1 + USB_SLOTS][64];
+    int devs[1 + USB_SLOTS], n = 0;
+    for (int d = DEV_SD; d <= DEV_USB7; d++) {
+        const char *fs = vfs_foreign_fs(d);
+        if (!fs) continue;
+        snprintf(labels[n], sizeof(labels[n]), "%s  (%s)", g_devs[d].name, fs);
+        names[n] = labels[n];
+        devs[n++] = d;
+    }
+    if (!n) {
+        ui_message(T, C_GREEN, "Every SD card and USB drive here is FAT already (or isn't connected), which the Homebrew "
+                   "Channel, RiftWii and the USB loaders read. Nothing needs formatting.\n\nOnly a drive in another format "
+                   "(exFAT, NTFS, ext, WBFS, HFS+, unreadable...) is offered here.");
+        return;
+    }
+    int r = ui_menu("FORMAT WHICH DRIVE?", names, NULL, n, 0);
+    if (r < 0) return;
+    int dev = devs[r];
+    const DISC_INTERFACE *io;
+    u64 secs;
+    u32 ss;
+    if (!vfs_drive_io(dev, &io, &secs, &ss)) { ui_message(T, C_RED, "The drive can't be reached."); return; }
+    fat32_plan p;
+    char sz[24], q[700];
+    ui_fmt_size(sz, sizeof(sz), secs * ss);
+    if (!fat32_layout(secs, ss, &p)) { ui_message(T, C_RED, "This drive is too small or too big for FAT32."); return; }
+    snprintf(q, sizeof(q), "%s is %s, which the Homebrew Channel can't load apps from.\n\nFormat it as FAT32 (%s, one "
+             "partition, %u KB clusters)%s?\n\nEVERYTHING ON THE DRIVE IS ERASED: every partition and every file. Copy off "
+             "what you want to keep first.", g_devs[dev].name, vfs_foreign_fs(dev), sz, (unsigned)(p.spc * ss / 1024),
+             (u64)p.vol + p.start < secs ? " (FAT32 tops out at 2 TB: the rest stays unused)" : "");
+    if (!ui_confirm(T, C_RED, q)) return;
+    snprintf(q, sizeof(q), "Last chance: erase all of %s (%s) and format it?", g_devs[dev].name, sz);
+    if (!ui_confirm(T, C_RED, q)) return;
+    char err[160] = "";
+    ui_busy_begin("Formatting...");
+    vfs_unmount_all();
+    bool ok = fat32_format(fmt_write, (void *)io, secs, ss, dev == DEV_SD ? "WII SD" : "WII USB", fmt_progress, NULL, err, sizeof(err));
+    if (io->flush) io->flush((DISC_INTERFACE *)io);
+    ui_busy_end();
+    ui_splash("Looking for drives...");
+    vfs_remount();
+    free_dir();
+    cwd[0] = '\0';
+    ui_message(ok ? "FORMATTED" : T, ok ? C_GREEN : C_RED, ok ? "The drive is FAT32 now, empty and ready for apps/ and wbfs/." : err);
+}
+
 static void show_credits(void)
 {
     static const char *const pages[] = {
         "quatric & cmyksoda\n\n"
         "GodModeWii " GMW_VERSION " - a GodMode9-style file manager for Wii and Wii U (vWii).\n"
         "Inspired by GodMode9 (d0k3), GodMode9i (DS-Homebrew), ftpii and WiiXplorer (Dimok, niuus).\n"
-        "Built with devkitPPC, libogc and libfat (devkitPro). GPL-3.0-or-later. See README.",
+        "Built with devkitPPC and libogc2 (devkitPro, Extrems). GPL-3.0-or-later. See README.",
 
         "WAD installing and launching .dol / .elf programs: based on YAWM ModMii Edition "
         "(github.com/modmii/YAWM-ModMii-Edition) by OverjoY, blackb0x, scooby74029, Peter0x44 and XFlak, "
@@ -780,9 +847,10 @@ static void show_credits(void)
         "Game discs: TinyLoad (marcan, Segher, Andre Heider, Nuke). NAND backup: nanddumper@IOS (thepikachugamer) "
         "with mkwcat's /dev/sha exploit; AHBPROT at start-up: Aeplet's IOS (Aep, MIT). Wii Menu themes: csm-installer "
         "(Naim2000) and cmyksoda's mym-to-csm. boot1 / boot2 identification: facts from RGD SDBoot Installer. HBC Reborn "
-        "(Monsterray) is installed from its releases.\n\n"
+        "(Monsterray) is installed from its releases. Disc dumps: CleanRip (emu_kidid) and spycrab's CleanRip, "
+        "libdvdcss (VideoLAN) for DVD-Video.\n\n"
         "MIDI: TinySoundFont (Bernhard Schelling) with Gervill's soundbank. AAC: FAAD2. Drives: libntfs (Extrems, NTFS-3G), "
-        "lwext4 (Grzegorz Kostka) with Extrems' libdvm driver, devkitPro's libdvm and FatFs (ChaN) for exFAT.",
+        "lwext4 (Grzegorz Kostka) and Extrems' libdvm with FatFs (ChaN) for exFAT and ext4.",
 
         "Controllers: libwiiinput, with Nintendont's controller.ini layouts (FIX94 and contributors), wup-028-bslug "
         "(Alex Chadwick) and RiftWii's HID and queue code; libwiidrc and libwupc (FIX94), libsicksaxis (xerpi).\n\n"
@@ -1447,6 +1515,8 @@ static bool system_menu(void)
         M_CLOCK,
         M_THEME,
         M_GAME,
+        M_DUMP,
+        M_FORMAT,
         M_SAVES,
         M_NAND,
         M_CONSOLE,
@@ -1477,6 +1547,8 @@ static bool system_menu(void)
         items[n] = "FTP server";                                        code[n++] = M_FTP;
         items[n] = "Wiiload (receive apps, WADs and files)";            code[n++] = M_WIILOAD;
         items[n] = "Boot game disc (TinyLoad)";                         code[n++] = M_GAME;
+        items[n] = "Dump a disc to ISO (Wii / GameCube / DVD / CD)";   code[n++] = M_DUMP;
+        items[n] = "Format a drive as FAT32 (only one HBC can't read)"; code[n++] = M_FORMAT;
         items[n] = "Miis";                                              code[n++] = M_MIIS;
         items[n] = "Sketchpad (draw)";                                  code[n++] = M_DRAW;
         items[n] = "Voice memos (record / play)";                       code[n++] = M_MEMOS;
@@ -1492,7 +1564,7 @@ static bool system_menu(void)
         items[n] = "Clock and calendar";                                code[n++] = M_CLOCK;
         snprintf(theme_item, sizeof(theme_item), "Theme: %s", colors_name(colors_current()));
         items[n] = theme_item;                                          code[n++] = M_THEME;
-        items[n] = "Export all saves";                                  code[n++] = M_SAVES;
+        items[n] = "Save manager (Wii saves, GameCube memory cards)";   code[n++] = M_SAVES;
         items[n] = "Back up the NAND / keys (nanddumper@IOS)";          code[n++] = M_NAND;
         items[n] = "Console (info, boot1 / boot2, setting.txt, HBC Reborn)"; code[n++] = M_CONSOLE;
         items[n] = "About / credits";                                   code[n++] = M_ABOUT;
@@ -1564,6 +1636,18 @@ static bool system_menu(void)
                 return true;
             }
             return false;
+        case M_FORMAT:
+            format_menu();
+            return false;
+        case M_DUMP:
+            if (nanddump_ios_busy()) {
+                ui_message("DUMP A DISC", C_YELLOW, "IOS is still patched from the NAND backup. Exit to the Homebrew "
+                           "Channel, start GodModeWii again, then dump the disc.");
+                return false;
+            }
+            discdump_run();
+            reload_keep_safe();
+            return false;
         case M_MIIS:
             mii_export();
             return false;
@@ -1585,7 +1669,7 @@ static bool system_menu(void)
             status(C_GREEN, sfx_enabled() ? "Sound effects on." : "Sound effects off (saved on the card).");
             return false;
         case M_SAVES:
-            saves_export_all();
+            savemgr_run();
             reload_keep_safe();
             return false;
         case M_CONSOLE:

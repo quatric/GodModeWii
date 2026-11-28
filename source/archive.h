@@ -182,6 +182,8 @@ bool arc_xfs_probe(const src_t *file, const char *name);       /* XFS v4 / v5 */
 archive_t *arc_xfs_open(const src_t *file, const char *name);
 bool arc_apfs_probe(const src_t *file, const char *name);      /* APFS container */
 archive_t *arc_apfs_open(const src_t *file, const char *name);
+bool arc_wbfs_probe(const src_t *file, const char *name);      /* a WBFS partition (old USB loaders): each game as an .iso */
+archive_t *arc_wbfs_open(const src_t *file, const char *name);
 bool arc_zfs_probe(const src_t *file, const char *name);       /* OpenZFS / ZFS pool, one disk or mirror */
 archive_t *arc_zfs_open(const src_t *file, const char *name);
 bool arc_disk_probe(const src_t *file, const char *name);      /* MBR / GPT / Apple partition map */

@@ -52,7 +52,7 @@
 * **[libntfs](https://github.com/extremscorner/libntfs)** by Extrems and contributors, on **NTFS-3G** (GPL-2.0): NTFS drives,
   built by `scripts/build_libntfs.sh`.
 * **[lwext4](https://github.com/gkostka/lwext4)** by Grzegorz Kostka (GPL-2.0 / BSD; Extrems' big-endian fork) with Extrems'
-  libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, ported and made read-only by `scripts/build_libext4.sh`.
+  libdvm ext4 driver (ZPL-2.1): ext2/3/4 drives, mounted read-only, built by `scripts/build_libext4.sh`.
 * **libpng**, **libjpeg-turbo**, **libwebp**, **zlib**, **bzip2**, **Tremor** and **libogg**, as packaged in devkitPro's portlibs — PNG, JPEG and WebP viewing, bzip2 RVZ / WIA images, and Vorbis sound in Mobiclip videos and `.ogg` files.
 * **[Aeplet's IOS](https://github.com/Aeplet/IOS)** by Aep (MIT) — `source/ahbprot.c` is its `ios.c`: mkwcat's `/dev/sha`
   exploit turning HW_AHBPROT off at start-up when the loader left it on.
@@ -65,9 +65,11 @@
   (HBC Reborn), with **[Mbed TLS](https://github.com/Mbed-TLS/mbedtls)** (Apache-2.0) and **[miniz](https://github.com/richgel999/miniz)**
   by Rich Geldreich (MIT) inside.
 * **[FAAD2](https://github.com/knik0/faad2)** (GPL-2.0, devkitPro's `ppc-faad2`) — AAC sound in M4A files.
-* **[libdvm](https://github.com/devkitPro/libdvm)** and **[fatfs-mod](https://github.com/devkitPro/fatfs-mod)** (devkitPro, with
-  ChaN's **FatFs**) — exFAT drives, built by `scripts/build_exfat_libfat.sh`.
-* **[devkitPro](https://devkitpro.org/)** — devkitPPC, **libogc** (including libdi, wiiuse, libwiikeyboard, ISFS) and **libfat**.
+* **[libdvm](https://github.com/extremscorner/libdvm)** and **[fatfs-mod](https://github.com/extremscorner/fatfs-mod)** (fincs /
+  devkitPro, Extrems' libogc2 forks, with ChaN's **FatFs**; ZPL-2.1 / BSD) — FAT, exFAT and GPT drives, built by
+  `scripts/build_exfat_libfat.sh`.
+* **[devkitPro](https://devkitpro.org/)** — devkitPPC; **[libogc2](https://github.com/extremscorner/libogc2)** (Extrems, from devkitPro's
+  libogc: libdi, wiiuse, libwiikeyboard, ISFS, USB storage).
 
 ## Formats and references
 
@@ -106,6 +108,19 @@
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
 * **[dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter)** by DarkMatterCore — the split DLC WAD layout (the TMD kept as it is, content 0 and a run of the other contents in each WAD, `<title id>_split_<n>.wad`, the ticket fakesigned when it was bound to a console) and wad2bin's way of finding the contents a partial DLC WAD holds. `w2b_split` and the content locator in `source/wad2bin.c` are GodModeWii's own code.
 * **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader System Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
+* **[CleanRip](https://github.com/emukidid/cleanrip)** by emu_kidid (GPL-2.0-or-later) and **[spycrab's CleanRip](https://github.com/spycrab/cleanrip)**
+  (its Datel branch) — how the disc dumper (`source/discdump.c`) gets past read errors: retrying a block after a drive reset,
+  then sector by sector until two reads agree, and zero-filling and listing what still fails; the Wii dual-layer check and the
+  FAT32 part files. YAGCD's drive error codes. **[redumper](https://github.com/superg/redumper)** (superg) was a reference for
+  reading DVDs and CDs. The code is GodModeWii's own.
+* **[SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx)** (GPL-2.0-or-later), **[GCMM](https://github.com/suloku/gcmm)**
+  (GPL-2.0-or-later) and **[rom-properties](https://github.com/GerbilSoft/rom-properties)** by GerbilSoft (GPL-2.0-or-later) —
+  references for the save manager: the Wii `banner.bin` and GameCube `.gci` icon and banner formats. The code is GodModeWii's own.
+* **[libwbfs](https://github.com/kwiirk/wbfs)** by Kwiirk, Waninkoko and others (GPL-2.0) — the WBFS layout, read by GodModeWii's
+  own code.
+* **[GameTDB](https://www.gametdb.com)** — box and disc art.
+* **[libdvdcss](https://www.videolan.org/developers/libdvdcss.html)** 1.4.3 by VideoLAN (GPL-2.0-or-later; built by
+  `scripts/build_libdvdcss.sh`) — decrypting DVD-Video (CSS) in the disc dumper.
 * **[nanddumper@IOS](https://github.com/Naim2000/nanddumper_ios)** by thepikachugamer (GPL-2.0; with mkwcat's `/dev/sha` exploit) — the NAND backup: its IOS stages (`nanddumper/`, prebuilt in `res/nd_*.bin`), the `/dev/flash` FS patch, the page / bad block reading, the `keys.bin` and `setting.txt` handling and the file layout, ported in `source/nanddump.c`.
 * **Sharpii NetCore** / **libWiiSharp** (Leathl and contributors) — WAD, U8, IMD5 and LZ77 (LZ10 / LZ11) layouts.
 * **[wfslib / wfs-tools](https://github.com/koolkdev/wfs-tools)** by koolkdev — the WFS layout (areas, directory tries, file layouts, block encryption and key derivation) behind the Wii U volume reader.

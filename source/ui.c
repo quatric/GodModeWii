@@ -36,6 +36,42 @@ void *ui_framebuffer(int *w, int *h)
 
 void *ui_front(void) { return front; }
 
+/* An RGBA picture at (x, y), each pixel scale x scale, blended over what is there (whole YUY2 words). */
+void ui_blit_rgba(int x, int y, const u8 *rgba, int w, int h, int scale)
+{
+    int fw, fh;
+    u8 *fb = ui_framebuffer(&fw, &fh);
+    if (!fb || !rgba || scale < 1) return;
+    x &= ~1;
+    for (int dy = 0; dy < h * scale; dy++) {
+        int sy = y + dy;
+        if (sy < 0 || sy >= fh) continue;
+        u32 *row = (u32 *)(fb + sy * fw * 2);
+        const u8 *src = rgba + (dy / scale) * w * 4;
+        for (int dx = 0; dx < w * scale; dx += 2) {
+            int px = x + dx;
+            if (px < 0 || px + 1 >= fw) continue;
+            u32 old = row[px / 2];
+            int oy[2] = { (int)(old >> 24), (int)(old >> 8 & 255) }, ou = (int)(old >> 16 & 255) - 128,
+                ov = (int)(old & 255) - 128, yy[2], uu = 0, vv = 0;
+            for (int k = 0; k < 2; k++) {
+                const u8 *p = src + ((dx + k) / scale) * 4;
+                int a = p[3];
+                /* what is under, back to RGB, then blended */
+                int c = oy[k] - 16, r0 = (298 * c + 409 * ov + 128) >> 8, g0 = (298 * c - 100 * ou - 208 * ov + 128) >> 8,
+                    b0 = (298 * c + 516 * ou + 128) >> 8;
+                int r = (p[0] * a + r0 * (255 - a)) / 255, g = (p[1] * a + g0 * (255 - a)) / 255,
+                    b = (p[2] * a + b0 * (255 - a)) / 255;
+                r = r < 0 ? 0 : r > 255 ? 255 : r, g = g < 0 ? 0 : g > 255 ? 255 : g, b = b < 0 ? 0 : b > 255 ? 255 : b;
+                yy[k] = 16 + ((66 * r + 129 * g + 25 * b + 128) >> 8);
+                uu += 128 + ((-38 * r - 74 * g + 112 * b + 128) >> 8);
+                vv += 128 + ((112 * r - 94 * g - 18 * b + 128) >> 8);
+            }
+            row[px / 2] = (u32)yy[0] << 24 | (u32)(uu / 2) << 16 | (u32)yy[1] << 8 | (u32)(vv / 2);
+        }
+    }
+}
+
 /* Shows what has been drawn. At most once per frame; the caller should come straight after a
  * VIDEO_WaitVSync so the copy runs ahead of the beam. */
 void ui_flip(void)

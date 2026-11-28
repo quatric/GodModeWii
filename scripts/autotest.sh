@@ -14,6 +14,7 @@
 # and writes its frame copies to the emulated RAM the screen is saved from. Null is enough for the rest.
 # @wiiload waits for one wiiload upload (send it to tcp:127.0.0.1 while this runs).
 # DISC=/path/to/game.iso puts that disc in the drive (Dolphin's default ISO); @disc tests spinning it down.
+# WAIT=seconds: how long a run may take (120 by default).
 # AUDIO=True also saves what was played as OUTDIR/dspdump.wav.
 # NAND=/path/to/Wii runs on a copy of that emulated NAND (left in OUTDIR/.dolphin/user/Wii afterwards).
 # @put:LOCAL:SDPATH copies a file onto the card without opening it (e.g. @put:x.app:/GodModeWii/a.csm).
@@ -84,7 +85,7 @@ EOF
 "$dolphin" -u "$work/user" -b -e "$dol" -v "${GFX:-Null}" >"$work/dolphin.log" 2>&1 &
 pid=$!
 i=0
-while [ $i -lt 120 ]; do
+while [ $i -lt "${WAIT:-120}" ]; do
     sleep 1
     i=$((i + 1))
     if mdir -i "$sd" ::/gmwtest.done >/dev/null 2>&1; then break; fi

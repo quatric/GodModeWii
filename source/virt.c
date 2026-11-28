@@ -49,6 +49,8 @@ static bool cover_in;       /* a disc was in at the last look */
 static u64 cover_seen_at;
 static u64 disc_ms(void) { return ticks_to_millisecs(gettime()); }
 static bool spin_up(void);
+static void di_start(void);
+static void disc_forget(void);
 
 /* Parts of the disc that are not in the file table, shown as sys/ and disc.iso */
 typedef struct {
@@ -204,6 +206,76 @@ static bool read_retry(u64 off, void *buf, u32 len, bool in_partition)
         drive_reset();
     }
     return false;
+}
+
+/* ---- the whole disc as sectors, for the disc dumper (discdump.c) ---- */
+
+bool virt_disc_raw_begin(void)
+{
+    if (g_is_vwii || !AHBPROT_DISABLED) return false;
+    di_start();
+    if (di_fd < 0) return false;
+    g_devs[DEV_DISC].mounted = false;   /* read in again when it is next opened */
+    disc_forget();
+    if (!di_buf) di_buf = memalign(32, DI_BLOCK);
+    u32 cover = 0;
+    if (!di_buf || DI_GetCoverRegister(&cover) != 0 || !(cover & DVD_COVER_DISC_INSERTED)) return false;
+    if (!drive_up()) {                  /* a DVD-Video has no Nintendo disc ID; the drive still reads it */
+        DI_Reset();
+        motor_on = true;
+    }
+    disc_used_at = disc_ms();
+    return true;
+}
+
+/* Straight to the drive's registers, as CleanRip does (needs HW_AHBPROT off): no IOS read limit in the way. */
+static bool reg_read(u32 cmd, u32 a, u32 b, void *buf, u32 len)
+{
+    static vu32 *const dvd = (vu32 *)0xCD806000;
+    dvd[0] = 0x2E;                      /* clear the transfer-complete / error flags */
+    dvd[1] = 0;
+    dvd[2] = cmd;
+    dvd[3] = a;
+    dvd[4] = b;
+    dvd[5] = (u32)buf & 0x1FFFFFFF;
+    dvd[6] = len;
+    DCInvalidateRange(buf, len);
+    dvd[7] = 3;                         /* DMA, start */
+    u64 t0 = disc_ms();
+    while (dvd[7] & 1) {
+        if (disc_ms() - t0 > 30000) return false;      /* the drive hung: the caller resets it */
+        LWP_YieldThread();
+    }
+    return !(dvd[0] & 0x4);
+}
+
+bool virt_disc_raw_read(u32 lba, u32 n, void *buf, bool dvd)
+{
+    disc_used_at = disc_ms();
+    if (dvd) return reg_read(0xD0000000, lba, n, buf, n * SECTOR);     /* the DVD read: sectors */
+    return reg_read(0xA8000000, lba << 9, n * SECTOR, buf, n * SECTOR); /* unencrypted read: offset / 4, bytes */
+}
+
+u32 virt_disc_raw_error(void)
+{
+    u32 e = 0;
+    DI_GetError(&e);
+    return e;
+}
+
+void virt_disc_raw_stop(void)
+{
+    motor_off();
+}
+
+void virt_disc_raw_reset(void)
+{
+    u64 id;
+    DI_DriveID drv;
+    DI_Reset();
+    DI_Identify(&drv);
+    DI_ReadDiscID(&id);
+    disc_used_at = disc_ms();
 }
 
 /* ---- tolerant reads: unreadable sectors become zeros and are written down ---- */

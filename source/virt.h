@@ -40,4 +40,13 @@ u64  virt_disc_error_bytes(void);
 bool virt_disc_error_overflow(void);
 bool virt_disc_error_get(u32 i, u64 *file_off, u64 *disc_off, u64 *len);
 
+/* The disc dumper's access: the whole disc in 2048-byte sectors, outside any partition. begin forgets what
+ * was read in (the drive is read in again when next opened); each read is one try; dvd uses the DVD read
+ * command a DVD-Video needs, otherwise the unencrypted read Nintendo discs take. buf is 32-byte aligned. */
+bool virt_disc_raw_begin(void);
+bool virt_disc_raw_read(u32 lba, u32 n, void *buf, bool dvd);
+u32  virt_disc_raw_error(void);
+void virt_disc_raw_reset(void);
+void virt_disc_raw_stop(void);
+
 #endif

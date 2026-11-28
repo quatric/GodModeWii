@@ -34,7 +34,7 @@ static void block(uint32_t h[4], const uint8_t *p)
     h[0] += a, h[1] += b, h[2] += c, h[3] += d;
 }
 
-void md5(const void *data, size_t len, uint8_t out[16])
+void md5_init(md5_t *c)
 {
     if (!k_ready) {                     /* K[i] = floor(2^32 * |sin(i + 1)|), computed without libm */
         static const uint32_t k[64] = {
@@ -49,22 +49,43 @@ void md5(const void *data, size_t len, uint8_t out[16])
         memcpy(K, k, sizeof(K));
         k_ready = 1;
     }
-    uint32_t h[4] = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 };
+    c->h[0] = 0x67452301, c->h[1] = 0xefcdab89, c->h[2] = 0x98badcfe, c->h[3] = 0x10325476;
+    c->len = 0;
+}
+
+void md5_update(md5_t *c, const void *data, size_t len)
+{
     const uint8_t *p = data;
-    size_t n = len;
-    while (n >= 64) {
-        block(h, p);
-        p += 64;
-        n -= 64;
+    size_t have = c->len & 63;
+    c->len += len;
+    if (have) {
+        size_t n = 64 - have < len ? 64 - have : len;
+        memcpy(c->buf + have, p, n);
+        p += n, len -= n, have += n;
+        if (have < 64) return;
+        block(c->h, c->buf);
     }
-    uint8_t tail[128] = { 0 };
-    memcpy(tail, p, n);
-    tail[n] = 0x80;
-    size_t tl = n + 9 <= 64 ? 64 : 128;
-    uint64_t bits = (uint64_t)len * 8;
-    for (int i = 0; i < 8; i++) tail[tl - 8 + i] = (uint8_t)(bits >> (8 * i));
-    block(h, tail);
-    if (tl == 128) block(h, tail + 64);
+    for (; len >= 64; p += 64, len -= 64)
+        block(c->h, p);
+    memcpy(c->buf, p, len);
+}
+
+void md5_final(md5_t *c, uint8_t out[16])
+{
+    uint64_t bits = c->len * 8;
+    uint8_t pad[72] = { 0x80 };
+    size_t have = c->len & 63;
+    md5_update(c, pad, have < 56 ? 56 - have : 120 - have);
+    for (int i = 0; i < 8; i++) pad[i] = (uint8_t)(bits >> (8 * i));
+    md5_update(c, pad, 8);
     for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 4; j++) out[i * 4 + j] = (uint8_t)(h[i] >> (8 * j));
+        for (int j = 0; j < 4; j++) out[i * 4 + j] = (uint8_t)(c->h[i] >> (8 * j));
+}
+
+void md5(const void *data, size_t len, uint8_t out[16])
+{
+    md5_t c;
+    md5_init(&c);
+    md5_update(&c, data, len);
+    md5_final(&c, out);
 }

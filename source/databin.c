@@ -353,6 +353,7 @@ void databin_autotest(const char *tid_s, const char *outp)
 #include "ui.h"
 #include "risk.h"
 #include "wadinstall.h"
+#include "virt.h"
 
 static bool read_at(vfs_file *f, u64 off, u8 *buf, u32 n)
 {
@@ -451,6 +452,28 @@ static bool parse_header(vfs_file *f, u8 *hdr, dbinfo_t *d, char *err, size_t en
     }
     free(bk);
     if (!ok) seterr(err, en, "The data.bin's file list is damaged");
+    return ok;
+}
+
+bool databin_banner(const char *path, u64 *tid, u8 **banner, u32 *size)
+{
+    vfs_file f;
+    u8 *hdr = memalign(32, HDR_SIZE);
+    dbinfo_t d;
+    char err[8];
+    bool ok = false;
+    *banner = NULL;
+    if (hdr && vfs_open_read(&f, path)) {
+        vfs_unbuffered(&f);
+        if (parse_header(&f, hdr, &d, err, sizeof(err)) && (*banner = malloc(d.banner_size))) {
+            memcpy(*banner, hdr + 0x20, d.banner_size);
+            *size = d.banner_size;
+            *tid = d.tid;
+            ok = true;
+        }
+        vfs_close(&f);
+    }
+    free(hdr);
     return ok;
 }
 
@@ -585,6 +608,94 @@ static bool title_owner(u64 tid, u32 *uid, u16 *gid)
     return true;
 }
 
+/* The modes an existing folder like this has on this NAND (another disc game's title or data folder), so a made
+ * one matches what ES makes; false if there is none to copy. */
+static bool like_existing(const char *kind_dir, const char *sub, u32 *uid, u16 *gid, u8 m[4])
+{
+    vfs_entry *l;
+    int n;
+    char p[320];
+    snprintf(p, sizeof(p), "nand:%s", kind_dir);
+    if (!vfs_list(p, &l, &n)) return false;
+    bool ok = false;
+    for (int i = 0; i < n && !ok; i++) {
+        if (!l[i].is_dir) continue;
+        snprintf(p, sizeof(p), "%s/%s%s", kind_dir, l[i].name, sub);
+        ok = ISFS_GetAttr(p, uid, gid, &m[0], &m[1], &m[2], &m[3]) >= 0;
+    }
+    free(l);
+    return ok;
+}
+
+/* A disc game never started on this Wii has nothing on the NAND. Make what ES makes the first time the disc
+ * boots: its line in sys/uid.sys (a new UID after the highest) and /title/00010000/<id>, with the owner and
+ * modes another disc game's folder has here. uid.sys is copied to the SD card first. */
+static bool disc_title_create(u64 tid, u32 *uid, char *err, size_t en)
+{
+    vfs_file f;
+    u8 *b = NULL;
+    u32 len = 0, max_uid = 0x0FFF;
+    bool have = false;
+    if (vfs_open_read(&f, "nand:/sys/uid.sys")) {
+        len = (u32)f.size;
+        if (len % 12 == 0 && len <= 256 * 1024 && (b = memalign(32, len + 32)) && vfs_read(&f, b, len) == (s32)len) {
+            for (u32 o = 0; o + 12 <= len; o += 12) {
+                u32 u = (u32)(b[o + 10] << 8 | b[o + 11]);
+                if (be64(b + o) == tid) { *uid = u; have = true; }
+                if (u > max_uid) max_uid = u;
+            }
+        } else {
+            free(b);
+            b = NULL;
+        }
+        vfs_close(&f);
+    }
+    if (!b) { seterr(err, en, "Couldn't read sys/uid.sys"); return false; }
+    if (!have) {
+        FILE *bk = fopen("sd:/GodModeWii/uid.sys.bak", "wb");     /* before the only NAND file changed outside the save */
+        if (bk) { fwrite(b, 1, len, bk); fclose(bk); }
+        if (max_uid >= 0xFFFF) { free(b); seterr(err, en, "sys/uid.sys is full"); return false; }
+        u8 *rec = b + len;                                       /* room was left after the file */
+        memset(rec, 0, 12);
+        wb64(rec, tid);
+        rec[10] = (u8)((max_uid + 1) >> 8);
+        rec[11] = (u8)(max_uid + 1);
+        s32 fd = ISFS_Open("/sys/uid.sys", ISFS_OPEN_RW);
+        u8 *w = memalign(32, 32);
+        bool ok = fd >= 0 && w && ISFS_Seek(fd, 0, SEEK_END) >= 0 && (memcpy(w, rec, 12), ISFS_Write(fd, w, 12) == 12);
+        if (fd >= 0) ISFS_Close(fd);
+        free(w);
+        if (!ok) { free(b); seterr(err, en, "Couldn't add the game to sys/uid.sys"); return false; }
+        *uid = max_uid + 1;
+    }
+    free(b);
+    char tdir[48];
+    snprintf(tdir, sizeof(tdir), "/title/%08x/%08x", (unsigned)(tid >> 32), (unsigned)tid);
+    u32 ou = 0;
+    u16 og = 0;
+    u8 m[4] = { 0, 3, 3, 1 };
+    like_existing("/title/00010000", "", &ou, &og, m);
+    if (ISFS_CreateDir(tdir, m[0], m[1], m[2], m[3]) < 0) {
+        bool is_dir;
+        char np[56];
+        snprintf(np, sizeof(np), "nand:%s", tdir);
+        if (!vfs_stat(np, &is_dir, NULL) || !is_dir) { seterr(err, en, "Couldn't make %s", tdir); return false; }
+    }
+    ISFS_SetAttr(tdir, ou, og, m[0], m[1], m[2], m[3]);
+    return true;
+}
+
+/* The maker code of a disc game, as the group of its save folder: from the disc when it is in the drive. */
+static bool disc_maker(u64 tid, u16 *gid)
+{
+    u8 *b = memalign(32, 2048);
+    bool ok = b && virt_disc_raw_begin() && virt_disc_raw_read(0, 1, b, false) &&
+              (u32)(b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) == (u32)tid;
+    if (ok) *gid = (u16)(b[4] << 8 | b[5]);
+    free(b);
+    return ok;
+}
+
 /* The save folder's owner: from the folder when it is there, otherwise the title's own (the folder isn't
  * made until the game or channel runs for the first time). *missing says the folder has to be made. */
 static bool save_owner(u64 tid, const char *data, u32 *uid, u16 *gid, bool *missing)
@@ -600,11 +711,17 @@ static bool save_owner(u64 tid, const char *data, u32 *uid, u16 *gid, bool *miss
 /* Makes the save folder of an installed title that hasn't been started yet, the way ES does. */
 static bool make_save_dir(const char *data, u32 uid, u16 gid)
 {
-    if (ISFS_CreateDir(data + 5, 0, 3, 3, 0) < 0) {
+    u32 ou;
+    u16 og;
+    u8 m[4] = { 0, 3, 3, 0 };           /* the modes another title's data folder has here, when there is one */
+    char kind[24];
+    snprintf(kind, sizeof(kind), "%.15s", data + 5);            /* "/title/0001000x" */
+    like_existing(kind, "/data", &ou, &og, m);
+    if (ISFS_CreateDir(data + 5, m[0], m[1], m[2], m[3]) < 0) {
         bool is_dir;
         if (!vfs_stat(data, &is_dir, NULL) || !is_dir) return false;
     }
-    return ISFS_SetAttr(data + 5, uid, gid, 0, 3, 3, 0) >= 0;
+    return ISFS_SetAttr(data + 5, uid, gid, m[0], m[1], m[2], m[3]) >= 0;
 }
 
 void databin_import(const char *path)
@@ -627,7 +744,16 @@ void databin_import(const char *path)
     u32 uid = 0;
     u16 gid = 0;
     bool missing;
-    if (!save_owner(d.tid, data, &uid, &gid, &missing)) {
+    bool new_disc_title = false;
+    if (!save_owner(d.tid, data, &uid, &gid, &missing) && (u32)(d.tid >> 32) == 0x00010000) {
+        /* a disc game never started here: no need to start it first, its folders are made like ES makes them */
+        if (!disc_maker(d.tid, &gid)) {
+            const char *opts[] = { "Use maker code 01 (Nintendo)", "Cancel (put the game's disc in, then import again)" };
+            if (ui_menu("THE GAME'S MAKER CODE?", opts, NULL, 2, 0) != 0) goto done;
+            gid = 0x3031;
+        }
+        missing = new_disc_title = true;
+    } else if (!save_owner(d.tid, data, &uid, &gid, &missing)) {
         seterr(err, sizeof(err),
                "Title %08x-%08x isn't installed on this Wii, so it has nowhere to keep a save. Install it first "
                "(it doesn't need to be started).", (unsigned)(d.tid >> 32), (unsigned)d.tid);
@@ -641,7 +767,9 @@ void databin_import(const char *path)
              "%s",
              d.name[0] ? "\"" : "", d.name, d.name[0] ? "\"\n" : "", (unsigned)(d.tid >> 32), (unsigned)d.tid, id,
              (unsigned)d.nfiles,
-             missing ? "The game or channel hasn't been started yet: its save folder is made for it."
+             new_disc_title ? "This game has never been started on this Wii: its folders on the NAND are made for it, as the "
+                              "Wii does the first time the disc boots (a new line in sys/uid.sys, copied to the SD card first)."
+             : missing ? "The game or channel hasn't been started yet: its save folder is made for it."
                      : "The save that is there now is replaced. It is copied to GodModeWii/save-backups/ on the SD "
                        "card or a USB drive first.");
     if (!ui_confirm("IMPORT SAVE", C_YELLOW, q)) goto done;
@@ -649,6 +777,7 @@ void databin_import(const char *path)
 
     char where[VFS_PATH_MAX] = "";
     u32 before = 0;
+    if (new_disc_title && !disc_title_create(d.tid, &uid, err, sizeof(err))) goto fail;
     if (missing && !make_save_dir(data, uid, gid)) {
         seterr(err, sizeof(err), "Couldn't make the save folder on the NAND.");
         goto fail;

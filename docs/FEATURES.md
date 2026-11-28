@@ -105,14 +105,22 @@ The WADs go in `GodModeWii/wad-dump/` on the SD card or a USB drive, named `<tit
 
 ### Saves
 
-* **Export all saves** (HOME menu): every disc game, channel and WiiWare save goes to `GodModeWii/save-export/<date-time>/`, as plain
-  folders, as `data.bin` files, or both. A `data.bin` is the Wii's own encrypted, signed SD card backup, made the way Dolphin makes
-  one, so it needs this Wii's keys (start from the Homebrew Channel). Copy the `private` folder to the SD card's root and the Wii
-  Menu's Data Management copies the saves back, on this Wii or another. A save without a `banner.bin` is listed as not made.
-* **Import a `data.bin`:** press **A** on one → *Import save to the NAND* (or *Browse contents* to look inside). It works with any
-  Wii's `data.bin`. The header's MD5 is checked, the save on the NAND is first copied to `GodModeWii/save-backups/`, then replaced,
-  and every file gets the owner and permissions stored in the `data.bin`. The title must already have a save folder (install it,
-  or start the game once). Needs the Konami code.
+HOME menu → *Save manager*, after [SaveGame Manager GX](https://github.com/Cyan-Coding/savegame-manager-gx),
+[GCMM](https://github.com/suloku/gcmm) and GerbilSoft's [rom-properties](https://github.com/GerbilSoft/rom-properties). **+**
+switches between the Wii NAND, memory card A and B, the `data.bin` files on the SD card / USB drives, and `.gci` files. Every save
+is listed with its icon, title and subtitle (or GameCube comment).
+
+* **A** on a save: look at its banner and animated icon, export it (Wii: `data.bin` and/or a plain folder; GameCube: `.gci`), copy
+  it to the other memory card, or delete it (Risky Mode; a Wii save is backed up to `GodModeWii/save-backups/` first).
+* **A** on a `data.bin` / `.gci`: put it on the NAND / a memory card straight away; there is no "import it into the app first"
+  step. A Wii save gets the owner and permissions the `data.bin` stores, the existing save is backed up first, and the header's
+  MD5 is checked. It also works for a disc game that has never been started: the title's folder is created the way the Wii Menu
+  does it (a `uid.sys` entry, backed up to `GodModeWii/uid.sys.bak` first, and the modes of the other titles' folders), with the
+  maker code read from the disc in the drive (or 01). Needs the Konami code.
+* **1** / **2**: the game's box / disc art from [GameTDB](https://www.gametdb.com) (downloaded once, kept in `GodModeWii/covers/`).
+* **−**: export all Wii saves to `GodModeWii/save-export/<date-time>/` as folders, `data.bin` files, or both. A `data.bin` is the
+  Wii's own encrypted, signed SD card backup, made the way Dolphin makes one, so it needs this Wii's keys (start from the Homebrew
+  Channel). Copy the `private` folder to the SD card's root and the Wii Menu's Data Management copies the saves back.
 
 ### The whole NAND
 
@@ -138,6 +146,14 @@ HOME menu → *Console*.
 * *Edit setting.txt*: AREA, GAME, VIDEO, DVD, MODEL, CODE, SERNO and MPCH, with the known values to pick from. Each value is
   changed in place, the rest of the file stays as it was, and the old file is copied to `GodModeWii/setting-backups/` first
   (copy it back to undo). Needs the Konami code. A wrong region or serial can stop discs, channels or the Wii Shop working.
+* *Disc drive stress test* (Risky Mode) reads the disc in the drive for as long as you choose: random seeks, full-stroke seeks
+  from the inside to the outside edge, and a stop / spin-up every 200 reads, and counts errors, retries and the slowest read.
+  A worn drive shows up as climbing retries. Any Wii or GameCube disc will do.
+* *NAND write test* (Risky Mode) writes 4, 16 or 64 MB of a known pattern to `/tmp` on the NAND, reads it back, compares and
+  deletes it. Only `/tmp` is touched, but it is still NAND wear.
+* *Format a drive as FAT32* is offered only for an SD card or USB drive in a format the Homebrew Channel, RiftWii and the USB
+  loaders can't use (exFAT, NTFS, ext, HFS+, WBFS, unreadable). It erases the whole drive (asked twice) and makes one FAT32
+  partition from 1 MiB on, with the cluster size Windows would pick; 512- and 4096-byte-sector drives both work.
 * *Install / update HBC Reborn* gets [HBC Reborn](https://github.com/Monsterray/hbc-reborn)'s latest release from GitHub and
   replaces the installed Homebrew Channel in place, under its own title ID: LULZ and OHBC from their WAD, an older JODI or HAXX
   from the LULZ WAD given that ID. With none or several installed, it asks. The WAD is checked against the release's
@@ -168,12 +184,24 @@ The stock archive comes from `GodModeWii/themes/original/` (or csm-installer's `
 downloaded from Nintendo's update server (it asks first), decrypted with the System Menu's ticket, hash checked, and kept for next
 time.
 
+## Old WBFS drives
+
+A USB drive (or partition) in the old WBFS format opens read-only: each game shows up as `<ID6> <title>.iso`, and a note says to
+copy them off. Nothing current needs WBFS; USB Loader GX, WiiFlow and others read `.wbfs` / `.iso` files from FAT32 or NTFS.
+
 ## Launching things
 
 * **Homebrew:** press **A** on a `.dol` or `.elf`. Arguments from a `meta.xml` next to it are passed on, and HW_AHBPROT access is
   kept. Channel contents (`0000000N.app`) are browsed, not launched.
 * **Wii game disc:** HOME menu → *Boot game disc* starts the disc in the drive with TinyLoad, region free. GodModeWii closes and the
   game runs. No patches, no updates, no burned discs.
+* **Dump a disc to ISO:** HOME menu → *Dump a disc to ISO*. From the Wii's drive: GameCube and Wii discs (dual layer too) and,
+  on Wiis made before mid-2008, DVDs; from a USB CD / DVD drive: DVDs and data CDs. The ISO goes to `GodModeWii/dumps/` on the
+  SD card or a USB drive: in 4 GB parts (`.part0.iso`, `.part1.iso`, ...) on FAT32, one file on exFAT or NTFS. A block that won't
+  read is tried again after a drive reset, then sector by sector until two reads agree (CleanRip's way); a sector that still
+  fails is filled with `0x55` and listed in `<name>.log` (offset and drive error), or stops the dump if you ask for that. Dual
+  layer is found by itself, and the part size is fixed, so there is nothing to set. DVD-Video is decrypted (CSS) with libdvdcss.
+  The `.txt` has the CRC32, MD5 and SHA-1 to check against redump.info. Hold B to stop.
 
 ## HOME menu
 
