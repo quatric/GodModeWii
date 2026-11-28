@@ -746,7 +746,7 @@ uint8_t *mym_build(const uint8_t *base_data, uint32_t base_len, mym_fetch_fn fet
     memset(res, 0, sizeof(*res));
     u8arc base;
     if (!u8_parse(&base, base_data, base_len)) {
-        snprintf(err, errsz, "The System Menu archive isn't a valid U8 archive.");
+        snprintf(err, errsz, "The Wii Menu archive isn't a valid U8 archive.");
         return NULL;
     }
     uint8_t *ini_data = NULL;

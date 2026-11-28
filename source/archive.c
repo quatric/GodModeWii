@@ -72,7 +72,7 @@ int arc_key_index(const uint8_t *issuer, int idx)
 
 bool arc_common_key(int index, uint8_t key[16])
 {
-    if (index < 0 || index > 3) return false;
+    if (index < 0 || index > 3) index = 0;   /* an unknown index: the ordinary Wii common key */
     memcpy(key, COMMON_KEYS[index], 16);
     return true;
 }

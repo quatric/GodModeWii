@@ -42,10 +42,10 @@ installed straight from Wiiload (see [Network](NETWORK.md)).
 
 Pick *Install to NAND*. The install and its brick checks come from YAWM ModMii Edition. It needs the Konami code. It refuses:
 
-* boot2 and System Menu WADs (use YAWM ModMii Edition, which keeps Priiloader)
+* boot2 and Wii Menu WADs (use YAWM ModMii Edition, which keeps Priiloader)
 * a Wii IOS on vWii and the other way round
-* stubs over the IOS of the System Menu, the EULA, region select or the Homebrew Channel
-* a System Menu IOS that would brick a Wii with the Korean key
+* stubs over the IOS of the Wii Menu, the EULA, region select or the Homebrew Channel
+* a Wii Menu IOS that would brick a Wii with the Korean key
 * titles whose IOS is missing or a stub
 
 **Save data is never deleted.** There is no uninstall. A title's `data` folder is backed up to `GodModeWii/save-backups/`
@@ -66,7 +66,7 @@ emunand is kept, and the real NAND isn't touched.
 Pick *Install to SD card*. The WAD is converted the way [wad2bin](https://github.com/DarkMatterCore/wad2bin) does it, using this
 console's own keys (read from the OTP, so start from the Homebrew Channel).
 
-* A **channel** becomes `private/wii/title/<ID>/content.bin` and runs from the SD card menu (System Menu 4.0 or later)
+* A **channel** becomes `private/wii/title/<ID>/content.bin` and runs from the SD card menu (Wii Menu 4.0 or later)
   without taking NAND space.
 * **DLC** (any title) becomes `private/wii/data/<ID>/<index>.bin`. You choose the encryption: this console's key, or a **null key**
   for older games that read it through the Disc Channel, such as Rock Band 2.
@@ -75,8 +75,8 @@ console's own keys (read from the OTP, so start from the Homebrew Channel).
 * The ticket and TMD then go on the NAND (Konami code), and a `wad/<title id>_bogus.wad` with just those is left for other WAD
   managers. A title that is already installed keeps what it has.
 * Every content is checked against its TMD hash, and both signatures are verified before the file is kept. System titles (IOS,
-  System Menu...) can't run from the SD card and are refused.
-* The files only work on the Wii that made them. A ticket that isn't for this console needs a System Menu IOS with the signing bug
+  Wii Menu...) can't run from the SD card and are refused.
+* The files only work on the Wii that made them. A ticket that isn't for this console needs a Wii Menu IOS with the signing bug
   (a cIOS for DLC), as with wad2bin.
 
 ### DLC WADs with missing pieces, and splitting DLC
@@ -97,12 +97,12 @@ drive). It works on DLC WADs with pieces missing too, and on any DLC title (dlc-
 ### Titles as WADs (YABDM style)
 
 In `nand:/title/<type>/` (or the same folder inside a BootMii `nand.bin`), put the cursor on a title's folder, or mark several, and
-pick *Back up as WAD* in the Actions menu. It is also offered inside a title's folder and on a `content.bin` the System Menu wrote to
+pick *Back up as WAD* in the Actions menu. It is also offered inside a title's folder and on a `content.bin` the Wii Menu wrote to
 `private/wii/title/<ID>/`.
 
 The WAD is built the way [Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod) does it: the certificates from
 `/sys/cert.sys`, the ticket, the TMD, every content encrypted again with the title key, and the first content as the footer. It
-matches a NUS Downloader WAD. A System Menu with Priiloader is dumped from Priiloader's copy of the original.
+matches a NUS Downloader WAD. A Wii Menu with Priiloader is dumped from Priiloader's copy of the original.
 
 * The **ticket is always fakesigned** (console ID and ECDH data wiped, a Korean or vWii title key re-encrypted with the Wii common
   key), so the WAD installs on any Wii whose IOS has the signing bug.
@@ -177,13 +177,13 @@ HOME menu → *Console*.
 
 ## Wii Menu themes
 
-**Dangerous.** Press **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces the System Menu's layout
+**Dangerous.** Press **A** on a `.csm` or `.mym` → *Install as the Wii Menu theme*. A theme replaces the Wii Menu's layout
 archive on the NAND, and a bad one stops the Wii Menu from starting. The checks of
 [csm-installer](https://github.com/Naim2000/csm-installer) apply:
 
 * Priiloader must be installed (it is how you get back to homebrew if the Wii Menu doesn't start).
-* The System Menu is identified from its TMD, and the theme must be a U8 archive with the menu's files, this region's
-  `iplsetting.ash` and a `main.sel` naming the same System Menu major version and platform (Wii, vWii or Wii mini).
+* The Wii Menu is identified from its TMD, and the theme must be a U8 archive with the menu's files, this region's
+  `iplsetting.ash` and a `main.sel` naming the same Wii Menu major version and platform (Wii, vWii or Wii mini).
 * On vWii the WiiWare 4:3 database is patched for the WiiConnect24 channels, as csm-installer does.
 
 Before anything is written, the stock archive (hash checked against the TMD), or an installed custom theme, is saved to
@@ -192,11 +192,11 @@ read back and hash checked, moved over the old archive and checked again. It ask
 install the saved `.csm` the same way. If the archive went missing from the NAND, installing a theme puts one back.
 
 A **`.mym`** (ThemeMii) is first built into a `.csm` from the stock archive, the way ThemeMii and cmyksoda's mym-to-csm do it (for
-System Menu 4.3 on a Wii only). The `.csm` is kept in `GodModeWii/themes/` and goes through the same checks. *Build a .csm on the SD
+Wii Menu 4.3 on a Wii only). The `.csm` is kept in `GodModeWii/themes/` and goes through the same checks. *Build a .csm on the SD
 card* does only that, without touching the NAND. Entries whose target isn't in this menu are skipped and listed.
 
 The stock archive comes from `GodModeWii/themes/original/` (or csm-installer's `themes/original_backup/`). With neither, it is
-downloaded from Nintendo's update server (it asks first), decrypted with the System Menu's ticket, hash checked, and kept for next
+downloaded from Nintendo's update server (it asks first), decrypted with the Wii Menu's ticket, hash checked, and kept for next
 time.
 
 ## Old WBFS drives

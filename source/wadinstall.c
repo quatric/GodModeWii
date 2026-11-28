@@ -14,7 +14,7 @@
  *     folder is copied to <SD or USB>:/GodModeWii/save-backups/
  *   - after the install the data folder is counted again and a difference is
  *     reported, with the backup's location
- *   - the System Menu is not installed here (that needs YAWM ModMii
+ *   - the Wii Menu is not installed here (that needs YAWM ModMii
  *     Edition's Priiloader handling), nor is boot2
  *
  * A DLC WAD may leave contents out: one with pieces missing, or a "small"
@@ -560,7 +560,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
 
     /* ---- brick checks (YAWM ModMii Edition) ---- */
     if (sd_mode && TID_HI(tid) == 1) {
-        snprintf(msg, msz, "System titles (IOS, System Menu, BC, MIOS) can't run from the SD card.");
+        snprintf(msg, msz, "System titles (IOS, Wii Menu, BC, MIOS) can't run from the SD card.");
         ret = -999;
         goto out;
     }
@@ -571,7 +571,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
     }
     if (tid == TID(1, 2)) {
         snprintf(msg, msz,
-                 "This is a System Menu WAD. Install it with YAWM ModMii Edition, which checks the region and keeps Priiloader.");
+                 "This is a Wii Menu WAD. Install it with YAWM ModMii Edition, which checks the region and keeps Priiloader.");
         ret = -999;
         goto out;
     }
@@ -609,14 +609,14 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
         u64 sm_ios = title_ios(TID(1, 2));
         if (tid == sm_ios) {
             if (tmd_is_stub_ios(tmd)) {
-                snprintf(msg, msz, "This would stub the System Menu's IOS and brick the console.");
+                snprintf(msg, msz, "This would stub the Wii Menu's IOS and brick the console.");
                 ret = -999;
                 goto out;
             }
             if (!g_is_vwii && (tid == TID(1, 70) || tid == TID(1, 80)) &&
                 !cios_base60(&f, tik, tmd, data_off) && has_korean_key()) {
                 snprintf(msg, msz,
-                         "Installing this System Menu IOS will brick a Wii with the Korean key. Remove it with KoreanKii first.");
+                         "Installing this Wii Menu IOS will brick a Wii with the Korean key. Remove it with KoreanKii first.");
                 ret = -999;
                 goto out;
             }
@@ -740,7 +740,7 @@ static int install_one(const char *path, char *msg, size_t msz, char *note, size
             if (r2 >= 0) r2 = ES_AddTitleFinish();
             if (r2 < 0) {
                 ES_AddTitleCancel();
-                snprintf(msg, msz, "Ticket installed. The TMD wasn't kept (%d); the System Menu takes it from content.bin.",
+                snprintf(msg, msz, "Ticket installed. The TMD wasn't kept (%d); the Wii Menu takes it from content.bin.",
                          (int)r2);
             } else
                 snprintf(msg, msz, "Ticket and TMD installed.");
@@ -1093,11 +1093,11 @@ int wad_install_sd(char **paths, int n)
     snprintf(q, sizeof(q),
              "Install %s%s%s to the SD card?\n\n"
              "Converted the way wad2bin does it, with this console's keys: a channel becomes "
-             "private/wii/title/<ID>/content.bin and runs from the SD card menu (System Menu 4.0 or later); "
+             "private/wii/title/<ID>/content.bin and runs from the SD card menu (Wii Menu 4.0 or later); "
              "DLC becomes private/wii/data/<ID>/<index>.bin. The files only work on this Wii.\n\n"
              "Its ticket and TMD (for DLC, also its small content 0) then go on the NAND (asks for the Konami "
              "code); a ticket made out to another console is made usable here first. A WAD whose ticket "
-             "isn't for this console needs a System Menu IOS with the signing bug (or a cIOS for DLC).",
+             "isn't for this console needs a Wii Menu IOS with the signing bug (or a cIOS for DLC).",
              wads == 1 ? "\"" : "", wads == 1 ? vfs_basename(one) : "these WADs", wads == 1 ? "\"" : "");
     if (wads > 1) {
         char cnt[32];

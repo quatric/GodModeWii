@@ -7,7 +7,7 @@
 #include "archive.h"
 
 /* WAD -> SD card backup package, as DarkMatterCore's wad2bin makes them: a channel becomes
- * private/wii/title/<ABCD>/content.bin (runs from the SD card menu, System Menu 4.0+), a DLC becomes
+ * private/wii/title/<ABCD>/content.bin (runs from the SD card menu, Wii Menu 4.0+), a DLC becomes
  * private/wii/data/<its own abcd>/<index>.bin. Signed and encrypted with this console's keys, so the
  * files only work on the console they were made on. A "<title id>_bogus.wad" (ticket and TMD, no
  * contents) is written to wad/ beside them. */
@@ -73,7 +73,7 @@ int w2b_split(const src_t *wad, const char *dir, const char *base, int per, cons
 int w2b_convert(const src_t *wad, const char *root, const w2b_keys_t *keys, const w2b_opts_t *opt,
                 const w2b_io_t *io, w2b_result_t *r);
 
-/* Signs `digest` the way the System Menu signs its SD card files: with an AP key (its certificate, issued by
+/* Signs `digest` the way the Wii Menu signs its SD card files: with an AP key (its certificate, issued by
  * this console's device certificate and signed with the NG key, goes to `ap`). r and s are 30 bytes each.
  * False when the NG key doesn't match the device certificate. */
 bool w2b_ap_sign(const w2b_keys_t *k, const uint8_t digest[20], uint8_t r[30], uint8_t s[30], uint8_t ap[0x180]);

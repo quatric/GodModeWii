@@ -350,7 +350,7 @@ static void add(strbuf_t *s, const char *fmt, ...)
 static const char *type_name(u32 hi)
 {
     switch (hi) {
-    case 0x00000001: return "system (IOS, System Menu, BC, MIOS)";
+    case 0x00000001: return "system (IOS, Wii Menu, BC, MIOS)";
     case 0x00010000: return "disc game";
     case 0x00010001: return "channel (WiiWare, Virtual Console...)";
     case 0x00010002: return "system channel";

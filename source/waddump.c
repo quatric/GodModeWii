@@ -5,7 +5,7 @@
  * (https://github.com/DarkMatterCore/bluedump-mod, GPL-3.0): a 0x20 byte "Is" header, the CA / CP / XS
  * certificates, the ticket (0x2A4 bytes), the TMD, each content AES-128-CBC encrypted with the title key
  * (IV = its index) and padded to 64 bytes, then the first content as it is on the NAND as the footer.
- * Shared contents are found by their SHA-1 in /shared1/content.map, a System Menu with Priiloader is
+ * Shared contents are found by their SHA-1 in /shared1/content.map, a Wii Menu with Priiloader is
  * dumped from Priiloader's copies of the original (title_or.tmd, 1xxxxxxx.app), and every content is
  * checked against the TMD's hash before the file is kept. The code is GodModeWii's own.
  *
@@ -250,7 +250,7 @@ typedef struct {
     char nand[VFS_PATH_MAX];            /* the NAND's root, without its slash ("nand:") */
     char cbin[VFS_PATH_MAX];            /* a content.bin's inside ("sd:/.../content.bin|"), or "" */
     char tdir[VFS_PATH_MAX];            /* <nand>/title/<hi>/<lo> */
-    bool priiloader;                    /* a System Menu dumped from Priiloader's copies */
+    bool priiloader;                    /* a Wii Menu dumped from Priiloader's copies */
     u8 *map;                            /* /shared1/content.map */
     u32 map_n;
 } dump_t;

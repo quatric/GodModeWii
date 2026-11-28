@@ -1,7 +1,7 @@
 /*
  * Wii Menu theme installer. See theme.h.
  *
- * The System Menu identification, the theme checks, the vWii 4:3 database patch and the
+ * The Wii Menu identification, the theme checks, the vWii 4:3 database patch and the
  * write-to-/tmp-then-rename install follow Naim2000's csm-installer
  * (https://github.com/Naim2000/csm-installer); the 43DB layout is DarkMatterCore's
  * ww-43db-patcher's. Added here: the theme is read back from /tmp and hash checked before the old
@@ -42,7 +42,7 @@
 
 static u8 bounce[CHUNK] ATTRIBUTE_ALIGN(32);
 
-/* ---------------------------------------------------------------- the System Menu */
+/* ---------------------------------------------------------------- the Wii Menu */
 
 typedef struct {
     u16 rev;                    /* title version: 513 = 4.3U */
@@ -108,29 +108,29 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
     memset(sm, 0, sizeof(*sm));
     u32 sz = 0;
     if (ES_GetStoredTMDSize(SM_TID, &sz) < 0 || sz < sizeof(sig_rsa2048) + sizeof(tmd) || sz > MAX_SIGNED_TMD_SIZE) {
-        snprintf(why, wn, "Couldn't read the System Menu's TMD.");
+        snprintf(why, wn, "Couldn't read the Wii Menu's TMD.");
         return false;
     }
     signed_blob *b = memalign(32, (sz + 31) & ~31u);
     if (!b || ES_GetStoredTMD(SM_TID, b, sz) < 0) {
         free(b);
-        snprintf(why, wn, "Couldn't read the System Menu's TMD.");
+        snprintf(why, wn, "Couldn't read the Wii Menu's TMD.");
         return false;
     }
     bool ok = false;
     tmd *t = SIGNATURE_PAYLOAD(b);
     u32 sigsz = SIGNATURE_SIZE(b);
     if (!sigsz || sigsz + sizeof(tmd) + (u32)t->num_contents * sizeof(tmd_content) > sz) {
-        snprintf(why, wn, "The System Menu's TMD is damaged.");
+        snprintf(why, wn, "The Wii Menu's TMD is damaged.");
         goto out;
     }
     sm->rev = t->title_version;
     if (sm->rev > 0x2000) {
-        snprintf(why, wn, "Unknown System Menu version %u: not a stock System Menu.", sm->rev);
+        snprintf(why, wn, "Unknown Wii Menu version %u: not a stock Wii Menu.", sm->rev);
         goto out;
     }
     if (!(sm->region = sm_region(sm->rev)) || !(sm->major = sm_major(sm->rev))) {
-        snprintf(why, wn, "Unknown System Menu version %u (region or version not recognized).", sm->rev);
+        snprintf(why, wn, "Unknown Wii Menu version %u (region or version not recognized).", sm->rev);
         goto out;
     }
     sm->platform = t->fill2 /* vWii flag */ ? 'V' : (sm->rev & 0xFFE0) == 0x1200 ? 'M' : 'W';
@@ -144,7 +144,7 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
         char path[64];
         snprintf(path, sizeof(path), CONTENT_FMT, c->cid);
         if (c->index == t->boot_index) {
-            /* Priiloader moves the System Menu's boot content to 1xxxxxxx.app (as its installer
+            /* Priiloader moves the Wii Menu's boot content to 1xxxxxxx.app (as its installer
              * checks it) */
             path[strlen("/title/00000001/00000002/content/")] = '1';
             sm->priiloader = nand_exists(path);
@@ -174,11 +174,11 @@ static bool sysmenu_probe(sysmenu_t *sm, char *why, size_t wn)
         sm->missing = true;
     }
     if (!sm->cid) {
-        snprintf(why, wn, "Couldn't find the System Menu's layout archive on the NAND.");
+        snprintf(why, wn, "Couldn't find the Wii Menu's layout archive on the NAND.");
         goto out;
     }
     if (sm->size < THEME_MIN || sm->size > THEME_MAX) {
-        snprintf(why, wn, "The System Menu's layout archive has an unexpected size (%u bytes).", sm->size);
+        snprintf(why, wn, "The Wii Menu's layout archive has an unexpected size (%u bytes).", sm->size);
         goto out;
     }
     ok = true;
@@ -294,7 +294,7 @@ static u8 *nand_read_all(const char *path, u32 max, u32 *len)
         s32 r = ISFS_Read(fd, buf + got, st.file_length - got > CHUNK ? CHUNK : st.file_length - got);
         if (r <= 0) break;
         got += r;
-        progress("Reading the System Menu archive", got, st.file_length);
+        progress("Reading the Wii Menu archive", got, st.file_length);
     }
     ISFS_Close(fd);
     if (got != st.file_length) {
@@ -536,21 +536,21 @@ out:
 }
 
 /* The stock archive, as csm-installer's DownloadOriginalTheme gets it: the encrypted content from
- * NUS, decrypted with the title key in the System Menu's ticket, and hash checked against the TMD. */
+ * NUS, decrypted with the title key in the Wii Menu's ticket, and hash checked against the TMD. */
 static u8 *nus_download(const sysmenu_t *sm, u32 *len, char *why, size_t wn)
 {
     u32 tl;
     u8 *tik = nand_read_all("/ticket/00000001/00000002.tik", 0x4000, &tl);
     if (!tik || tl < 0x2A4 || be32(tik) != 0x10001) {
         free(tik);
-        snprintf(why, wn, "Couldn't read the System Menu's ticket, which the download is decrypted with.");
+        snprintf(why, wn, "Couldn't read the Wii Menu's ticket, which the download is decrypted with.");
         return NULL;
     }
     u8 ck[16], tk[16], iv[16];
     int idx = tik[0x1F1] > 2 ? 0 : tik[0x1F1];
     if (!arc_common_key(idx, ck)) {
         free(tik);
-        snprintf(why, wn, "The System Menu's ticket uses an unknown common key.");
+        snprintf(why, wn, "The Wii Menu's ticket uses an unknown common key.");
         return NULL;
     }
     aes128_t c;
@@ -564,7 +564,7 @@ static u8 *nus_download(const sysmenu_t *sm, u32 *len, char *why, size_t wn)
     sm_name(sm, name, sizeof(name));
     snprintf(q, sizeof(q),
              "The original Wii Menu archive is needed to build the theme, and there is no copy on the "
-             "console or the SD card.\n\nDownload it (%u KiB, System Menu %s) from Nintendo's update "
+             "console or the SD card.\n\nDownload it (%u KiB, Wii Menu %s) from Nintendo's update "
              "server?", sm->size / 1024, name);
     if (!ask(g_title, C_CYAN, q) || !ftp_net_start()) {
         snprintf(why, wn, "The original Wii Menu archive wasn't downloaded.");
@@ -647,7 +647,7 @@ static u8 *load_stock(const sysmenu_t *sm, u32 *len, char *why, size_t wn)
     }
     snprintf(why, wn,
              "A custom theme is installed and there is no copy of the original Wii Menu archive to build "
-             "the mym on.\n\n%s\n\nOr put the original %08x.app of System Menu v%u at\n"
+             "the mym on.\n\n%s\n\nOr put the original %08x.app of Wii Menu v%u at\n"
              "sd:/GodModeWii/themes/original/%08x-v%u.csm",
              nus_why, sm->cid, sm->rev, sm->cid, sm->rev);
     return NULL;
@@ -718,7 +718,7 @@ static bool mym_ok_for(const sysmenu_t *sm, char *why, size_t wn)
     char name[48];
     sm_name(sm, name, sizeof(name));
     snprintf(why, wn,
-             "mym themes are built here for System Menu 4.3 on a Wii only; this console runs %s.\n\n"
+             "mym themes are built here for Wii Menu 4.3 on a Wii only; this console runs %s.\n\n"
              "Use a csm made for this exact menu instead.", name);
     return false;
 }
@@ -787,7 +787,7 @@ static const char *main_sel_path(char region)
     return "FINAL/XXX/main.sel";
 }
 
-/* The System Menu ELF path in main.sel says which menu the theme was made from. */
+/* The Wii Menu ELF path in main.sel says which menu the theme was made from. */
 static void elf_version(const char *path, char *base, char *major, char *minor, char *region)
 {
     static const char s1[] = "\\System", s2[] = "\\Compat_irdrepo\\ipl\\Compat",
@@ -932,7 +932,7 @@ static bool preflight(sysmenu_t *sm, bool mym)
     char why[400];
     if (!g_is_dolphin && !g_nand_full) {
         msg(g_title, C_RED,
-                   "The System Menu's files can't be written without full NAND access.\n\n"
+                   "The Wii Menu's files can't be written without full NAND access.\n\n"
                    "Start GodModeWii from the Homebrew Channel (HW_AHBPROT off).");
         return false;
     }

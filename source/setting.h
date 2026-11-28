@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* The System Menu's setting.txt (nand:/title/00000001/00000002/data/setting.txt): 0x100 bytes of
+/* The Wii Menu's setting.txt (nand:/title/00000001/00000002/data/setting.txt): 0x100 bytes of
  * "KEY=VALUE\r\n" lines (AREA, MODEL, DVD, MPCH, CODE, SERNO, VIDEO, GAME), XORed with a rolling key. */
 
 #define SETTING_SIZE 0x100

@@ -1,5 +1,5 @@
 /*
- * setting.txt, the System Menu's console settings. See setting.h.
+ * setting.txt, the Wii Menu's console settings. See setting.h.
  *
  * The file is always 0x100 bytes: the text XORed with a key that starts at 0x73B5DBFA and is rotated left by
  * one bit after each byte, then zeros (as stored: the first zero byte ends the text). That key repeats every 32 bytes, so it is applied as eight
@@ -165,7 +165,7 @@ static const char *about(const char *key, const char *const **choices)
 {
     *choices = NULL;
     if (!strcmp(key, "AREA"))  { *choices = AREAS;  return "The console's region: the Wii Shop and region checks use it."; }
-    if (!strcmp(key, "GAME"))  { *choices = GAMES;  return "Which discs and channels the System Menu treats as this region's."; }
+    if (!strcmp(key, "GAME"))  { *choices = GAMES;  return "Which discs and channels the Wii Menu treats as this region's."; }
     if (!strcmp(key, "VIDEO")) { *choices = VIDEOS; return "The video standard games are told the TV uses."; }
     if (!strcmp(key, "DVD"))   { *choices = DVDS;   return "1 on Wiis whose drive can read DVD-Video (early models)."; }
     if (!strcmp(key, "MODEL")) return "The model shown in Wii Settings. RVL-201 is a Wii mini, RVL-101 a Family Edition.";
@@ -229,8 +229,8 @@ static const char *save(const char *plain)
     memcpy(raw, plain, len);
     crypt(raw);
     memset(raw + len, 0, SETTING_SIZE - len);                /* stored as zeros, not encrypted ones */
-    if (memchr(raw, 0, len))                                 /* the System Menu would stop reading there */
-        return "a byte of it encrypts to 0, which ends the file for the System Menu; change a value slightly";
+    if (memchr(raw, 0, len))                                 /* the Wii Menu would stop reading there */
+        return "a byte of it encrypts to 0, which ends the file for the Wii Menu; change a value slightly";
     s32 fd = ISFS_Open(SETTING_PATH, ISFS_OPEN_WRITE);
     if (fd < 0) return "couldn't open it for writing";
     s32 w = ISFS_Write(fd, raw, SETTING_SIZE);

@@ -1,6 +1,6 @@
 /*
  * Installable WAD -> SD card backup package ("wad2bin"), so a channel runs from the SD card menu
- * (System Menu 4.0 and later) and DLC loads from the card, without its contents taking NAND space.
+ * (Wii Menu 4.0 and later) and DLC loads from the card, without its contents taking NAND space.
  * Output is what DarkMatterCore's wad2bin writes (its layout, read from its documentation and
  * sources, is what this follows; the code is GodModeWii's own):
  *

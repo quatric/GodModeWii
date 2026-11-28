@@ -2,9 +2,9 @@
  * GodModeWii - leaving for BootMii (as IOS254) or Priiloader.
  * Copyright (C) 2026 quatric. GPL-3.0-or-later, see LICENSE.
  *
- * Priiloader reads a magic word at 0x8132FFFB when the System Menu starts, as the Homebrew Channel uses it:
+ * Priiloader reads a magic word at 0x8132FFFB when the Wii Menu starts, as the Homebrew Channel uses it:
  * "Daco" opens Priiloader's menu, "Pune" starts the Wii Menu itself (skipping whatever Priiloader autoboots).
- * Priiloader moves the System Menu's boot content <id>.app to 1<id>.app (low 28 bits), which shows it's there.
+ * Priiloader moves the Wii Menu's boot content <id>.app to 1<id>.app (low 28 bits), which shows it's there.
  */
 #include <stdio.h>
 #include <string.h>

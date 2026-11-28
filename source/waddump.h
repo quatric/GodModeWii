@@ -10,7 +10,7 @@
  * (shared ones found through /shared1/content.map) and the first content as the footer.
  *
  * A source is a title folder on a NAND (nand:/title/<hi>/<lo>, or the same folder inside a BootMii
- * nand.bin) or a content.bin the System Menu wrote to the SD card (decrypted with this console's keys;
+ * nand.bin) or a content.bin the Wii Menu wrote to the SD card (decrypted with this console's keys;
  * the ticket and any shared contents come from this console's NAND).
  *
  * The ticket is fakesigned (signature zeroed, padding brute-forced for the signing bug), its console ID

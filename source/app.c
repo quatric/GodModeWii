@@ -952,12 +952,12 @@ static void show_credits(void)
         "(DacoTaco) and BootMii (Team Twiizers) are booted the way each expects.\n\n"
         "Save manager: SaveGame Manager GX, GCMM and GerbilSoft's rom-properties; box and disc art from GameTDB. WBFS: "
         "libwbfs (Kwiirk, Waninkoko). The dump spiral: after dvdisaster. Title info: after ShowMiiWads (Leathl) and NUSD.\n\n"
-        "Mii QR codes: Project Nayuki's QR Code generator (MIT), after mii-qr. Mii Parade layout: MiiFlood. Wii Remote "
+        "Mii QR codes: Project Nayuki's QR Code generator (MIT), after mii-qr. Mii Parade layout: MII-FLOOD-2. Wii Remote "
         "memory, SYSCONF and the Mii data: WiiBrew. Write permission colours: GodMode9. Zip: zlib.\n\n"
         "Full list with licenses: docs/CREDITS.md.",
 
-        "MoonShell (Moonlight) inspired us a lot: the interface sounds are MoonShell 2.10's (GPL v2 or "
-        "later), and the clock, calendar, calculator and alarm follow its own.\n\n"
+        "The interface sounds are MoonShell 2.10's (Moonlight, GPL v2 or later), and the clock, calendar, "
+        "calculator and alarm follow its own.\n\n"
         "Thanks for using GodModeWii!\n\n"
         "Psst... feeling nostalgic? Right here, or on the drive list, enter + A - 1 2 -.",
     };

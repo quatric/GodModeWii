@@ -3,7 +3,7 @@
  * its output and wad2bin's keys.txt format are understood as they are.
  * OTP / SEEPROM readers are re-implemented here; the SD key is recognized in
  * IOS memory by hash, like xyzzy-mod does. SD IV, MD5 blanker and the MAC
- * address (which need the System Menu binary / network) are not included.
+ * address (which need the Wii Menu binary / network) are not included.
  */
 #include <stdio.h>
 #include <stdlib.h>

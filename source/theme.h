@@ -3,14 +3,14 @@
 
 #include <stdbool.h>
 
-/* Wii Menu themes. DANGEROUS: a theme replaces the System Menu's layout archive on the NAND, and a
+/* Wii Menu themes. DANGEROUS: a theme replaces the Wii Menu's layout archive on the NAND, and a
  * bad one stops the Wii Menu from starting. With the checks of Naim2000's csm-installer
  * (https://github.com/Naim2000/csm-installer):
- *   - the System Menu is identified from its TMD (version, region, Wii / vWii / Wii mini) and its
+ *   - the Wii Menu is identified from its TMD (version, region, Wii / vWii / Wii mini) and its
  *     layout archive found by content
  *   - Priiloader must be installed (it can still start homebrew when the Wii Menu doesn't)
  *   - the theme must be a U8 archive that holds the menu's files, this region's iplsetting.ash and
- *     main.sel, and main.sel must name the same System Menu major version and platform
+ *     main.sel, and main.sel must name the same Wii Menu major version and platform
  *   - vWii: the WiiWare 4:3 database is patched for the WiiConnect24 channels, as csm-installer
  *     does by default
  *   - the stock archive is saved to <SD / USB>:/GodModeWii/themes/original/ (hash checked against
@@ -18,7 +18,7 @@
  *     backup, no install
  *   - the new archive is written to /tmp, read back and hash checked, and only then moved over
  *     the old one, then checked again
- * A .mym is first built into a .csm from the stock archive (mym.c), for System Menu 4.3 on a Wii
+ * A .mym is first built into a .csm from the stock archive (mym.c), for Wii Menu 4.3 on a Wii
  * only, and that csm goes through the same checks. Shows its own dialogs; asks for the Konami
  * code (risk_ensure_unlocked). */
 

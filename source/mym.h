@@ -1,7 +1,7 @@
 #ifndef MYM_H
 #define MYM_H
 
-/* Builds a csm (a themed System Menu .app) from a .mym theme and the stock System Menu .app, the
+/* Builds a csm (a themed Wii Menu .app) from a .mym theme and the stock Wii Menu .app, the
  * way ThemeMii and mym-to-csm do it:
  *   [contN] file=...                     a container (.ash / LZ77 / U8) in the menu is unpacked; its
  *                                        files are addressed as <container with '.' -> '_'>_out/...

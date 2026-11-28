@@ -30,7 +30,7 @@ void databin_import(const char *path);
 /* The banner (banner.bin) kept in a data.bin's header; *banner is malloc'd. */
 bool databin_banner(const char *path, u64 *tid, u8 **banner, u32 *size);
 
-/* "private/wii/title/RMGE" for a title (its last four bytes as letters, as the System Menu names it). */
+/* "private/wii/title/RMGE" for a title (its last four bytes as letters, as the Wii Menu names it). */
 void databin_dir(u64 tid, char *out, size_t n);
 
 #endif

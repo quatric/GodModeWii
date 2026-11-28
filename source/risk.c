@@ -122,7 +122,7 @@ bool risk_ensure_unlocked(void)
         "You are about to change the Wii NAND.",
         "",
         "* A wrong move here can PERMANENTLY BRICK your console.",
-        "* Deleting IOS, System Menu, boot2 or ticket data is fatal.",
+        "* Deleting IOS, Wii Menu, boot2 or ticket data is fatal.",
         "* Make a full NAND backup (BootMii) BEFORE you continue.",
         "* On a Wii U this is the vWii NAND - just as fragile.",
         "* No warranty. You are solely responsible for what you do.",
@@ -135,10 +135,10 @@ bool risk_ensure_unlocked(void)
 }
 
 /* ---------------------------------------------------------------- the brick guard
- * NAND changes that leave the Wii unable to start are refused outright, Risky Mode or not: the System Menu (its
- * contents, setting.txt and the rest of its folder), the IOS it runs on, their tickets, /sys (uid.sys, cert.sys...),
- * /shared1 (the shared contents and content.map), SYSCONF, and the NAND's top folders themselves. Installing
- * goes through the WAD installer, which has its own checks; setting.txt has its own editor in Console. */
+ * NAND changes that leave the Wii unable to start are refused outright, Risky Mode or not: the Wii Menu (its
+ * contents and the rest of its title), the IOS it runs on, their tickets, /sys (uid.sys, cert.sys...),
+ * /shared1 (the shared contents and content.map) and the NAND's top folders themselves. Installing
+ * goes through the WAD installer, which has its own checks. SYSCONF isn't here: without it the Wii just runs its initial setup again. */
 static u32 sm_ios(void)
 {
     static u32 ios;
@@ -168,18 +168,16 @@ const char *risk_brick_reason(const char *path)
         if (!strcmp(p, tops[i])) return "This is one of the NAND's own top folders.";
     #define UNDER(d) (!strncmp(p, d, strlen(d)) && (p[strlen(d)] == 0 || p[strlen(d)] == '/'))
     if (UNDER("/title/00000001/00000002") || !strcmp(p, "/ticket/00000001/00000002.tik"))
-        return "This is the System Menu (or its setting.txt). Without it the Wii can't start.";
+        return "This is the Wii Menu. Without it the Wii can't start.";
     if (UNDER("/sys")) return "This is /sys (uid.sys, cert.sys...), which the Wii needs to start.";
-    if (UNDER("/shared1")) return "This is /shared1, the contents the System Menu and IOS share.";
-    if (!strcmp(p, "/shared2/sys/syscf") || !strcmp(p, "/shared2/sys/sysconf"))
-        return "This is SYSCONF, the Wii's settings. Without it the System Menu won't start.";
+    if (UNDER("/shared1")) return "This is /shared1, the contents the Wii Menu and IOS share.";
     u32 ios = sm_ios();
     if (ios) {
         char t[48];
         snprintf(t, sizeof(t), "/title/00000001/%08x", (unsigned)ios);
         char k[48];
         snprintf(k, sizeof(k), "/ticket/00000001/%08x.tik", (unsigned)ios);
-        if (UNDER(t) || !strcmp(p, k)) return "This is the IOS the System Menu runs on. Without it the Wii can't start.";
+        if (UNDER(t) || !strcmp(p, k)) return "This is the IOS the Wii Menu runs on. Without it the Wii can't start.";
     }
     #undef UNDER
     return NULL;
@@ -193,7 +191,7 @@ bool risk_authorize(const char *path, const char *what)
     if (why) {
         char m[400];
         snprintf(m, sizeof(m), "GodModeWii won't %s this:\n\n%s\n\nThis change would brick the Wii, so it is refused even in "
-                 "Risky Mode. (Installing a System Menu or IOS WAD is for a WAD manager that checks it first.)",
+                 "Risky Mode. (Installing a Wii Menu or IOS WAD is for a WAD manager that checks it first.)",
                  what ? what : "change", why);
         ui_message("WOULD BRICK THE WII", C_RED, m);
         return false;

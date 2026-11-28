@@ -14,7 +14,7 @@ Version 0.16.0, by quatric & cmyksoda. Looking for the Wii U version? See [GodMo
 * And, only if you really mean it, change the NAND.
 
 > [!CAUTION]
-> **GodModeWii can permanently brick your console.** Writing, deleting or renaming files on the NAND (IOS, System Menu, boot2,
+> **GodModeWii can permanently brick your console.** Writing, deleting or renaming files on the NAND (IOS, Wii Menu, boot2,
 > tickets...) can leave a Wii, or a Wii U's vWii, unable to boot.
 >
 > * NAND changes are **locked by default**. Copying *from* the NAND is always safe.
@@ -524,9 +524,6 @@ This writes `GodModeWii.dol` and a much smaller self-extracting `GodModeWii-xz.d
 GodModeWii is by quatric & cmyksoda, and it stands on a lot of other people's work. Thank you! Details, licences and file names are
 in [docs/CREDITS.md](docs/CREDITS.md).
 
-**MoonShell by Moonlight inspired us a lot.** Its 2.10 interface sounds are used here (GPL-2.0 or later), and the clock, calendar,
-calculator and alarm follow its own.
-
 **Code included**
 
 * [TinyLoad](https://wiibrew.org/wiki/TinyLoad) (marcan and others, with the USB Gecko kit): the game disc loader
@@ -576,7 +573,7 @@ calculator and alarm follow its own.
 * [QuickLZ](http://www.quicklz.com/) (Lasse Mikkel Reinhold)
 * AJPG / ODH: from the mobipeg FFmpeg fork
 * WiiBrew: the Mii data, the Wii Remote's memory, Hollywood registers, SYSCONF and the SEEPROM layout
-* MiiFlood: the Mii Parade's list and record layout in `RFL_DB.dat`
+* MII-FLOOD-2: the Mii Parade's list and record layout in `RFL_DB.dat`
 * [USB Loader GX](https://github.com/wiidev/usbloadergx) (its anti-002 patch) and ndev_to_rvl: running development console programs on a retail Wii
 * WiiElfFix and RVT2RVL: the dev-kit ELF and WAD fixes
 * Priiloader (DacoTaco) and BootMii (Team Twiizers): how to boot each from a program

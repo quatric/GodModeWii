@@ -7,7 +7,7 @@
 * **[TinyLoad](https://wiibrew.org/wiki/TinyLoad)** 0.2 by Hector Martin (marcan), with code by Segher Boessenkool, Andre Heider
   and Nuke (GPL-2.0), with the USB Gecko Development Kit's `usb.c` — the game disc loader, built into `res/tinyload.elf` from `tinyload/` (`tinyload/build.sh`) and started
   through the launcher.
-* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — **inspired us a lot**: the clock and calendar, the alarm and the
+* **[MoonShell](https://www.gamebrew.org/wiki/Moonshell)** 2.10 by Moonlight (GPL-2.0 or later) — the clock and calendar, the alarm and the
   calculator follow its own, and the interface sound effects are its (`res/sfx.bin`, made by `scripts/make_sfx.py` from its
   `misctools/sndeff` folder).
 * **TiVo**'s interface sounds — an easter egg (`res/tivo.bin`, made by `scripts/make_tivo.py`); the last credits page has a hint, and the code works on the drive list too.
@@ -41,7 +41,7 @@
 * **[Zstandard](https://github.com/facebook/zstd)** by Meta Platforms (BSD, in `source/zstd`) — the single-file decoder, as vendored by RiftWii, for RVZ. It includes **xxHash** and **Finite State Entropy** by Yann Collet (BSD).
 * **[unarr](https://github.com/selmf/unarr)** (selmf and contributors, LGPL-3.0, in `source/unarr`, with the LZMA SDK by Igor Pavlov inside; its RAR code follows **The Unarchiver**'s XADMaster by Dag Ågren and contributors, LGPL-2.1) — the zip, 7z and RAR (up to 4.x) readers of the FTP installer and of archive browsing, and the LZMA / LZMA2 decoder used for RVZ; RAR5 is read by `source/rar5.c`, written from the public format description.
 * **[csm-installer](https://github.com/Naim2000/csm-installer)** by Naim2000 (GPL-2.0) — the Wii Menu theme
-  installer's checks and install sequence (`source/theme.c`: identifying the System Menu and its archive, Priiloader detection,
+  installer's checks and install sequence (`source/theme.c`: identifying the Wii Menu and its archive, Priiloader detection,
   the theme checks, the vWii 4:3 database patch after DarkMatterCore's ww-43db-patcher, writing through `/tmp`, downloading the original archive
   from NUS).
 * **mym-to-csm** by cmyksoda — `source/mym.c` is a C port of it (mym.ini handling, U8 rebuild, TPL encoder, LZ77 compressor).
@@ -102,7 +102,7 @@
   started as the hbc-reborn developers' sdk/mii, with cmyksoda's NAND loader; it also reads and writes the Miis on a Wii Remote.
   The Mii record fields shown come from WiiBrew's Mii data documentation, and the Wii Remote's Mii blocks ("RNCD" at `0x0FCA`,
   two copies with a CRC-16) from its Wii Remote and Mii data pages.
-* **MiiFlood** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
+* **[MII-FLOOD-2](https://github.com/fartbumpoopturd-bit/MII-FLOOD-2)** — the Mii Parade's layout in `RFL_DB.dat`: the RNHD list head and tail, its 12-byte nodes and the 64-byte
   records, checked against three real databases.
 * **mii-qr** — the idea of carrying a Mii as a QR code. The code here holds the Mii's own 74 bytes (a `.miigx`), since the 3DS /
   Wii U Mii QR format is encrypted with a key that console keeps.
@@ -117,7 +117,7 @@
   OTP and SEEPROM access sequences used here. The hashes used to recognize the SD key come from it too.
 * **[wad2bin](https://github.com/DarkMatterCore/wad2bin)** by DarkMatterCore — the `content.bin` and `<index>.bin` layouts (encrypted header, `Bk` header with the included-content bitfield, PRNG-key encrypted contents, the AP certificate and signature), the bogus WAD and how tickets / TMDs are fakesigned, and the IMET / U8 handling. GodModeWii's converter (`source/wad2bin.c`) and its sect233r1 ECDSA (`source/ecc233.c`) are its own code, checked byte for byte against wad2bin's output; MD5 is written from RFC 1321.
 * **[dlc-wad-splitter](https://github.com/DarkMatterCore/dlc-wad-splitter)** by DarkMatterCore — the split DLC WAD layout (the TMD kept as it is, content 0 and a run of the other contents in each WAD, `<title id>_split_<n>.wad`, the ticket fakesigned when it was bound to a console) and wad2bin's way of finding the contents a partial DLC WAD holds. `w2b_split` and the content locator in `source/wad2bin.c` are GodModeWii's own code.
-* **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader System Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
+* **[Yet Another BlueDump MOD](https://github.com/DarkMatterCore/bluedump-mod)** by DarkMatterCore (building on BlueDump by nicksasa and WiiPower) — what a title backup WAD holds and in which order (certificates, ticket with its console data wiped, TMD, contents padded to 64 bytes, the first content as the footer), finding shared contents through `content.map`, the Priiloader Wii Menu handling and the common key index change. GodModeWii's dumper (`source/waddump.c`) is its own code.
 * **[CleanRip](https://github.com/emukidid/cleanrip)** by emu_kidid (GPL-2.0-or-later) and **[spycrab's CleanRip](https://github.com/spycrab/cleanrip)**
   (its Datel branch) — how the disc dumper (`source/discdump.c`) gets past read errors: retrying a block after a drive reset,
   then sector by sector until two reads agree, and zero-filling and listing what still fails; the Wii dual-layer check and the
@@ -150,7 +150,7 @@
   re-encrypted with the retail common key, the issuers changed, and the ticket and TMD fakesigned (`source/wadinstall.c`).
   The development common key comes from WiiBrew's key list.
 * **Priiloader** (DacoTaco) — the magic words it reads at `0x8132FFFB` on the way out ("Daco" for its menu, "Pune" for the Wii
-  Menu), and how it's spotted in the System Menu's content folder. **BootMii** (Team Twiizers) — booted by reloading IOS 254.
+  Menu), and how it's spotted in the Wii Menu's content folder. **BootMii** (Team Twiizers) — booted by reloading IOS 254.
 * **SNTP** (RFC 4330) and WiiBrew's **SYSCONF** page (the `IPL.CB` clock bias) — setting the clock from the internet.
 * **dvdisaster** — the disc dumper's spiral map of what was read, good and bad.
 * **ShowMiiWads** (Leathl) and **NUSD** — what the title info screen lists for WADs, TMDs and tickets.
